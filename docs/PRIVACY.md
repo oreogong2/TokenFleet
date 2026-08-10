@@ -17,6 +17,21 @@ macOS 首版可靠支持 Codex、Claude Code 和 CC Switch；Windows 首版支�
 Claude Code，暂不采集 CC Switch。客户端只读取各平台已声明的固定数据位置，不要求
 管理员权限，不注入其他进程，不抓网络流量，也不安装根证书。
 
+macOS 还保留了三项与本地用量展示有关的外部集成，不属于社群同步：
+
+- “显示 Codex / Claude 额度”默认关闭。用户主动开启后，TokenFleet 会启动本机
+  `codex app-server`子进程读取 Codex 额度；
+- 同一额度开关开启后，TokenFleet 会通过系统 `/usr/bin/security` 只读查找
+  Claude Code 的 `Claude Code-credentials` 钥匙串项，仅为取得 OAuth access token
+  并请求 `https://api.anthropic.com/api/oauth/usage` 显示 Claude 额度。该 token
+  不会写入 TokenFleet 设置、日志或社群上报，也不会发送给 TokenFleet
+  服务器；
+- 外部 Token Rank 卡片会尝试读取 `~/.token-rank/client-state.json`，仅解码
+  公开用户 ID、昵称、头像和最后同步时间，用于显示外部榜单；不解析或使用
+  上传 URL、token 或 device secret。
+
+这些功能不会改变下文的社群上传字段；社群同步不上传 Claude / Codex 登录凭证。
+
 ## 何时上传
 
 默认本地使用不上传。社群成员收到管理员私发的一次性接入链接后，先在说明页查看
@@ -69,10 +84,12 @@ TokenFleet 本地数据位于：
 ~/Library/Application Support/TokenFleet
 ```
 
-普通设置文件只保存非敏感连接状态和聚合数据。macOS 的设备 secret 必须保存在
-Keychain，Windows 的设备 secret 必须用当前用户 DPAPI 加密且不得进入 roaming
-设置；两端都不允许降级到明文文件、偏好设置、日志或截图。安全凭据能力不可用时，
-社群同步保持关闭。
+普通设置文件只保存非敏感连接状态和聚合数据。macOS 的社群设备 secret 只保存在
+TokenFleet 自己的 Keychain 项；这条社群凭据存储链路不读取、修改或删除其他 App
+的钥匙串项。上文明确披露的 Claude 额度功能是另一条默认关闭的只读链路。
+Windows 的设备 secret 必须用当前用户 DPAPI 加密且不得进入 roaming 设置；
+两端都不允许把社群 secret 降级到明文文件、偏好设置、日志或截图。安全凭据
+能力不可用时，社群同步保持关闭。
 
 ## 分享与外部排行榜
 

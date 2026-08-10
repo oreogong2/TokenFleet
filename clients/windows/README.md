@@ -1,5 +1,11 @@
 # TokenFleet Windows 10/11 client
 
+> **Experimental source candidate:** cross-platform automation passes, but this
+> client has not completed real Windows 10/11 E2E for DPAPI, Task Scheduler,
+> upgrade, uninstall, or production sync. The current Mac beta does not promise
+> Windows production readiness. The commands below are for technical preview
+> and later hardware validation only.
+
 This is the source-distributed Windows participant client for the private
 TokenFleet community. It does not use WeChat, a member login, or an AI-provider
 account. An administrator creates the participant nickname on the server and

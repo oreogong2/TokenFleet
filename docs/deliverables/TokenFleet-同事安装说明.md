@@ -77,6 +77,10 @@ open '/Applications/TokenFleet.app'
 
 ## 4. Windows 10/11 安装与登记
 
+重要：Windows 客户端目前是实验性源码候选。跨平台自动化已通过，但真实 Windows
+10/11 上的 DPAPI、计划任务、升级、卸载和真实同步 E2E 尚未验收。当前不向社群成员
+承诺 Windows 正式可用；本节仅供后续真机验收和技术预览。
+
 从经过复核的源码发布包进入仓库根目录，运行：
 
 ```powershell

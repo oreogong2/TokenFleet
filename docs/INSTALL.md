@@ -80,6 +80,10 @@ test "$(git rev-parse HEAD)" = "<new-reviewed-commit-sha>"
 
 ## 5. Windows 10/11：源码安装与登记
 
+重要：Windows 客户端目前是实验性源码候选。跨平台自动化已通过，但尚未在真实
+Windows 10/11 电脑完成 DPAPI、计划任务、升级、卸载和真实同步 E2E。当前 Mac
+首批灰度不向成员承诺 Windows 正式可用；下列命令仅供后续真机验收和技术预览。
+
 Windows 首版需要 Python 3.10 或更高版本。下载或克隆经过复核的 TokenFleet 发布版本，进入仓库根目录后运行：
 
 ```powershell
