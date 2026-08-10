@@ -4,9 +4,19 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import PurePosixPath
 import unicodedata
 from zipfile import BadZipFile, ZipFile
+
+try:
+    from script.private_markers import (
+        PRIVATE_KEY_MARKERS,
+        PrivateMarkerError,
+        load_private_markers,
+    )
+except ModuleNotFoundError:  # Direct execution: python script/verify_public_source_archive.py
+    from private_markers import PRIVATE_KEY_MARKERS, PrivateMarkerError, load_private_markers
 
 
 MAX_MEMBER_BYTES = 25 * 1024 * 1024
@@ -36,23 +46,9 @@ def forbidden_filename(path: PurePosixPath) -> bool:
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("archive")
-    args = parser.parse_args()
-
-    forbidden_bytes = (
-        b"oreo" + b"gong2" + b"@" + b"gmail.com",
-        b"/Users/" + b"oreo",
-        b"47" + b".97" + b".20" + b".13",
-        b"BEGIN " + b"PRIVATE KEY",
-        b"BEGIN RSA " + b"PRIVATE KEY",
-        b"BEGIN EC " + b"PRIVATE KEY",
-        b"BEGIN OPENSSH " + b"PRIVATE KEY",
-    )
-
+def verify_archive(archive_path: str, private_markers: tuple[bytes, ...]) -> None:
     try:
-        with ZipFile(args.archive) as archive:
+        with ZipFile(archive_path) as archive:
             if archive.testzip() is not None:
                 fail("CRC validation failed")
             entries = archive.infolist()
@@ -87,13 +83,30 @@ def main() -> None:
                 if entry.is_dir():
                     continue
                 payload = archive.read(entry)
-                if any(marker in payload for marker in forbidden_bytes):
+                if any(marker in payload for marker in (*private_markers, *PRIVATE_KEY_MARKERS)):
                     fail(f"personal marker or private-key header entered archive: {relative}")
 
             if len(roots) != 1 or not next(iter(roots)).startswith("TokenFleet-"):
                 fail("archive must have one TokenFleet-* root directory")
     except (BadZipFile, OSError) as exc:
         fail(str(exc))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("archive")
+    parser.add_argument(
+        "--private-markers-file",
+        default=os.environ.get("TOKENFLEET_PRIVATE_MARKERS_FILE", ""),
+    )
+    args = parser.parse_args()
+    if not args.private_markers_file:
+        fail("--private-markers-file or TOKENFLEET_PRIVATE_MARKERS_FILE is required")
+    try:
+        private_markers = load_private_markers(args.private_markers_file)
+    except PrivateMarkerError as exc:
+        fail(str(exc))
+    verify_archive(args.archive, private_markers)
 
     print("PASS: public archive paths, UTF-8 filenames, and privacy markers")
 

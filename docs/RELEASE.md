@@ -7,7 +7,8 @@
 ```bash
 git archive --format=zip --prefix=TokenFleet-source/ \
   --output=/tmp/TokenFleet-source.zip HEAD
-python3 script/verify_public_source_archive.py /tmp/TokenFleet-source.zip
+TOKENFLEET_PRIVATE_MARKERS_FILE=/absolute/private/markers.txt \
+  python3 script/verify_public_source_archive.py /tmp/TokenFleet-source.zip
 shasum -a 256 /tmp/TokenFleet-source.zip
 ```
 
