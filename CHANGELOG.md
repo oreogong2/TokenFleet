@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.0-beta.3 - 2026-08-10
+
+### Documentation
+
+- Disclosed the optional, default-off Claude quota integration that reads the
+  Claude Code Keychain credential only to query Anthropic's usage endpoint.
+- Documented the Codex quota child process and the read-only external Token
+  Rank identity file separately from TokenFleet community synchronization.
+- Marked every Windows installation entry point as an experimental source
+  candidate pending real Windows 10/11 E2E validation.
+
 ## 0.1.0-beta.2 - 2026-08-10
 
 - Fixed macOS CI portability by using the active Xcode SDK path directly.
