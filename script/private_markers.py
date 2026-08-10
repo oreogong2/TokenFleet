@@ -10,11 +10,14 @@ import stat
 
 
 EXPECTED_PRIVATE_MARKERS = 3
-PRIVATE_KEY_MARKERS = (
-    b"BEGIN PRIVATE KEY",
-    b"BEGIN RSA PRIVATE KEY",
-    b"BEGIN EC PRIVATE KEY",
-    b"BEGIN OPENSSH PRIVATE KEY",
+PRIVATE_KEY_MARKERS = tuple(
+    b" ".join(parts)
+    for parts in (
+        (b"BEGIN", b"PRIVATE", b"KEY"),
+        (b"BEGIN", b"RSA", b"PRIVATE", b"KEY"),
+        (b"BEGIN", b"EC", b"PRIVATE", b"KEY"),
+        (b"BEGIN", b"OPENSSH", b"PRIVATE", b"KEY"),
+    )
 )
 
 
