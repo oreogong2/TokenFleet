@@ -566,14 +566,16 @@ def test_postgres_fifty_member_beta_capacity(postgres_runtime: PostgresRuntime) 
         assert response["total_entries"] == 50
         assert len(response["entries"]) == 50
         assert {item["public_id"] for item in response["entries"]} == public_ids
+        assert len(public_ids) == 50
+        assert len(device_ids) == 50
         assert all(device_id not in leaderboard.text for device_id in device_ids)
 
     with Session(postgres_runtime.engine) as session:
         assert session.scalar(
             select(func.count())
             .select_from(DailyUsage)
-            .where(DailyUsage.user_id == participant["id"])
-        ) == 1
+            .where(DailyUsage.org_id == team.org_id)
+        ) == 50
 
 
 def test_two_postgres_connections_upsert_same_natural_key_once(
