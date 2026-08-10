@@ -78,11 +78,19 @@ jobs:
 
       - name: Verify public-source ZIP encoding and privacy gate
         run: |
-          printf '%s\n' \
-            'maintainer-ci@example.invalid' \
-            '/private/ci/home' \
-            '203.0.113.254' \
-            > "$RUNNER_TEMP/tokenfleet-private-markers.txt"
+          python - "$RUNNER_TEMP/tokenfleet-private-markers.txt" <<'PY'
+          from pathlib import Path
+          import secrets
+          import sys
+
+          suffix = secrets.token_hex(16)
+          Path(sys.argv[1]).write_text(
+              f"ci-{suffix}@example.invalid\n"
+              f"/ci-private/{suffix}\n"
+              f"synthetic-origin-{suffix}\n",
+              encoding="utf-8",
+          )
+          PY
           chmod 0600 "$RUNNER_TEMP/tokenfleet-private-markers.txt"
           python -m unittest -v script/test_verify_public_source_archive.py
           git archive --format=zip --prefix=TokenFleet-ci/ \
