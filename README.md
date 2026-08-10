@@ -8,7 +8,7 @@ AI 时代，每个人都在和 Agent 一起工作。
 
 但我们很少知道：今天到底用了多少 AI？有没有比昨天更进一步？
 
-TokenFleet 包含原生 macOS 菜单栏 App 和轻量 Windows 参赛端，用来本地统计 Codex、Claude Code 等 AI 编程工具的 Token 消耗；受邀成员还可用管理员私发的一次性码加入同一个社群榜。
+TokenFleet 包含原生 macOS 菜单栏 App 和轻量 Windows 参赛端，用来本地统计 Codex、Claude Code 等 AI 编程工具的 Token 消耗；受邀成员还可通过管理员创建的限额批次链接登记唯一昵称，领取自己的单次设备码并加入同一个社群榜。
 
 默认目标是：**每天 1 亿 Token**。
 
@@ -66,7 +66,8 @@ TokenFleet 适合这些人：
 - 一键生成「昨日 AI 节奏」分享卡，展示 24 小时使用波形、峰值时段和节奏标签。
 - Codex / Claude Code 剩余额度可在设置中打开，默认关闭。
 - 保留已签名公证 DMG 的更新能力，但源码安装阶段不启用；当前升级方式是切换到管理员指定的新 tag 后重跑安装脚本。
-- 管理员只填昵称即可创建非登录参赛者，并为每台设备私发短期、单次接入码。
+- 管理员可创建最多 50 人、最长 24 小时的自助批次链接；成员只填唯一昵称并明确同意公开，系统原子生成非登录参赛者和 60 分钟单次设备码。
+- 第二台设备或个别补发仍由管理员为已有参赛者生成独立短期、单次接入码。
 - 同一参赛者的多台 Mac 或 Windows 设备分别登记、统一求和；不要求共享 Codex / Claude 账号。
 - 匿名可读的蓝白社群榜、公开个人页和浏览器本地生成的 Top 10 分享海报。
 - 本地数据路径：macOS 为 `~/Library/Application Support/TokenFleet`，Windows 为 `%LOCALAPPDATA%\TokenFleet`。
@@ -85,7 +86,7 @@ Windows 首版不采集 CC Switch，也尚未提供与 macOS 原生 App 等同�
 
 ## 隐私
 
-TokenFleet 默认只做本地统计；社群同步由成员收到专属链接、阅读公开范围并在客户端主动确认后开启。
+TokenFleet 默认只做本地统计；社群同步由成员打开管理员发出的受限批次链接或专属设备链接、阅读公开范围并在客户端主动确认后开启。
 
 它只读取 Token 用量元数据，例如日期、模型、客户端名称和 Token 数量，用于生成趋势、圆环和统计图。
 
@@ -113,7 +114,7 @@ test "$(git rev-parse HEAD)" = "<reviewed-commit-sha>"
   --community-server https://<community-domain>
 ```
 
-脚本会构建、验证并原子安装到 `~/Applications/TokenFleet.app`；它不接受一次性连接码。首次打开后，在 App 的“社群榜同步”安全输入框粘贴管理员为这台设备单独生成的码。
+脚本会构建、验证并原子安装到 `~/Applications/TokenFleet.app`；它不接受一次性连接码。首次接入时先从管理员发出的批次链接登记唯一昵称并复制个人设备码，再在 App 的“社群榜同步”安全输入框粘贴。
 
 如果只看本地统计、不加入社群榜：
 
@@ -187,7 +188,7 @@ TokenStepSwift/dist/TokenFleet.app
 Developer ID 签名 + Apple 公证：
 
 ```bash
-TOKENFLEET_VERSION=0.1.0-beta.4 \
+TOKENFLEET_VERSION=0.1.0-beta.5 \
 TOKENFLEET_BUNDLE_ID="com.yourcompany.TokenFleet" \
 TOKENFLEET_TEAM_ID="ABCDE12345" \
 TOKENFLEET_UPDATE_API_URL="https://updates.example.com/tokenfleet/latest" \

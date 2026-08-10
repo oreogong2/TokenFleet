@@ -242,6 +242,20 @@ immediately.
     request Host to construct a join URL
   - participant `email` and `password_hash` are genuinely `NULL`; no placeholder
     address or shared password is created
+- `POST /api/v1/admin/invitation-batches` (admin)
+  - request: `{capacity, expires_in_hours}` with `capacity <= 50` and
+    `expires_in_hours <= 24`; response returns the raw batch token exactly once
+  - database stores only the token SHA-256; list/close responses never return it
+- `GET /api/v1/admin/invitation-batches` and
+  `POST /api/v1/admin/invitation-batches/{batch_id}/close` (admin)
+- `POST /api/v1/public/invitation-batches/claim` (anonymous invite capability)
+  - request: `{invitation_token, display_name, public_profile_enabled:true}`
+  - locks the batch row and atomically creates a non-login participant, a
+    60-minute personal enrollment token, and `claimed_count + 1`
+  - a duplicate normalized nickname rolls back all three writes; invalid,
+    expired, closed and full batches share one `409` response
+  - response is exactly `{nickname, enrollment_token, expires_at}` with
+    `Cache-Control: no-store`; it contains no organization/member/internal ID
 - `POST /api/v1/enrollment-tokens` (admin)
   - request: `{user_id, expires_in_minutes}`
   - response: `{enrollment_token, expires_at}`; plaintext is returned once
@@ -268,7 +282,9 @@ immediately; historical usage remains attached to the stable device and is not
 counted twice. If that `device_public_id` already belongs to another member in the
 organization, enrollment returns `409` and never transfers or alters the device.
 
-Enrollment tokens are stored as SHA-256 hashes and claimed with one conditional
+Invitation-batch and enrollment tokens are stored as SHA-256 hashes. Batch claim
+uses a PostgreSQL row lock so 60 concurrent requests for a 50-person batch accept
+exactly 50 without oversubscription. Enrollment tokens are claimed with one conditional
 `UPDATE ... RETURNING`, so concurrent enrollment has one winner. The raw device
 secret is never stored. The database stores the derived signing key described
 below.

@@ -15,16 +15,20 @@ python3 -m http.server 4310
 - 匿名社群榜演示：<http://127.0.0.1:4310/?demo=1#/rank>
 - 安全接入说明页：生产环境使用 `/join#code=<短期单次码>`；不要把码放在
   query 参数中。
+- 批次自助页：生产环境使用 `/join/batch#invite=<批次令牌>`；query/path 形态只
+  擦除、不接受。
 
 生产环境由 Server 的 SPA fallback 支持直接刷新 `/rank`、`/rank/p/{public_id}`
-和 `/join`。`index.html` 的静态资源使用根绝对路径，避免公开深链白屏。
+、`/join` 和 `/join/batch`。`index.html` 的静态资源使用根绝对路径，避免公开深链白屏。
 
 ## 身份与接入
 
 - 只有管理员使用组织标识、邮箱和密码登录后台；短期会话令牌只写当前标签页
   `sessionStorage`，不写 Cookie 或 `localStorage`，401/403 后立即清除。
-- 社群参赛者没有邮箱、密码或 Web session。管理员只填昵称，得到只显示一次、
-  最长 24 小时、只能登记一台设备的专属链接/码。
+- 社群参赛者没有邮箱、密码或 Web session。管理员创建最多 50 人、最长 24 小时
+  且可关闭的受限批次；成员填写唯一昵称并明确同意公开后，各自得到 60 分钟单次码。
+- 批次令牌只存于 fragment/闭包内存，个人设备码只存于响应闭包；两者均不进入
+  DOM、storage、日志或历史，成员主动点击后才写剪贴板。
 - `/join` 在其他页面逻辑工作前读取并立刻从地址栏清除 fragment；原始码不进入
   DOM、storage、日志或 query，离开页面后清空内存。成员主动点击后才写剪贴板。
 - 同一参赛者的第二台设备使用新的单次码；设备 secret 与管理员 session 完全独立。
@@ -55,7 +59,7 @@ python3 tests/community_browser.py
 ```
 
 `community_browser.py` 自己启动临时 SPA fallback，检查 1440/820/390px、直接深链、
-接入码清理、管理员首用流程、分享 PNG 和二维码。完整管理员/API 联调由仓库根目录
+个人/批次接入码清理、匿名 claim、管理员批次流程、分享 PNG 和二维码。完整管理员/API 联调由仓库根目录
 门禁执行：
 
 ```bash
