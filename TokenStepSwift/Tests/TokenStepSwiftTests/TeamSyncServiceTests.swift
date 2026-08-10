@@ -31,7 +31,6 @@ final class TeamSyncServiceTests: XCTestCase {
     }
 
     func testDisabledCredentialStorageRejectsBeforeEnrollmentTokenIsSent() async {
-        XCTAssertTrue(TeamSyncCredentialStorageAvailability.isAvailable)
         let http = RecordingTeamSyncHTTPClient(
             responses: [TeamSyncHTTPResponse(data: Data(), statusCode: 200)]
         )

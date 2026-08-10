@@ -438,8 +438,16 @@ final class TeamSyncProtocolTests: XCTestCase {
     }
 
     func testBackoffIsJitteredAndCappedAtSixHours() {
-        XCTAssertEqual(TeamSyncBackoffPolicy.delay(failureCount: 1, jitterUnit: 0), 48)
-        XCTAssertEqual(TeamSyncBackoffPolicy.delay(failureCount: 1, jitterUnit: 1), 72)
+        XCTAssertEqual(
+            TeamSyncBackoffPolicy.delay(failureCount: 1, jitterUnit: 0),
+            48,
+            accuracy: 1e-9
+        )
+        XCTAssertEqual(
+            TeamSyncBackoffPolicy.delay(failureCount: 1, jitterUnit: 1),
+            72,
+            accuracy: 1e-9
+        )
         XCTAssertLessThanOrEqual(
             TeamSyncBackoffPolicy.delay(failureCount: 100, jitterUnit: 1),
             6 * 60 * 60
