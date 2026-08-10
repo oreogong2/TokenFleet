@@ -130,8 +130,6 @@ jobs:
     name: Native client and distribution identity
     runs-on: macos-15
     timeout-minutes: 30
-    env:
-      TOKENFLEET_SWIFT_SDK: ${{ runner.temp }}/macos-sdk
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -145,14 +143,20 @@ jobs:
         run: swift test --package-path TokenStepSwift --parallel
 
       - name: Run complete Swift and collector verification
+        env:
+          TOKENFLEET_SWIFT_SDK: ${{ runner.temp }}/macos-sdk
         run: |
           ln -s "$(xcrun --sdk macosx --show-sdk-path)" "$TOKENFLEET_SWIFT_SDK"
           bash script/verify_tokenstep_swift.sh
 
       - name: Verify free source installation safety in an isolated Keychain
+        env:
+          TOKENFLEET_SWIFT_SDK: ${{ runner.temp }}/macos-sdk
         run: bash script/verify_source_distribution.sh
 
       - name: Run independent desktop identity and packaging preflight
+        env:
+          TOKENFLEET_SWIFT_SDK: ${{ runner.temp }}/macos-sdk
         run: bash script/verify_tokenfleet_desktop_identity.sh
 
       - name: Reject whitespace and accidental secret files
