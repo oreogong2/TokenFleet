@@ -104,7 +104,7 @@ def verify_desktop(page: Page) -> dict[str, int]:
 
     page.get_by_role("link", name="成员", exact=True).click()
     wait_for_page(page, "成员")
-    page.get_by_role("button", name="新建参赛者并生成链接").click()
+    page.get_by_role("button", name="单独新建参赛者").click()
     member_dialog = page.locator("#member-dialog")
     member_dialog.wait_for(state="visible")
     member_dialog.locator('input[name="display_name"]').fill("演示回归成员")
@@ -512,7 +512,7 @@ def verify_mock_states(page: Page) -> dict[str, object]:
     assert all(item["pass"] for item in contrast), contrast
     page.goto(f"{BASE_URL}/#/people")
     wait_for_page(page, "成员")
-    open_member = page.get_by_role("button", name="新建参赛者并生成链接")
+    open_member = page.get_by_role("button", name="单独新建参赛者")
     open_member.focus()
     page.keyboard.press("Enter")
     dialog = page.locator("#member-dialog")
