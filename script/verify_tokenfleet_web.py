@@ -484,10 +484,8 @@ def verify_mock_states(page: Page) -> dict[str, object]:
     page.evaluate("document.body.tabIndex = -1; document.body.focus()")
     page.keyboard.press("Tab")
     assert page.evaluate("document.activeElement?.classList.contains('skip-link')")
-    # reduced-motion intentionally leaves a 0.01 ms transition instead of
-    # disabling transitions entirely. Wait one frame before measuring the
-    # focused end state so the assertion is deterministic in headless Chromium.
-    page.wait_for_timeout(32)
+    # Reduced-motion disables transitions entirely, so the skip link must be
+    # visible in the same frame it receives keyboard focus.
     skip_focus = skip.evaluate(
         """element => {
           const style = getComputedStyle(element);

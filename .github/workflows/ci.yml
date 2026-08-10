@@ -143,21 +143,19 @@ jobs:
         run: swift test --package-path TokenStepSwift --parallel
 
       - name: Run complete Swift and collector verification
-        env:
-          TOKENFLEET_SWIFT_SDK: ${{ runner.temp }}/macos-sdk
         run: |
-          ln -s "$(xcrun --sdk macosx --show-sdk-path)" "$TOKENFLEET_SWIFT_SDK"
-          bash script/verify_tokenstep_swift.sh
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" bash script/verify_tokenstep_swift.sh
 
       - name: Verify free source installation safety in an isolated Keychain
-        env:
-          TOKENFLEET_SWIFT_SDK: ${{ runner.temp }}/macos-sdk
-        run: bash script/verify_source_distribution.sh
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" bash script/verify_source_distribution.sh
 
       - name: Run independent desktop identity and packaging preflight
-        env:
-          TOKENFLEET_SWIFT_SDK: ${{ runner.temp }}/macos-sdk
-        run: bash script/verify_tokenfleet_desktop_identity.sh
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" bash script/verify_tokenfleet_desktop_identity.sh
 
       - name: Reject whitespace and accidental secret files
         env:
