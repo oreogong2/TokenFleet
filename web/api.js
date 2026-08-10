@@ -202,6 +202,19 @@ export function createApiClient({
           expires_in_minutes: Number(payload.expires_in_minutes),
         }),
       }),
+    invitationBatches: () => request("/api/v1/admin/invitation-batches"),
+    createInvitationBatch: (payload) =>
+      request("/api/v1/admin/invitation-batches", {
+        method: "POST",
+        body: JSON.stringify({
+          capacity: Number(payload.capacity),
+          expires_in_hours: Number(payload.expires_in_hours),
+        }),
+      }),
+    closeInvitationBatch: (id) =>
+      request(`/api/v1/admin/invitation-batches/${encodeURIComponent(id)}/close`, {
+        method: "POST",
+      }),
     user: (id, params) =>
       request(`/api/v1/users/${encodeURIComponent(id)}${toQuery(params)}`),
     setUserEnabled: (id, enabled) =>

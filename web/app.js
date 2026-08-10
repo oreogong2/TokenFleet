@@ -1,4 +1,9 @@
-import { captureJoinCode, clearJoinCode, takeJoinCode } from "./join-secret.js";
+import {
+  captureJoinCode,
+  clearJoinCode,
+  takeBatchInvitationToken,
+  takeJoinCode,
+} from "./join-secret.js";
 import {
   ApiError,
   clearApiKey,
@@ -163,6 +168,18 @@ function formatTime(value) {
   if (minutes < 60) return `${minutes} 分钟前`;
   if (minutes < 1440) return `${Math.round(minutes / 60)} 小时前`;
   return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(date);
+}
+
+function formatExpiry(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "未知";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 
 function titleForRoute() {
@@ -341,12 +358,31 @@ function peopleTable(items, compact = false) {
   return `<div class="table-scroll"><table class="usage-ranking ${compact ? "usage-ranking-compact" : ""}"><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table><p class="ranking-note">按当前日期范围的设备 Token 合计排序；用于费用与容量管理，不代表工作量、产出或绩效。</p></div>`;
 }
 
+function peoplePageData(people = state.dashboard?.people || []) {
+  return {
+    items: people,
+    batches: normalizeCollection(state.pageData, ["batches"]),
+  };
+}
+
 function renderPeople() {
   const people = normalizeCollection(state.pageData, ["items", "users"]);
+  const batches = normalizeCollection(state.pageData, ["batches"]);
   const adminActions = state.me?.role === "admin"
-    ? `<div class="section-action-buttons"><a class="secondary-button small" href="#/rank">查看公开榜</a><button class="primary-button small" data-action="open-member">${icon("plus", 17)} 新建参赛者并生成链接</button><button class="secondary-button small" data-action="open-enrollment">${icon("plus", 17)} 为已有成员创建设备码</button></div>`
+    ? `<div class="section-action-buttons"><a class="secondary-button small" href="#/rank">查看公开榜</a><button class="primary-button small" data-action="open-batch">${icon("plus", 17)} 创建 50 人自助批次</button><button class="secondary-button small" data-action="open-member">${icon("plus", 17)} 单独新建参赛者</button><button class="secondary-button small" data-action="open-enrollment">${icon("plus", 17)} 为已有成员创建设备码</button></div>`
     : "";
-  return `<div class="section-actions"><div class="section-count"><strong>${people.length}</strong><span>名已登记成员</span></div>${adminActions}</div><article class="panel full-panel">${peopleTable(people)}</article><dialog id="member-dialog">${memberDialog()}</dialog><dialog id="enrollment-dialog">${enrollmentDialog(people)}</dialog>`;
+  const batchPanel = state.me?.role === "admin" ? invitationBatchPanel(batches) : "";
+  return `<div class="section-actions"><div class="section-count"><strong>${people.length}</strong><span>名已登记成员</span></div>${adminActions}</div>${batchPanel}<article class="panel full-panel">${peopleTable(people)}</article><dialog id="batch-dialog">${batchDialog()}</dialog><dialog id="member-dialog">${memberDialog()}</dialog><dialog id="enrollment-dialog">${enrollmentDialog(people)}</dialog>`;
+}
+
+function invitationBatchPanel(batches) {
+  if (!batches.length) return `<article class="panel invitation-batch-panel"><div class="panel-head"><div><span class="panel-kicker">SELF-SERVICE BATCHES</span><h2>自助接入批次</h2></div></div><div class="empty-state compact"><span>50</span><p>还没有批次链接。创建后只需把同一个链接发到社群，成员自己登记唯一昵称并领取个人设备码。</p></div></article>`;
+  const statusLabels = { open: "开放中", full: "已满额", expired: "已过期", closed: "已关闭" };
+  return `<article class="panel invitation-batch-panel"><div class="panel-head"><div><span class="panel-kicker">SELF-SERVICE BATCHES</span><h2>自助接入批次</h2></div><small>批次令牌只在创建时返回一次</small></div><div class="invitation-batch-list">${batches.map((batch) => `<div class="invitation-batch-row"><div><span class="status-badge ${batch.status === "open" ? "status-active" : "status-disabled"}">${escapeHTML(statusLabels[batch.status] || batch.status)}</span><strong>${Number(batch.claimed_count || 0)} / ${Number(batch.capacity || 0)} 人已领取</strong><small>有效期至 ${escapeHTML(formatExpiry(batch.expires_at))}</small></div>${batch.status === "open" ? `<button class="danger-button small" type="button" data-action="close-invitation-batch" data-batch-id="${escapeHTML(batch.id)}">关闭批次</button>` : ""}</div>`).join("")}</div></article>`;
+}
+
+function batchDialog() {
+  return `<form method="dialog" class="dialog-card" data-action="create-invitation-batch"><div class="dialog-head"><div><span class="panel-kicker">ONE LINK / MANY MEMBERS</span><h2>创建自助接入批次</h2></div><button class="icon-button" type="button" data-action="close-dialog" aria-label="关闭">×</button></div><p>生成一个可发到社群的链接。每人填写唯一公开昵称，系统再给他单独的 60 分钟一次性设备码。</p><label>最多人数<input name="capacity" type="number" min="1" max="50" value="50" required></label><label>批次有效期<select name="expires_in_hours" required><option value="1">1 小时</option><option value="6">6 小时</option><option value="12">12 小时</option><option value="24" selected>24 小时</option></select></label><div class="inline-alert">链接最多 50 人。关闭、过期或满额后，外部统一显示“批次不可用”，不会暴露具体原因。</div><div class="dialog-actions"><button class="text-button" type="button" data-action="close-dialog">取消</button><button class="primary-button small" type="submit" value="default">生成批次链接</button></div></form>`;
 }
 
 function memberDialog() {
@@ -354,7 +390,7 @@ function memberDialog() {
 }
 
 function enrollmentDialog(people) {
-  return `<form method="dialog" class="dialog-card" data-action="create-enrollment"><div class="dialog-head"><div><span class="panel-kicker">ONE-TIME ENROLLMENT</span><h2>创建设备连接码</h2></div><button class="icon-button" type="button" data-action="close-dialog" aria-label="关闭">×</button></div><p>连接码只显示一次，24 小时后过期。它只允许所选成员登记一台新设备。</p><label>成员<select name="user_id" required><option value="">选择成员</option>${people.filter((person) => person.status === "active" && person.role === "member").map((person) => `<option value="${escapeHTML(person.id)}">${escapeHTML(person.name)}${person.email ? ` · ${escapeHTML(person.email)}` : ` · 管理编号 ${escapeHTML(String(person.id).slice(-8))}`}</option>`).join("")}</select></label><p class="form-note">昵称可能重复；无邮箱参赛者请核对仅管理员可见的管理编号，避免绑错设备。</p><div class="dialog-actions"><button class="text-button" type="button" data-action="close-dialog">取消</button><button class="primary-button small" type="submit" value="default">生成一次性连接码</button></div></form>`;
+  return `<form method="dialog" class="dialog-card" data-action="create-enrollment"><div class="dialog-head"><div><span class="panel-kicker">ONE-TIME ENROLLMENT</span><h2>创建设备连接码</h2></div><button class="icon-button" type="button" data-action="close-dialog" aria-label="关闭">×</button></div><p>连接码只显示一次，24 小时后过期。它只允许所选成员登记一台新设备。</p><label>成员<select name="user_id" required><option value="">选择成员</option>${people.filter((person) => person.status === "active" && person.role === "member").map((person) => `<option value="${escapeHTML(person.id)}">${escapeHTML(person.name)}${person.email ? ` · ${escapeHTML(person.email)}` : " · 无后台账号"}</option>`).join("")}</select></label><p class="form-note">同一社群内昵称唯一；请按昵称选择成员，避免把新设备绑到别人名下。</p><div class="dialog-actions"><button class="text-button" type="button" data-action="close-dialog">取消</button><button class="primary-button small" type="submit" value="default">生成一次性连接码</button></div></form>`;
 }
 
 function renderPersonDetail() {
@@ -562,7 +598,10 @@ async function loadPage(generation = navigationGeneration) {
       nextPageData = personDetail(state.dashboard, route.id);
       if (!nextPageData) throw new ApiError("成员不存在或无权访问", { status: 404 });
     } else if (!demoMode && route.name === "people") {
-      nextPageData = state.dashboard.people;
+      nextPageData = {
+        items: state.dashboard.people,
+        batches: state.me?.role === "admin" ? await api.invitationBatches() : [],
+      };
     } else if (!demoMode && route.name === "devices") {
       nextPageData = state.dashboard.devices;
     } else if (!demoMode && route.name === "history") {
@@ -576,7 +615,14 @@ async function loadPage(generation = navigationGeneration) {
     } else if (route.name === "people" && route.id) {
       nextPageData = await api.user(route.id, filters);
     } else if (route.name === "people") {
-      nextPageData = await api.users(filters);
+      const [people, batches] = await Promise.all([
+        api.users(filters),
+        state.me?.role === "admin" ? api.invitationBatches() : Promise.resolve([]),
+      ]);
+      nextPageData = {
+        items: normalizeCollection(people, ["items", "users"]),
+        batches: normalizeCollection(batches, ["items", "batches"]),
+      };
     } else if (route.name === "devices") {
       nextPageData = await api.devices(filters);
     } else if (route.name === "history") {
@@ -616,13 +662,17 @@ async function boot(generation = beginNavigation()) {
   const publicRoute = parseCommunityRoute(location);
   if (publicRoute) {
     const joinCode = publicRoute.kind === "join" ? takeJoinCode() : "";
-    if (publicRoute.kind !== "join") clearJoinCode();
+    const batchInvitationToken = publicRoute.kind === "batch"
+      ? takeBatchInvitationToken()
+      : "";
+    if (!["join", "batch"].includes(publicRoute.kind)) clearJoinCode();
     if (!isCurrentNavigation(generation)) return;
     communityCleanup = mountCommunityApp({
       root: app,
       route: publicRoute,
       demoMode,
       joinCode,
+      batchInvitationToken,
       isCurrent: () => isCurrentNavigation(generation),
     });
     return;
@@ -717,6 +767,26 @@ document.addEventListener("submit", async (event) => {
     }
   }
 
+  if (action === "create-invitation-batch") {
+    if (event.submitter?.value === "cancel") return;
+    try {
+      const result = await api.createInvitationBatch({
+        capacity: Number(data.capacity),
+        expires_in_hours: Number(data.expires_in_hours),
+      });
+      if (!isCurrentNavigation(generation)) return;
+      form.closest("dialog")?.close();
+      const nextPage = peoplePageData(state.dashboard.people);
+      nextPage.batches = [result.batch, ...nextPage.batches];
+      state.pageData = nextPage;
+      renderShell();
+      showOneTimeBatchInvite(result, generation);
+      toast("自助批次已创建；请立即复制链接", "success", generation);
+    } catch (error) {
+      if (isCurrentNavigation(generation)) toast(error.message, "error", generation);
+    }
+  }
+
   if (action === "create-member") {
     if (event.submitter?.value === "cancel") return;
     try {
@@ -729,7 +799,7 @@ document.addEventListener("submit", async (event) => {
       form.reset();
       form.closest("dialog")?.close();
       if (!await refreshDashboard(generation) || !isCurrentNavigation(generation)) return;
-      state.pageData = state.dashboard.people;
+      state.pageData = peoplePageData(state.dashboard.people);
       renderShell();
       showOneTimeConnection(result, generation);
       toast("参赛者已创建；请立即复制专属接入材料", "success", generation);
@@ -821,7 +891,32 @@ document.addEventListener("click", async (event) => {
   if (action === "close-dialog") target.closest("dialog")?.close();
   if (action === "retry") await loadPage(generation);
   if (action === "open-member") document.querySelector("#member-dialog")?.showModal();
+  if (action === "open-batch") document.querySelector("#batch-dialog")?.showModal();
   if (action === "open-enrollment") document.querySelector("#enrollment-dialog")?.showModal();
+  if (action === "close-invitation-batch") {
+    if (target.dataset.pending === "true" || !target.dataset.batchId) return;
+    if (!confirm("关闭这个自助批次？尚未领取的人将统一看到“批次不可用”，已生成的个人设备码不受影响。")) return;
+    target.dataset.pending = "true";
+    target.disabled = true;
+    target.setAttribute("aria-busy", "true");
+    try {
+      const updated = await api.closeInvitationBatch(target.dataset.batchId);
+      if (!isCurrentNavigation(generation)) return;
+      const nextPage = peoplePageData(state.dashboard.people);
+      nextPage.batches = nextPage.batches.map((batch) =>
+        batch.id === updated.id ? { ...batch, ...updated } : batch
+      );
+      state.pageData = nextPage;
+      renderShell();
+      toast("自助批次已关闭", "success", generation);
+    } catch (error) {
+      if (!isCurrentNavigation(generation)) return;
+      delete target.dataset.pending;
+      target.disabled = false;
+      target.removeAttribute("aria-busy");
+      toast(error.message, "error", generation);
+    }
+  }
   if (action === "toggle-user") {
     const enabled = target.dataset.enabled === "true";
     const verb = enabled ? "重新启用" : "禁用";
@@ -856,7 +951,7 @@ document.addEventListener("click", async (event) => {
       if (!await refreshDashboard(generation) || !isCurrentNavigation(generation)) return;
       state.pageData = state.route.id
         ? personDetail(state.dashboard, target.dataset.userId)
-        : state.dashboard.people;
+        : peoplePageData(state.dashboard.people);
       renderShell();
       toast(enabled ? "已开启匿名社群榜公开资料" : "已从公开榜移除；私有历史未删除", "success", generation);
     } catch (error) {
@@ -941,6 +1036,33 @@ function showOneTimeConnection(result, generation = navigationGeneration) {
   });
   dialog.addEventListener("close", () => {
     rawCode = "";
+    dialog.remove();
+  }, { once: true });
+  if (isCurrentNavigation(generation)) dialog.showModal();
+}
+
+function showOneTimeBatchInvite(result, generation = navigationGeneration) {
+  if (!isCurrentNavigation(generation)) return;
+  let rawToken = String(result.invitation_token || "");
+  if (!/^[A-Za-z0-9_-]{32,256}$/.test(rawToken)) {
+    toast("服务端没有返回有效的批次令牌", "error", generation);
+    return;
+  }
+  const batch = result.batch || {};
+  const dialog = document.createElement("dialog");
+  dialog.className = "token-dialog";
+  dialog.innerHTML = `<div class="dialog-card"><div class="dialog-head"><div><span class="panel-kicker">COPY ONCE / SHARE PRIVATELY</span><h2>自助批次链接已生成</h2></div><button class="icon-button" type="button" data-dialog-close aria-label="关闭">×</button></div><div class="batch-link-summary"><strong>${Number(batch.claimed_count || 0)} / ${Number(batch.capacity || 50)}</strong><span>已领取 · 有效期至 ${escapeHTML(formatExpiry(batch.expires_at))}</span></div><button class="primary-button" type="button" data-copy-batch-link>复制 50 人自助接入链接</button><p>批次令牌不会显示在页面或写入浏览器存储。把同一个链接发到社群即可；每位成员必须填写唯一昵称，并只会拿到自己的个人设备码。</p><p class="form-note">若链接被外传，可在成员页立即关闭批次；系统对外不会区分已满、已关、过期或无效。</p></div>`;
+  if (!isCurrentNavigation(generation)) return;
+  document.body.append(dialog);
+  const batchLink = () => `${location.origin}/join/batch#invite=${encodeURIComponent(rawToken)}`;
+  dialog.querySelector("[data-dialog-close]").addEventListener("click", () => dialog.close());
+  dialog.querySelector("[data-copy-batch-link]").addEventListener("click", async () => {
+    await navigator.clipboard.writeText(batchLink());
+    if (!isCurrentNavigation(generation)) return;
+    toast("50 人自助接入链接已复制", "success", generation);
+  });
+  dialog.addEventListener("close", () => {
+    rawToken = "";
     dialog.remove();
   }, { once: true });
   if (isCurrentNavigation(generation)) dialog.showModal();

@@ -197,6 +197,26 @@ export const demoApi = {
       expires_at: new Date(anchor.getTime() + Number(payload.expires_in_minutes || 1440) * 60_000).toISOString(),
     };
   },
+  async invitationBatches() {
+    return [];
+  },
+  async createInvitationBatch(payload) {
+    return {
+      batch: {
+        id: "batch-demo-1",
+        capacity: Number(payload.capacity || 50),
+        claimed_count: 0,
+        expires_at: new Date(anchor.getTime() + Number(payload.expires_in_hours || 24) * 60 * 60_000).toISOString(),
+        closed_at: null,
+        created_at: anchor.toISOString(),
+        status: "open",
+      },
+      invitation_token: "demo_batch_7Yp4_K2m9_A8q6_H3v5_N1s7_P4q2",
+    };
+  },
+  async closeInvitationBatch(id) {
+    return { id, status: "closed", closed_at: anchor.toISOString() };
+  },
   async setUserEnabled(id, enabled) {
     const user = demoPeople.find((item) => item.id === id);
     if (user) user.status = enabled ? "active" : "disabled";

@@ -270,6 +270,7 @@ export function parseCommunityRoute(locationRef = globalThis.location) {
       filters: sanitizePublicFilters(Object.fromEntries(params)),
     };
   }
+  if (routePath === "/join/batch") return { kind: "batch" };
   if (routePath === "/join" || params.get("view") === "join") return { kind: "join" };
   return null;
 }
