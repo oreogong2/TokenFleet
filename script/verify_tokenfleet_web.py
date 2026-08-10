@@ -275,6 +275,7 @@ def edge_payloads(mode: str) -> dict[str, object]:
         "/api/v1/organization": organization,
         "/api/v1/users": [user, participant],
         "/api/v1/devices": devices,
+        "/api/v1/admin/invitation-batches": [],
         "/api/v1/dashboard": {
             "rows": rows,
             "totals": totals,
@@ -424,6 +425,7 @@ def verify_mock_states(page: Page) -> dict[str, object]:
     assert "还没有配置价格版本" in page.locator(".page-body").inner_text()
     page.goto(f"{BASE_URL}/#/people")
     wait_for_page(page, "成员")
+    assert "/api/v1/admin/invitation-batches" in seen_paths, seen_paths
     page.get_by_role("button", name="为已有成员创建设备码").click()
     enrollment_dialog = page.locator("#enrollment-dialog")
     enrollment_select = enrollment_dialog.locator('select[name="user_id"]')
