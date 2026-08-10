@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -111,7 +112,7 @@ class Harness:
         generated_at: str | None = None,
         collector_version: str = "0.2.0",
     ) -> dict[str, Any]:
-        today = datetime.now(timezone.utc).date().isoformat()
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
         return {
             "schema_version": 1,
             "collector_version": collector_version,

@@ -68,7 +68,14 @@ class UserCreate(StrictModel):
     email: EmailStr
     password: Annotated[str, Field(min_length=12, max_length=1024)]
     role: Literal["admin"]
-    display_name: Annotated[str | None, Field(max_length=128)] = None
+    display_name: Annotated[str | None, Field(min_length=1, max_length=128)] = None
+
+    @field_validator("display_name")
+    @classmethod
+    def display_name_is_safe(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return validate_public_nickname(value)
 
 
 class UserResponse(StrictModel):
@@ -121,6 +128,49 @@ class ParticipantCreate(StrictModel):
 
 class ParticipantEnrollmentResponse(StrictModel):
     participant: UserResponse
+    enrollment_token: str
+    expires_at: datetime
+
+
+class InvitationBatchCreate(StrictModel):
+    capacity: Annotated[int, Field(strict=True, ge=1, le=50)] = 50
+    expires_in_hours: Annotated[int, Field(strict=True, ge=1, le=24)] = 24
+
+
+class InvitationBatchSummary(StrictModel):
+    id: str
+    capacity: int
+    claimed_count: int
+    expires_at: datetime
+    closed_at: datetime | None
+    created_at: datetime
+    status: Literal["open", "full", "expired", "closed"]
+
+
+class InvitationBatchCreateResponse(StrictModel):
+    batch: InvitationBatchSummary
+    invitation_token: str
+
+
+class InvitationBatchClaim(StrictModel):
+    invitation_token: Annotated[str, Field(min_length=32, max_length=256)]
+    display_name: PublicNickname
+    public_profile_enabled: Annotated[bool, Field(strict=True)]
+
+    @field_validator("display_name")
+    @classmethod
+    def display_name_is_safe(cls, value: str) -> str:
+        return validate_public_nickname(value)
+
+    @model_validator(mode="after")
+    def public_profile_requires_explicit_consent(self) -> "InvitationBatchClaim":
+        if not self.public_profile_enabled:
+            raise ValueError("public_profile_enabled must be true")
+        return self
+
+
+class InvitationBatchClaimResponse(StrictModel):
+    nickname: str
     enrollment_token: str
     expires_at: datetime
 

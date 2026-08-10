@@ -228,6 +228,57 @@ def main() -> None:
         admin_me = expect(client.get("/api/v1/me", headers=auth(admin_token)), 200)
         assert admin_me["role"] == "admin"
 
+        # One bounded invitation batch must create exactly one public
+        # participant and personal enrollment token without exposing internals.
+        batch_created = expect(
+            client.post(
+                "/api/v1/admin/invitation-batches",
+                headers=auth(admin_token),
+                json={"capacity": 1, "expires_in_hours": 1},
+            ),
+            201,
+        )
+        batch_token = batch_created["invitation_token"]
+        batch_claim = client.post(
+            "/api/v1/public/invitation-batches/claim",
+            json={
+                "invitation_token": batch_token,
+                "display_name": f"批次参赛者 {run_id}",
+                "public_profile_enabled": True,
+            },
+        )
+        batch_claim_body = expect(batch_claim, 201)
+        assert batch_claim.headers["Cache-Control"] == "no-store"
+        assert set(batch_claim_body) == {
+            "nickname",
+            "enrollment_token",
+            "expires_at",
+        }
+        batch_device = enroll_with_token(
+            client,
+            batch_claim_body["enrollment_token"],
+        )
+        assert batch_device[0] and batch_device[1]
+        unavailable = client.post(
+            "/api/v1/public/invitation-batches/claim",
+            json={
+                "invitation_token": batch_token,
+                "display_name": f"批次满额 {run_id}",
+                "public_profile_enabled": True,
+            },
+        )
+        assert unavailable.status_code == 409
+        assert unavailable.json() == {"detail": "invitation batch unavailable"}
+        listed_batches = expect(
+            client.get(
+                "/api/v1/admin/invitation-batches",
+                headers=auth(admin_token),
+            ),
+            200,
+        )
+        assert all("invitation_token" not in item for item in listed_batches)
+        assert batch_token not in json.dumps(listed_batches)
+
         # Login-account creation is admin-only in the community product. A
         # member payload must fail rather than silently creating a legacy login.
         expect(
@@ -491,6 +542,7 @@ def main() -> None:
                 "public_participants_created": 1,
                 "public_devices_aggregated": 2,
                 "public_private_keys_exposed": 0,
+                "self_service_batch_claimed": 1,
             },
             ensure_ascii=False,
         )

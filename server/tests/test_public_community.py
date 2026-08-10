@@ -740,13 +740,13 @@ def test_visibility_disable_device_history_and_tenant_enumeration_boundaries(
     ]
 
 
-def test_public_bigint_decimal_strings_and_stable_tie_sort(harness) -> None:
+def test_public_bigint_decimal_strings_and_stable_nickname_tie_sort(harness) -> None:
     _enable_alpha_public_board(harness)
     participants = [
         _create_participant(
-            harness, display_name="同名", public_profile_enabled=True
+            harness, display_name=f"同分-{index}", public_profile_enabled=True
         )
-        for _ in range(2)
+        for index in range(2)
     ]
     for index, participant in enumerate(participants):
         device = _enroll_participant(harness, participant)
@@ -765,9 +765,9 @@ def test_public_bigint_decimal_strings_and_stable_tie_sort(harness) -> None:
             device, harness.usage_payload(buckets=buckets)
         ).status_code == 200
 
-    expected_ids = sorted(
+    expected_ids = [
         participant["participant"]["public_id"] for participant in participants
-    )
+    ]
     first = harness.client.get(
         "/api/v1/public/leaderboard", params={"metric": "norm"}
     ).json()
@@ -1613,13 +1613,13 @@ def test_sqlite_public_migration_refuses_destructive_participant_downgrade(
 
     with pytest.raises(
         RuntimeError,
-        match="cannot downgrade while non-login participants exist",
+        match="cannot downgrade invitation batches while participants or batches exist",
     ):
         command.downgrade(config, "bb8d4e1a2f73")
     engine = create_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "f4a9c2d8e6b1"
+            "c7b4e2a91d35"
         )
         assert connection.scalar(
             text("SELECT count(*) FROM users WHERE email IS NULL")
@@ -1628,4 +1628,8 @@ def test_sqlite_public_migration_refuses_destructive_participant_downgrade(
         "ix_usage_public_org_tool_date",
         "ix_usage_public_org_model_date",
     } <= {item["name"] for item in inspect(engine).get_indexes("daily_usage")}
+    assert "invitation_batches" in inspect(engine).get_table_names()
+    assert "uq_user_org_normalized_display_name" in {
+        item["name"] for item in inspect(engine).get_indexes("users")
+    }
     engine.dispose()
