@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-beta.2 - 2026-08-10
+
+- Fixed macOS CI portability by using the active Xcode SDK path directly.
+- Made reduced-motion rendering deterministic across macOS and Linux Chromium.
+- Kept the public source preflight strict without requiring the private maintainer release workflow.
+- Ran the real macOS XCTest suite and all GitHub CI jobs successfully before tagging.
+
 ## 0.1.0-beta.1 - 2026-08-10
 
 ### 首个邀请测试版
