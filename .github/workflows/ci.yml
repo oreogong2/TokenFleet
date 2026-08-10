@@ -1,0 +1,203 @@
+name: TokenFleet CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tokenfleet-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platform:
+    name: Server, Web, PostgreSQL, and live E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: tokenfleet-ci-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Install isolated test dependencies
+        run: |
+          python -m venv .ci-venv
+          .ci-venv/bin/pip install --upgrade pip==26.1.2
+          .ci-venv/bin/pip install \
+            -r server/requirements-dev.txt \
+            -r web/requirements-dev.txt \
+            -c server/constraints.txt
+          .ci-venv/bin/python -m playwright install --with-deps chromium
+          sudo apt-get update
+          sudo apt-get install --yes zsh
+
+      - name: Reject known Python dependency vulnerabilities
+        run: .ci-venv/bin/pip-audit --local --progress-spinner off
+
+      - name: Run SQLite and PostgreSQL server gates
+        env:
+          TEST_POSTGRES_URL: postgresql+psycopg://postgres:tokenfleet-ci-only@127.0.0.1:5432/postgres
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          cd server
+          ../.ci-venv/bin/pytest -p no:cacheprovider -q
+
+      - name: Run Web unit and mutating-script safety gates
+        run: |
+          cd web
+          npm test
+          cd ..
+          PYTHONDONTWRITEBYTECODE=1 .ci-venv/bin/python script/verify_mutating_test_safety.py
+
+      - name: Run isolated static-browser matrix
+        run: |
+          set -euo pipefail
+          .ci-venv/bin/python -m http.server 4310 --directory web >"$RUNNER_TEMP/tokenfleet-static-web.log" 2>&1 &
+          WEB_PID=$!
+          trap 'kill "$WEB_PID" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:4310/ >/dev/null; then
+              break
+            fi
+            sleep 0.25
+          done
+          .ci-venv/bin/python script/verify_tokenfleet_web.py
+          cd web
+          ../.ci-venv/bin/python tests/community_browser.py
+
+      - name: Verify one-command development startup
+        run: PYTHONDONTWRITEBYTECODE=1 .ci-venv/bin/python script/verify_tokenfleet_dev_start.py --venv .ci-venv
+
+      - name: Run guarded live API and browser E2E
+        env:
+          TOKENFLEET_DEV_VENV: ${{ github.workspace }}/.ci-venv
+          TOKENFLEET_DEV_SKIP_INSTALL: "1"
+          TOKENFLEET_DEV_STATE_DIR: ${{ runner.temp }}/tokenfleet-live
+          TOKENFLEET_DEV_PORT: "4311"
+          TOKENFLEET_E2E_ORG: dev-team
+          TOKENFLEET_E2E_ADMIN: admin@example.com
+          TOKENFLEET_E2E_PASSWORD: tokenfleet-local-dev-only
+          PUBLIC_ORG_SLUG: dev-team
+          TOKENFLEET_E2E_CONFIRM_BASE_URL: http://127.0.0.1:4311
+          TOKENFLEET_LIVE_BASE_URL: http://127.0.0.1:4311
+          TOKENFLEET_ALLOW_MUTATING_E2E: "YES"
+          TOKENFLEET_VERIFY_EDGE_VALUES: "1"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          ./script/start_tokenfleet_dev.sh >"$RUNNER_TEMP/tokenfleet-live.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 120); do
+            if curl --fail --silent http://127.0.0.1:4311/readyz >/dev/null; then
+              break
+            fi
+            sleep 0.25
+          done
+          curl --fail --silent http://127.0.0.1:4311/readyz >/dev/null
+          .ci-venv/bin/python script/verify_tokenfleet_empty_web.py
+          .ci-venv/bin/python script/verify_tokenfleet_e2e.py --allow-write-test-data --edge-values
+          .ci-venv/bin/python script/verify_tokenfleet_live_web.py
+
+  desktop:
+    name: Native client and distribution identity
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      TOKENFLEET_SWIFT_SDK: ${{ runner.temp }}/macos-sdk
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install desktop verification tools
+        run: brew install ripgrep
+
+      - name: Run the real XCTest suite
+        run: swift test --package-path TokenStepSwift --parallel
+
+      - name: Run complete Swift and collector verification
+        run: |
+          ln -s "$(xcrun --sdk macosx --show-sdk-path)" "$TOKENFLEET_SWIFT_SDK"
+          bash script/verify_tokenstep_swift.sh
+
+      - name: Verify free source installation safety in an isolated Keychain
+        run: bash script/verify_source_distribution.sh
+
+      - name: Run independent desktop identity and packaging preflight
+        run: bash script/verify_tokenfleet_desktop_identity.sh
+
+      - name: Reject whitespace and accidental secret files
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" && -n "$PR_BASE_SHA" ]]; then
+            git diff --check "$PR_BASE_SHA...HEAD"
+          elif [[ "$EVENT_NAME" == "push" && -n "$PUSH_BEFORE_SHA" && ! "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+            git diff --check "$PUSH_BEFORE_SHA..HEAD"
+          else
+            git show --check --format= HEAD
+          fi
+          if git ls-files | grep -E '(^|/)(\.env|.*\.(p8|p12|pem|mobileprovision|key))$'; then
+            echo "Tracked secret-bearing file pattern detected." >&2
+            exit 1
+          fi
+          if git ls-files | grep -E '(^|/)\.env\.' | grep -vE '(^|/)\.env\.example$'; then
+            echo "Tracked environment file other than .env.example detected." >&2
+            exit 1
+          fi
+
+  windows-client:
+    name: Windows participant client
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Run cross-platform collector and protocol tests
+        working-directory: clients/windows
+        run: python -m unittest discover -s tests -v
+
+      - name: Compile the source package
+        working-directory: clients/windows
+        run: python -m compileall -q tokenfleet tokenfleet_cli.py
+
+      - name: Validate the PowerShell source installer without installing
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -ValidateOnly

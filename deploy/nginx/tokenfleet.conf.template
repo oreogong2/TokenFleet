@@ -1,0 +1,28 @@
+limit_req_zone $binary_remote_addr zone=tokenfleet_public_ip:10m rate=30r/m;
+limit_req_zone $binary_remote_addr zone=tokenfleet_login_ip:10m rate=10r/m;
+limit_req_status 429;
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __TOKENFLEET_DOMAIN__;
+
+    client_max_body_size 2m;
+
+    location = /api/v1/auth/token {
+        limit_req zone=tokenfleet_login_ip burst=5 nodelay;
+        proxy_pass http://127.0.0.1:__TOKENFLEET_APP_PORT__;
+        include /etc/nginx/snippets/tokenfleet-proxy-headers.conf;
+    }
+
+    location ^~ /api/v1/public/ {
+        limit_req zone=tokenfleet_public_ip burst=10 nodelay;
+        proxy_pass http://127.0.0.1:__TOKENFLEET_APP_PORT__;
+        include /etc/nginx/snippets/tokenfleet-proxy-headers.conf;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:__TOKENFLEET_APP_PORT__;
+        include /etc/nginx/snippets/tokenfleet-proxy-headers.conf;
+    }
+}

@@ -1,0 +1,103 @@
+name: tokenfleet
+
+x-tokenfleet-environment: &tokenfleet-environment
+  ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
+  DATABASE_URL: postgresql+psycopg://tokenfleet:${POSTGRES_PASSWORD}@db:5432/tokenfleet
+  WEB_ROOT: /opt/tokenfleet/web
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+  JWT_ISSUER: ${JWT_ISSUER:-tokenfleet}
+  JWT_AUDIENCE: ${JWT_AUDIENCE:-tokenfleet-api}
+  JWT_TTL_SECONDS: ${JWT_TTL_SECONDS:-3600}
+  LOGIN_RATE_LIMIT_ATTEMPTS: ${LOGIN_RATE_LIMIT_ATTEMPTS:-10}
+  LOGIN_RATE_LIMIT_IP_ATTEMPTS: ${LOGIN_RATE_LIMIT_IP_ATTEMPTS:-50}
+  LOGIN_RATE_LIMIT_WINDOW_SECONDS: ${LOGIN_RATE_LIMIT_WINDOW_SECONDS:-60}
+  LOGIN_RATE_LIMIT_MAX_KEYS: ${LOGIN_RATE_LIMIT_MAX_KEYS:-10000}
+  TRUSTED_PROXY_CIDRS: 172.30.50.1/32
+  TRUSTED_PROXY_HOPS: "1"
+  PUBLIC_ORG_SLUG: ${PUBLIC_ORG_SLUG:?PUBLIC_ORG_SLUG is required}
+  PUBLIC_RATE_LIMIT_ATTEMPTS: ${PUBLIC_RATE_LIMIT_ATTEMPTS:-30}
+  PUBLIC_RATE_LIMIT_WINDOW_SECONDS: ${PUBLIC_RATE_LIMIT_WINDOW_SECONDS:-60}
+  PUBLIC_RATE_LIMIT_MAX_KEYS: ${PUBLIC_RATE_LIMIT_MAX_KEYS:-10000}
+  PUBLIC_MAX_SCAN_ROWS: ${PUBLIC_MAX_SCAN_ROWS:-250000}
+  PUBLIC_CACHE_TTL_SECONDS: ${PUBLIC_CACHE_TTL_SECONDS:-15}
+  PUBLIC_CACHE_MAX_ENTRIES: ${PUBLIC_CACHE_MAX_ENTRIES:-1024}
+  USAGE_RATE_LIMIT_DEVICE_ATTEMPTS: ${USAGE_RATE_LIMIT_DEVICE_ATTEMPTS:-12}
+  USAGE_RATE_LIMIT_ORG_ATTEMPTS: ${USAGE_RATE_LIMIT_ORG_ATTEMPTS:-600}
+  USAGE_RATE_LIMIT_WINDOW_SECONDS: ${USAGE_RATE_LIMIT_WINDOW_SECONDS:-60}
+  USAGE_MAX_ROWS_PER_DEVICE: ${USAGE_MAX_ROWS_PER_DEVICE:-100000}
+  USAGE_MAX_ROWS_PER_ORG: ${USAGE_MAX_ROWS_PER_ORG:-2000000}
+  HMAC_MAX_CLOCK_SKEW_SECONDS: ${HMAC_MAX_CLOCK_SKEW_SECONDS:-300}
+  NONCE_RETENTION_SECONDS: ${NONCE_RETENTION_SECONDS:-600}
+  PBKDF2_ITERATIONS: ${PBKDF2_ITERATIONS:-600000}
+
+services:
+  db:
+    image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tokenfleet
+      POSTGRES_USER: tokenfleet
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - tokenfleet-postgres:/var/lib/postgresql/data
+    networks:
+      - tokenfleet-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tokenfleet -d tokenfleet"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    security_opt:
+      - no-new-privileges:true
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: "no"
+    environment:
+      <<: *tokenfleet-environment
+    command: ["python", "-m", "app.cli", "init-db"]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - tokenfleet-internal
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *tokenfleet-environment
+    ports:
+      - 127.0.0.1:${APP_PORT:-18080}:8000
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - tokenfleet-internal
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  tokenfleet-internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.50.0/24
+          gateway: 172.30.50.1
+
+volumes:
+  tokenfleet-postgres:
