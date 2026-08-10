@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import unicodedata
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -21,7 +22,7 @@ from sqlalchemy import (
     UniqueConstraint,
     false,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from .database import Base
 
@@ -32,6 +33,15 @@ def new_id() -> str:
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def normalize_display_name(value: str) -> str:
+    """Return the database identity used for organization-scoped nickname uniqueness."""
+
+    normalized = unicodedata.normalize("NFKC", value.strip()).casefold()
+    if not normalized or len(normalized) > 512:
+        raise ValueError("display_name cannot be normalized to an empty or oversized value")
+    return normalized
 
 
 class UserRole(str, enum.Enum):
@@ -65,6 +75,12 @@ class User(Base):
     __table_args__ = (
         UniqueConstraint("org_id", "email", name="uq_user_org_email"),
         UniqueConstraint("id", "org_id", name="uq_user_id_org"),
+        Index(
+            "uq_user_org_normalized_display_name",
+            "org_id",
+            "normalized_display_name",
+            unique=True,
+        ),
         CheckConstraint(
             "(email IS NULL AND password_hash IS NULL) OR "
             "(email IS NOT NULL AND password_hash IS NOT NULL)",
@@ -81,6 +97,7 @@ class User(Base):
     # the existing login-member and administrator model.
     email: Mapped[str | None] = mapped_column(String(254))
     display_name: Mapped[str | None] = mapped_column(String(128))
+    normalized_display_name: Mapped[str | None] = mapped_column(String(512))
     password_hash: Mapped[str | None] = mapped_column(String(512))
     public_id: Mapped[str] = mapped_column(
         String(36), nullable=False, default=new_id, unique=True, index=True
@@ -102,6 +119,13 @@ class User(Base):
     @property
     def can_login(self) -> bool:
         return self.email is not None and self.password_hash is not None
+
+    @validates("display_name")
+    def _normalize_display_name(self, _key: str, value: str | None) -> str | None:
+        self.normalized_display_name = (
+            normalize_display_name(value) if value is not None else None
+        )
+        return value
 
 
 class EnrollmentToken(Base):
@@ -127,6 +151,38 @@ class EnrollmentToken(Base):
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
+class InvitationBatch(Base):
+    __tablename__ = "invitation_batches"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["created_by_user_id", "org_id"],
+            ["users.id", "users.org_id"],
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("capacity BETWEEN 1 AND 50", name="ck_invitation_batch_capacity"),
+        CheckConstraint(
+            "claimed_count BETWEEN 0 AND capacity",
+            name="ck_invitation_batch_claimed_count",
+        ),
+        Index("uq_invitation_batch_token_hash", "token_hash", unique=True),
+        Index("ix_invitation_batch_org_created", "org_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    org_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by_user_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    claimed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )

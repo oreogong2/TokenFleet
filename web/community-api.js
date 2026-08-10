@@ -9,6 +9,7 @@ import { sanitizePublicFilters } from "./community-contract.js";
 export const PUBLIC_API_PATHS = Object.freeze({
   leaderboard: "/api/v1/public/leaderboard",
   member: "/api/v1/public/members",
+  batchClaim: "/api/v1/public/invitation-batches/claim",
 });
 
 async function parsePublicResponse(response) {
@@ -36,13 +37,17 @@ export function createCommunityApiClient({
   fetchImpl = fetch,
   signal,
 } = {}) {
-  async function request(path) {
+  async function request(path, options = {}) {
     let response;
     try {
+      const headers = new Headers(options.headers || {});
+      headers.set("Accept", "application/json");
+      if (options.body) headers.set("Content-Type", "application/json");
       // Anonymous community requests intentionally never read or attach the
       // administrator session token.
       response = await fetchImpl(`${baseUrl}${path}`, {
-        headers: { Accept: "application/json" },
+        ...options,
+        headers,
         credentials: "omit",
         referrerPolicy: "no-referrer",
         signal,
@@ -75,6 +80,16 @@ export function createCommunityApiClient({
         tool: filters.tool,
         model: filters.model,
       })}`);
+    },
+    claimInvitationBatch(payload) {
+      return request(PUBLIC_API_PATHS.batchClaim, {
+        method: "POST",
+        body: JSON.stringify({
+          invitation_token: String(payload.invitation_token || ""),
+          display_name: String(payload.display_name || "").trim(),
+          public_profile_enabled: payload.public_profile_enabled === true,
+        }),
+      });
     },
   };
 }

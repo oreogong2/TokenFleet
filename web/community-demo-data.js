@@ -259,5 +259,12 @@ export function createCommunityDemoApi({ empty = false, locationRef = globalThis
       }
       return detailFor(record, filters.metric || "tokens");
     },
+    async claimInvitationBatch(payload = {}) {
+      return {
+        nickname: String(payload.display_name || "演示成员").trim(),
+        enrollment_token: "demo_batch_once_7Yp4_K2m9_A8q6_H3v5_N1s7",
+        expires_at: "2026-08-10T13:00:00Z",
+      };
+    },
   };
 }

@@ -202,6 +202,16 @@ function renderJoin({ hasCode, demoMode = false }) {
   return `<main id="main-content" class="join-shell"><section class="join-card"><a class="community-brand dark" href="${leaderboardHref}"><span>TF</span><strong>TokenFleet</strong><small>SECURE JOIN</small></a><div class="join-status ${hasCode ? "is-ready" : "is-error"}" role="status"><span aria-hidden="true">${hasCode ? "✓" : "!"}</span><div><strong>${hasCode ? "一次性连接码已安全载入" : "链接里没有有效连接码"}</strong><p>${hasCode ? "原始连接码已从浏览器地址栏移除，页面不会显示或保存它。" : "请联系社群管理员重新生成专属接入链接；不要把连接码放在 query 参数里。"}</p></div></div><header><span class="panel-kicker">DEVICE SETUP / 3 STEPS</span><h1>把这台设备接入 TokenFleet</h1><p>客户端固定连接唯一的 TokenFleet 官方服务地址。你只需要把一次性连接码粘贴进客户端，不要填写或修改服务器地址。</p></header><ol class="join-steps"><li><span>01</span><div><strong>安装并打开 TokenFleet</strong><p>按社群管理员提供的固定源码版本说明，在 Mac 或 Windows 上安装 TokenFleet。</p></div></li><li><span>02</span><div><strong>复制一次性连接码</strong><p>连接码通常只能使用一次并有有效期；只在 TokenFleet 客户端内粘贴。</p><button class="primary-button" type="button" data-community-action="copy-join-code" ${hasCode ? "" : "disabled"}>复制连接码</button></div></li><li><span>03</span><div><strong>在客户端确认连接</strong><p>连接后，客户端会立即上传当前可验证的历史日聚合，并持续在后台同步新的日聚合。</p></div></li></ol><aside class="join-disclosure"><h2>连接前请确认公开边界</h2><p>上传到社群用量账本的是日期、时区、工具、模型和四类 Token 聚合。若管理员已为你开启社群榜，公开页会展示昵称、排名、四类 Token、公开标准价估算、工具/模型和日趋势。</p><p>不上传 prompt、回复、代码、文件或项目路径；公开页也不展示邮箱、内部 ID、设备、小时、会话或消息。</p></aside><p class="join-expiry">此页面不会自动连接、自动复制或打开自定义协议。离开页面后，内存中的连接码会立即清除。</p><a class="text-button" href="${leaderboardHref}">先看看匿名社群榜</a><div class="community-toast" aria-live="polite"></div></section></main>`;
 }
 
+function renderBatchClaim({ hasToken, demoMode = false, error = "" }) {
+  const leaderboardHref = demoMode ? "/rank?demo=1" : "/rank";
+  return `<main id="main-content" class="join-shell"><section class="join-card batch-claim-card"><a class="community-brand dark" href="${leaderboardHref}"><span>TF</span><strong>TokenFleet</strong><small>COMMUNITY INVITE</small></a><div class="join-status ${hasToken ? "is-ready" : "is-error"}" role="status"><span aria-hidden="true">${hasToken ? "✓" : "!"}</span><div><strong>${hasToken ? "社群邀请已安全载入" : "这个批次链接当前不可用"}</strong><p>${hasToken ? "邀请令牌已从地址栏移除，只保留在当前页面内存；关闭或刷新页面即清空。" : "它可能已满额、关闭、过期或格式不正确。请联系社群管理员获取新的批次链接。"}</p></div></div><header><span class="panel-kicker">SELF-SERVICE / 50 MEMBERS</span><h1>登记昵称，领取你的设备码</h1><p>无需账号、密码或微信登录。每个人只填写公开昵称，系统会生成只属于你的 60 分钟一次性设备码。</p></header>${error ? `<div class="inline-alert" role="alert">${escapeHTML(error)}</div>` : ""}<form class="batch-claim-form" data-community-action="claim-batch"><label>公开昵称<input name="display_name" minlength="1" maxlength="128" autocomplete="nickname" required placeholder="例如：小王"></label><label class="consent-check"><input name="public_profile_enabled" type="checkbox" value="true" required><span><strong>我同意参与公开社群榜</strong><small>公开昵称、排名、四类 Token、API 等价估算费用、工具、模型和日趋势；不公开邮箱、设备、小时、会话、prompt、回复、代码或路径。</small></span></label><button class="primary-button" type="submit" ${hasToken ? "" : "disabled"}>确认昵称并领取设备码</button></form><aside class="join-disclosure"><h2>领取后怎么做</h2><p>复制个人设备码，打开 Mac TokenFleet，在“社群榜同步”中粘贴并确认。连接后会立即上传当前可验证的历史日聚合，并持续在后台同步。</p><p>一个批次链接最多 50 人、最长 24 小时；个人设备码默认 60 分钟且只能使用一次。</p></aside><p class="join-expiry">批次令牌和个人设备码都不会写入浏览器存储、DOM、日志或 URL；离开页面后立即清空。</p><a class="text-button" href="${leaderboardHref}">先看看匿名社群榜</a><div class="community-toast" aria-live="polite"></div></section></main>`;
+}
+
+function renderBatchSuccess({ nickname, demoMode = false }) {
+  const leaderboardHref = demoMode ? "/rank?demo=1" : "/rank";
+  return `<main id="main-content" class="join-shell"><section class="join-card batch-success-card"><a class="community-brand dark" href="${leaderboardHref}"><span>TF</span><strong>TokenFleet</strong><small>DEVICE CODE READY</small></a><div class="join-status is-ready" role="status"><span aria-hidden="true">✓</span><div><strong>${escapeHTML(nickname)}，你的设备码已经生成</strong><p>设备码不会显示在页面，只能通过下方按钮复制；关闭页面后无法找回。</p></div></div><header><span class="panel-kicker">COPY ONCE / USE WITHIN 60 MINUTES</span><h1>现在复制到 TokenFleet</h1><p>不要发送给其他人，也不要粘贴到聊天机器人、终端参数、网页地址或非官方客户端。</p></header><button class="primary-button" type="button" data-community-action="copy-batch-enrollment-code">复制个人设备码</button><ol class="join-steps"><li><span>01</span><div><strong>打开 Mac TokenFleet</strong><p>点击设置里的“社群榜同步”。</p></div></li><li><span>02</span><div><strong>粘贴并确认</strong><p>正式客户端固定连接本社群服务，不需要填写服务器地址。</p></div></li><li><span>03</span><div><strong>确认上榜</strong><p>同步完成后打开社群榜，按你的公开昵称查看聚合用量。</p></div></li></ol><p class="join-expiry">若设备码过期或页面已关闭，请联系管理员重新生成；不要重复创建昵称。</p><a class="text-button" href="${leaderboardHref}">打开匿名社群榜</a><div class="community-toast" aria-live="polite"></div></section></main>`;
+}
+
 function renderLoading(root) {
   root.innerHTML = `<main id="main-content" class="community-shell"><div class="community-loading" role="status"><span>TF</span><p>正在读取匿名社群榜…</p></div></main>`;
 }
@@ -236,6 +246,7 @@ export function mountCommunityApp({
   route,
   demoMode = false,
   joinCode = "",
+  batchInvitationToken = "",
   documentRef = document,
   locationRef = location,
   isCurrent = () => true,
@@ -243,6 +254,8 @@ export function mountCommunityApp({
   const controller = new AbortController();
   let disposed = false;
   let secret = String(joinCode || "");
+  let batchSecret = String(batchInvitationToken || "");
+  let issuedEnrollmentCode = "";
   let leaderboard = null;
   let focus = null;
   const filters = sanitizePublicFilters(route.filters || {});
@@ -254,12 +267,18 @@ export function mountCommunityApp({
     })
     : createCommunityApiClient({ signal: controller.signal });
 
-  const clearSecret = () => { secret = ""; };
+  const clearSecret = () => {
+    secret = "";
+    batchSecret = "";
+    issuedEnrollmentCode = "";
+  };
   const active = () => !disposed && isCurrent();
   globalThis.addEventListener?.("pagehide", clearSecret, { signal: controller.signal });
   if (active()) {
     documentRef.body.classList.add("community-mode");
-    documentRef.title = route.kind === "join" ? "安全接入 · TokenFleet" : "社群榜 · TokenFleet";
+    documentRef.title = ["join", "batch"].includes(route.kind)
+      ? "安全接入 · TokenFleet"
+      : "社群榜 · TokenFleet";
   }
 
   const load = async () => {
@@ -267,6 +286,15 @@ export function mountCommunityApp({
     if (route.kind === "join") {
       if (!active()) return;
       root.innerHTML = renderJoin({ hasCode: Boolean(secret), demoMode });
+      if (!active()) return;
+      applyCommunityDemoBanner(root, demoMode, documentRef);
+      root.querySelector("#main-content")?.setAttribute("tabindex", "-1");
+      root.querySelector("#main-content")?.focus({ preventScroll: true });
+      return;
+    }
+    if (route.kind === "batch") {
+      if (!active()) return;
+      root.innerHTML = renderBatchClaim({ hasToken: Boolean(batchSecret), demoMode });
       if (!active()) return;
       applyCommunityDemoBanner(root, demoMode, documentRef);
       root.querySelector("#main-content")?.setAttribute("tabindex", "-1");
@@ -311,18 +339,70 @@ export function mountCommunityApp({
     }
   };
 
-  root.addEventListener("submit", (event) => {
+  root.addEventListener("submit", async (event) => {
     if (!active()) return;
     const form = event.target.closest('[data-community-action="filters"]');
-    if (!form) return;
+    if (form) {
+      event.preventDefault();
+      const values = Object.fromEntries(new FormData(form));
+      const nextFilters = sanitizePublicFilters(values);
+      locationRef.hash = communityHref({
+        kind: route.kind === "profile" ? "profile" : "leaderboard",
+        publicId: route.publicId,
+        filters: nextFilters,
+      });
+      return;
+    }
+    const batchForm = event.target.closest('[data-community-action="claim-batch"]');
+    if (!batchForm) return;
     event.preventDefault();
-    const values = Object.fromEntries(new FormData(form));
-    const nextFilters = sanitizePublicFilters(values);
-    locationRef.hash = communityHref({
-      kind: route.kind === "profile" ? "profile" : "leaderboard",
-      publicId: route.publicId,
-      filters: nextFilters,
-    });
+    if (!batchSecret || batchForm.dataset.pending === "true") return;
+    const values = Object.fromEntries(new FormData(batchForm));
+    const controls = [...batchForm.querySelectorAll("button,input")];
+    batchForm.dataset.pending = "true";
+    batchForm.setAttribute("aria-busy", "true");
+    controls.forEach((control) => { control.disabled = true; });
+    try {
+      const result = await api.claimInvitationBatch({
+        invitation_token: batchSecret,
+        display_name: values.display_name,
+        public_profile_enabled: values.public_profile_enabled === "true",
+      });
+      if (!active()) return;
+      const returnedCode = String(result?.enrollment_token || "");
+      if (!/^[A-Za-z0-9_-]{32,256}$/.test(returnedCode)) {
+        throw new Error("服务端没有返回有效的个人设备码");
+      }
+      batchSecret = "";
+      issuedEnrollmentCode = returnedCode;
+      root.innerHTML = renderBatchSuccess({
+        nickname: String(result?.nickname || values.display_name || "社群成员"),
+        demoMode,
+      });
+      applyCommunityDemoBanner(root, demoMode, documentRef);
+      root.querySelector("#main-content")?.setAttribute("tabindex", "-1");
+      root.querySelector("#main-content")?.focus({ preventScroll: true });
+    } catch (error) {
+      if (!active()) return;
+      const unavailable = error?.status === 409 && error?.message === "invitation batch unavailable";
+      const nicknameConflict = error?.status === 409 && error?.message === "nickname unavailable";
+      if (unavailable) batchSecret = "";
+      root.innerHTML = renderBatchClaim({
+        hasToken: Boolean(batchSecret),
+        demoMode,
+        error: unavailable
+          ? "这个批次链接已失效、已关闭或名额已满，请联系管理员。"
+          : nicknameConflict
+            ? "这个昵称已被使用，请换一个昵称再试。"
+            : error?.message || "领取失败，请稍后再试。",
+      });
+      applyCommunityDemoBanner(root, demoMode, documentRef);
+    } finally {
+      if (!active()) return;
+      delete batchForm.dataset.pending;
+      batchForm.removeAttribute("aria-busy");
+      controls.forEach((control) => { control.disabled = false; });
+    }
   }, { signal: controller.signal });
 
   root.addEventListener("click", async (event) => {
@@ -340,6 +420,18 @@ export function mountCommunityApp({
       } catch {
         if (!active()) return;
         showToast(root, "浏览器拒绝了复制，请重新打开专属链接后再试", true, active);
+      }
+    }
+    if (action === "copy-batch-enrollment-code") {
+      if (!issuedEnrollmentCode) return;
+      const currentCode = issuedEnrollmentCode;
+      try {
+        await navigator.clipboard.writeText(currentCode);
+        if (!active()) return;
+        showToast(root, "个人设备码已复制；请只粘贴到正式 TokenFleet 客户端", false, active);
+      } catch {
+        if (!active()) return;
+        showToast(root, "浏览器拒绝了复制，请不要刷新，稍后再试", true, active);
       }
     }
     if (action === "retry") void load();

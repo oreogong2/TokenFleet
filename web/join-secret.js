@@ -2,8 +2,9 @@
 // app.js and removes a join code fragment before the app renders, fetches, logs, or
 // registers any other event handler. The raw code never enters DOM or storage.
 let joinCode = "";
+let batchInvitationToken = "";
 
-function isJoinLocation(locationRef) {
+function joinLocationKind(locationRef) {
   const path = String(locationRef?.pathname || "").replace(/\/+$/, "") || "/";
   const search = new URLSearchParams(String(locationRef?.search || "").replace(/^\?/, ""));
   const hash = String(locationRef?.hash || "");
@@ -15,10 +16,12 @@ function isJoinLocation(locationRef) {
   const routeParams = new URLSearchParams(routeQuery || search);
   const view = routeParams.get("view");
   if (["/rank", "/community"].includes(routePath) || ["rank", "community"].includes(view)) {
-    return false;
+    return "";
   }
-  if (/^\/(?:rank|community)\/p\/[A-Za-z0-9_-]{1,128}$/.test(routePath)) return false;
-  return routePath === "/join" || view === "join";
+  if (/^\/(?:rank|community)\/p\/[A-Za-z0-9_-]{1,128}$/.test(routePath)) return "";
+  if (routePath === "/join/batch") return "batch";
+  if (routePath === "/join" || view === "join") return "device";
+  return "";
 }
 
 function decodeCode(value) {
@@ -28,6 +31,12 @@ function decodeCode(value) {
 
 function scrubPath(pathname) {
   const original = String(pathname || "") || "/";
+  if (/^\/join\/batch\/?$/i.test(original)) {
+    return { hadCode: false, safePath: "/join/batch" };
+  }
+  if (/^\/join\/batch\/(?:invite\/)?[^/?#]{1,512}\/?$/i.test(original)) {
+    return { hadCode: true, safePath: "/join/batch" };
+  }
   // The product never generates path-carried enrollment codes. Still erase any
   // extra path below /join before rendering so a manually constructed URL
   // cannot leave a valid or malformed code in browser history or screenshots.
@@ -40,38 +49,42 @@ function scrubPath(pathname) {
 function scrubHash(hash) {
   const original = String(hash || "");
   const fragment = original.replace(/^#/, "");
-  if (!fragment) return { code: "", hadCode: false, safeHash: original };
+  if (!fragment) return { code: "", invitation: "", hadCode: false, safeHash: original };
 
   try {
     const queryIndex = fragment.indexOf("?");
     const parameterFragment = queryIndex === -1 ? fragment : fragment.slice(queryIndex + 1);
     const prefix = queryIndex === -1 ? "" : fragment.slice(0, queryIndex);
     const params = new URLSearchParams(parameterFragment);
-    const hadCode = params.has("code");
+    const hadCode = params.has("code") || params.has("invite");
     const code = String(params.get("code") || "");
-    if (!hadCode) return { code: "", hadCode: false, safeHash: original };
+    const invitation = String(params.get("invite") || "");
+    if (!hadCode) return { code: "", invitation: "", hadCode: false, safeHash: original };
     params.delete("code");
+    params.delete("invite");
     const safeParams = params.toString();
     const safeFragment = queryIndex === -1
       ? safeParams
       : `${prefix}${safeParams ? `?${safeParams}` : ""}`;
     return {
       code,
+      invitation,
       hadCode: true,
       safeHash: safeFragment ? `#${safeFragment}` : "",
     };
   } catch {
-    return { code: "", hadCode: false, safeHash: original };
+    return { code: "", invitation: "", hadCode: false, safeHash: original };
   }
 }
 
-export function scrubJoinFragment(locationRef, historyRef) {
-  if (!locationRef) return "";
+export function scrubJoinSecrets(locationRef, historyRef) {
+  if (!locationRef) return { joinCode: "", batchInvitationToken: "" };
   const path = scrubPath(locationRef.pathname);
-  const joinLocation = isJoinLocation({ ...locationRef, pathname: path.safePath });
+  const kind = joinLocationKind({ ...locationRef, pathname: path.safePath });
   const search = new URLSearchParams(String(locationRef.search || "").replace(/^\?/, ""));
-  const refusedQueryCode = search.has("code");
+  const refusedQueryCode = search.has("code") || search.has("invite");
   search.delete("code");
+  search.delete("invite");
   const hash = scrubHash(locationRef.hash);
   if (path.hadCode || hash.hadCode || refusedQueryCode) {
     const safeSearch = search.toString();
@@ -81,14 +94,23 @@ export function scrubJoinFragment(locationRef, historyRef) {
       `${path.safePath}${safeSearch ? `?${safeSearch}` : ""}${hash.safeHash}`,
     );
   }
-  return joinLocation ? decodeCode(hash.code) : "";
+  return {
+    joinCode: kind === "device" ? decodeCode(hash.code) : "",
+    batchInvitationToken: kind === "batch" ? decodeCode(hash.invitation) : "",
+  };
+}
+
+export function scrubJoinFragment(locationRef, historyRef) {
+  return scrubJoinSecrets(locationRef, historyRef).joinCode;
 }
 
 export function captureJoinCode(
   locationRef = globalThis.location,
   historyRef = globalThis.history,
 ) {
-  joinCode = scrubJoinFragment(locationRef, historyRef);
+  const captured = scrubJoinSecrets(locationRef, historyRef);
+  joinCode = captured.joinCode;
+  batchInvitationToken = captured.batchInvitationToken;
   return joinCode;
 }
 
@@ -100,8 +122,15 @@ export function takeJoinCode() {
   return value;
 }
 
+export function takeBatchInvitationToken() {
+  const value = batchInvitationToken;
+  batchInvitationToken = "";
+  return value;
+}
+
 export function clearJoinCode() {
   joinCode = "";
+  batchInvitationToken = "";
 }
 
 globalThis.addEventListener?.("pagehide", clearJoinCode, { once: true });

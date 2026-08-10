@@ -30,24 +30,27 @@
 
 ## 2. 设备注册
 
-管理员只填公开昵称创建非登录参赛者，并为指定参赛者的一台设备创建短期、单次
-enrollment token；两项在同一事务完成。该流程默认有效 60 分钟、最长 24 小时。
-服务端不为参赛者伪造邮箱、密码或微信身份。
+管理员创建一个容量 1–50 人、有效期 1–24 小时且可关闭的 InvitationBatch。原始批次
+令牌只返回一次，数据库只保存 SHA-256；同一组织内昵称按 NFKC + casefold 归一化并由
+数据库唯一索引兜底。成员持批次链接填写昵称并明确同意公开后，服务端在锁定批次行的
+同一事务里创建非登录参赛者、个人 60 分钟单次 enrollment token，并把
+`claimed_count` 加一；任一步失败整体回滚。满额、关闭、过期和无效令牌统一返回
+“批次不可用”，不暴露内部状态。服务端不为参赛者伪造邮箱、密码或微信身份。
 
-首版不接微信或匿名注册：社群管理员把专属 HTTPS 接入链接私发给参赛者。链接页
-只解释上传与公开字段，并在内存中展示 fragment 里的短期接入码；接入码不进入
-服务端日志、浏览器存储、截图或分析事件。参赛者需主动复制，在客户端 SecureField
-中粘贴并确认。首版不使用可被其他 App 抢注的自定义 URL Scheme，也不自动读取
-剪贴板。邀请码只负责登记一台设备，长期上传使用该设备独立 secret；分享图和公开
-网页从不包含 enrollment token 或 device secret。
+首版不接微信、会员或开放匿名注册：社群管理员只把受限批次 HTTPS 链接发给受邀
+成员。`/join/batch#invite=...` 在其他模块工作前擦除 fragment，批次令牌只保留于
+闭包内存；query/path 形态只擦除、不接受。claim 成功返回的个人设备码同样只保留于
+闭包内存，不渲染进 DOM，成员主动点击后才写剪贴板。首版不使用可被其他 App 抢注的
+自定义 URL Scheme，也不自动读取剪贴板。邀请码只负责登记一台设备，长期上传使用该
+设备独立 secret；分享图和公开网页从不包含批次令牌、enrollment token 或 device secret。
 
 官方 macOS 安装/构建把唯一 canonical HTTPS 社群 origin 写入 App 配置；Windows
 安装器把同一类 origin 写入带完整性校验的安装配置。两端通用源码都不硬编码生产
 域名，运行时也不允许成员在 `connect` 或设置里覆盖；升级必须保持相同 origin。
 两端都拒绝空值、HTTP、userinfo、query、fragment 和 loopback。
 成员只在隐藏输入中提交一次性码。连接确认文案必须说明会立即同步当前可验证的
-历史日桶，并持续后台同步。`/join` 读取 fragment 后立即调用 `history.replaceState`
-清掉地址栏/历史中的码，并在 `pagehide` 清空内存。
+历史日桶，并持续后台同步。`/join` 与 `/join/batch` 读取 fragment 后立即调用
+`history.replaceState` 清掉地址栏/历史中的码，并在 `pagehide` 清空内存。
 
 客户端提交：
 

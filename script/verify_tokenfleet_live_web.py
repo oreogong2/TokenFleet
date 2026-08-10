@@ -68,8 +68,63 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     assert member_rows >= 2
     assert "E2E 参赛者" in page.locator(".page-body").inner_text()
     run_id = uuid.uuid4().hex[:8]
+
+    page.context.grant_permissions(
+        ["clipboard-read", "clipboard-write"], origin=BASE_URL
+    )
+    page.get_by_role("button", name="创建 50 人自助批次").click()
+    batch_dialog = page.locator("#batch-dialog")
+    batch_dialog.wait_for(state="visible")
+    batch_dialog.locator('input[name="capacity"]').fill("2")
+    batch_dialog.locator('select[name="expires_in_hours"]').select_option("1")
+    batch_dialog.get_by_role("button", name="生成批次链接").click()
+    batch_token_dialog = page.locator("dialog.token-dialog")
+    batch_token_dialog.wait_for(state="visible")
+    assert "invite=" not in batch_token_dialog.inner_text()
+    batch_token_dialog.get_by_role(
+        "button", name="复制 50 人自助接入链接"
+    ).click()
+    batch_link = page.evaluate("navigator.clipboard.readText()")
+    assert batch_link.startswith(f"{BASE_URL}/join/batch#invite=")
+    batch_token_dialog.get_by_role("button", name="关闭").click()
+
+    claim_page = page.context.new_page()
+    try:
+        claim_page.goto(batch_link, wait_until="networkidle")
+        claim_page.get_by_text("社群邀请已安全载入", exact=True).wait_for()
+        assert claim_page.url == f"{BASE_URL}/join/batch"
+        assert "invite=" not in claim_page.content()
+        batch_claim_name = f"浏览器批次成员 {run_id}"
+        claim_page.locator('input[name="display_name"]').fill(batch_claim_name)
+        claim_page.locator('input[name="public_profile_enabled"]').check()
+        claim_page.get_by_role(
+            "button", name="确认昵称并领取设备码"
+        ).click()
+        claim_page.get_by_text(
+            f"{batch_claim_name}，你的设备码已经生成", exact=True
+        ).wait_for()
+        assert claim_page.locator("code").count() == 0
+        claim_page.get_by_role("button", name="复制个人设备码").click()
+        personal_code = claim_page.evaluate("navigator.clipboard.readText()")
+        assert 32 <= len(personal_code) <= 256
+        assert personal_code not in claim_page.content()
+        assert not claim_page.evaluate(
+            """secret => Object.values(localStorage).concat(Object.values(sessionStorage))
+              .some(value => String(value).includes(secret))""",
+            personal_code,
+        )
+        claim_page.evaluate("navigator.clipboard.writeText('')")
+        personal_code = ""
+    finally:
+        batch_link = ""
+        claim_page.close()
+
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.get_by_role("button", name="关闭批次").click()
+    page.get_by_text("已关闭", exact=True).wait_for()
+
     new_member_name = f"浏览器参赛者 {run_id}"
-    page.get_by_role("button", name="新建参赛者并生成链接").click()
+    page.get_by_role("button", name="单独新建参赛者").click()
     member_dialog = page.locator("#member-dialog")
     member_dialog.wait_for(state="visible")
     member_dialog.locator('input[name="display_name"]').fill(new_member_name)
@@ -82,7 +137,7 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     assert participant_token_dialog.get_by_role("button", name="复制专属接入链接").count() == 1
     assert "••••" in participant_token_dialog.locator("code").inner_text()
     participant_token_dialog.get_by_role("button", name="关闭").click()
-    assert page.locator("tbody tr").count() == member_rows + 1
+    assert page.locator("tbody tr").count() == member_rows + 2
 
     page.locator("a.person-cell", has_text=new_member_name).click()
     page.get_by_role("button", name="禁用成员", exact=True).wait_for()
@@ -98,8 +153,13 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     page.get_by_role("button", name="为已有成员创建设备码").click()
     enrollment_dialog = page.locator("#enrollment-dialog")
     enrollment_dialog.wait_for(state="visible")
+    member_options = enrollment_dialog.locator(
+        'select[name="user_id"] option',
+        has_text=new_member_name,
+    )
+    assert member_options.count() == 1
     enrollment_dialog.locator('select[name="user_id"]').select_option(
-        label=f"{new_member_name} · 管理编号 {page.locator('a.person-cell', has_text=new_member_name).get_attribute('href').split('/')[-1][-8:]}"
+        member_options.first.get_attribute("value")
     )
     enrollment_dialog.get_by_role("button", name="生成一次性连接码").click()
     token_dialog = page.locator("dialog.token-dialog")
@@ -210,7 +270,7 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     assert all("cookie" not in headers for headers in public_requests)
 
     return {
-        "member_rows": member_rows + 1,
+        "member_rows": member_rows + 2,
         "device_rows": device_rows,
         "history_days": history_rows,
         "wrong_login_401": 1,
@@ -220,6 +280,7 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
         "edge_value_routes": edge_value_routes,
         "anonymous_public_rank": 1,
         "public_requests_without_credentials": len(public_requests),
+        "self_service_batch_browser_flow": 1,
     }
 
 
@@ -236,7 +297,8 @@ def main() -> None:
     page_errors: list[str] = []
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        context = browser.new_context(viewport={"width": 1440, "height": 1000})
+        page = context.new_page()
         def record_console_error(message) -> None:
             if message.type != "error":
                 return
@@ -268,6 +330,7 @@ def main() -> None:
             )
             raise
         finally:
+            context.close()
             browser.close()
 
     if console_errors or page_errors:

@@ -17,6 +17,8 @@ from playwright.sync_api import sync_playwright
 
 VALID_CODE = "Abcd_0123456789-abcdefghijklmnop"
 SECOND_VALID_CODE = "Zyxw_9876543210-ponmlkjihgfedcba"
+BATCH_INVITATION = "Batch_0123456789-abcdefghijklmnop"
+PERSONAL_DEVICE_CODE = "Personal_0123456789-abcdefghijklmnop"
 ARTIFACT_DIR = Path(os.environ.get("TOKENFLEET_BROWSER_ARTIFACTS", "/tmp"))
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
 WEB_ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +28,7 @@ class CommunityStaticHandler(SimpleHTTPRequestHandler):
     """Serve static assets and return index.html for anonymous SPA deep links."""
 
     pricing_delay_seconds = 0
+    batch_claims = []
 
     def send_json(self, payload, delay=0):
         if delay:
@@ -65,11 +68,36 @@ class CommunityStaticHandler(SimpleHTTPRequestHandler):
                 {"items": []}, delay=type(self).pricing_delay_seconds
             )
             return
-        if path == "/join" or re.fullmatch(
+        if path == "/join" or re.fullmatch(r"/join/batch(?:/[^/?#]+)?", path) or re.fullmatch(
             r"/(?:rank|community)(?:/p/[A-Za-z0-9_-]{1,128})?", path
         ):
             self.path = "/index.html"
         super().do_GET()
+
+    def do_POST(self):
+        path = urlparse(self.path).path.rstrip("/") or "/"
+        if path != "/api/v1/public/invitation-batches/claim":
+            self.send_error(404)
+            return
+        content_length = int(self.headers.get("Content-Length", "0"))
+        assert 0 < content_length <= 4096
+        payload = json.loads(self.rfile.read(content_length))
+        type(self).batch_claims.append({
+            "path": self.path,
+            "authorization": self.headers.get("Authorization"),
+            "payload": payload,
+        })
+        body = json.dumps({
+            "nickname": payload.get("display_name", "浏览器成员"),
+            "enrollment_token": PERSONAL_DEVICE_CODE,
+            "expires_at": "2026-08-10T13:00:00Z",
+        }).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def log_message(self, _format, *_args):
         return
@@ -129,6 +157,7 @@ def png_dimensions(path):
 
 
 def main():
+    CommunityStaticHandler.batch_claims = []
     with browser_base() as base, sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         context = browser.new_context(accept_downloads=True)
@@ -301,9 +330,105 @@ def main():
         page.locator(".community-rank-row").first.wait_for()
         assert page.url == f"{base}/rank?demo=1"
 
-        # Admin first-use flow asks only for nickname and defaults public participation off.
+        # A shared batch invitation is accepted only from the fragment. It is
+        # scrubbed before rendering and the claim uses an anonymous POST body.
+        context.grant_permissions(
+            ["clipboard-read", "clipboard-write"], origin=base
+        )
+        batch_requested_urls = []
+        page.on("request", lambda request: batch_requested_urls.append(request.url))
+        for width in (390, 820, 1440):
+            page.set_viewport_size({"width": width, "height": 900})
+            page.goto(
+                f"{base}/join/batch#invite={BATCH_INVITATION}",
+                wait_until="networkidle",
+            )
+            page.get_by_text("社群邀请已安全载入", exact=True).wait_for()
+            assert page.url == f"{base}/join/batch"
+            assert BATCH_INVITATION not in page.content()
+            assert_no_horizontal_overflow(page)
+            assert_accessible_controls(page)
+            page.screenshot(
+                path=str(ARTIFACT_DIR / f"tokenfleet-batch-{width}.png"),
+                full_page=True,
+            )
+
+        assert all(BATCH_INVITATION not in url for url in batch_requested_urls)
+        assert all(BATCH_INVITATION not in message for message in console_messages)
+        assert page.evaluate(
+            """secret => !Object.values(localStorage).concat(Object.values(sessionStorage)).some(
+              value => String(value).includes(secret)
+            )""",
+            BATCH_INVITATION,
+        )
+        batch_history = context.new_cdp_session(page).send(
+            "Page.getNavigationHistory"
+        )["entries"]
+        assert all(BATCH_INVITATION not in entry["url"] for entry in batch_history)
+
+        batch_form = page.locator('[data-community-action="claim-batch"]')
+        batch_form.locator('input[name="display_name"]').fill("浏览器成员")
+        batch_form.locator('input[name="public_profile_enabled"]').check()
+        batch_form.get_by_role("button", name="确认昵称并领取设备码").click()
+        page.get_by_text("浏览器成员，你的设备码已经生成", exact=True).wait_for()
+        page.screenshot(
+            path=str(ARTIFACT_DIR / "tokenfleet-batch-success.png"),
+            full_page=True,
+        )
+        assert len(CommunityStaticHandler.batch_claims) == 1
+        claim = CommunityStaticHandler.batch_claims[0]
+        assert claim["path"] == "/api/v1/public/invitation-batches/claim"
+        assert claim["authorization"] is None
+        assert claim["payload"] == {
+            "invitation_token": BATCH_INVITATION,
+            "display_name": "浏览器成员",
+            "public_profile_enabled": True,
+        }
+        assert BATCH_INVITATION not in page.content()
+        assert PERSONAL_DEVICE_CODE not in page.content()
+        assert page.evaluate(
+            """secrets => !Object.values(localStorage).concat(Object.values(sessionStorage)).some(
+              value => secrets.some(secret => String(value).includes(secret))
+            )""",
+            [BATCH_INVITATION, PERSONAL_DEVICE_CODE],
+        )
+        page.evaluate("navigator.clipboard.writeText('')")
+        page.get_by_role("button", name="复制个人设备码").click()
+        assert page.evaluate("navigator.clipboard.readText()") == PERSONAL_DEVICE_CODE
+        page.evaluate("navigator.clipboard.writeText('')")
+        page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide'))")
+        page.get_by_role("button", name="复制个人设备码").click()
+        assert page.evaluate("navigator.clipboard.readText()") == ""
+
+        # Query/path batch tokens are erased but never accepted as invitations.
+        for refused_url in (
+            f"{base}/join/batch?invite={BATCH_INVITATION}",
+            f"{base}/join/batch/{BATCH_INVITATION}",
+        ):
+            page.goto(refused_url, wait_until="networkidle")
+            page.get_by_text("这个批次链接当前不可用", exact=True).wait_for()
+            assert page.url == f"{base}/join/batch"
+            assert BATCH_INVITATION not in page.content()
+            assert page.get_by_role("button", name="确认昵称并领取设备码").is_disabled()
+
+        # Admin creates one shared batch link without ever rendering its raw token.
         page.goto(f"{base}/?demo=1#/people", wait_until="networkidle")
-        page.get_by_role("button", name="新建参赛者并生成链接").click()
+        page.get_by_role("button", name="创建 50 人自助批次").click()
+        batch_dialog = page.locator("#batch-dialog")
+        assert batch_dialog.locator('input[name="capacity"]').input_value() == "50"
+        assert batch_dialog.locator('select[name="expires_in_hours"]').input_value() == "24"
+        batch_dialog.get_by_role("button", name="生成批次链接").click()
+        batch_link_dialog = page.locator("dialog.token-dialog")
+        batch_link_dialog.wait_for()
+        assert "demo_batch" not in batch_link_dialog.inner_text()
+        batch_link_dialog.get_by_role("button", name="复制 50 人自助接入链接").click()
+        copied_batch_link = page.evaluate("navigator.clipboard.readText()")
+        assert copied_batch_link.startswith(f"{base}/join/batch#invite=")
+        assert "demo_batch_7Yp4" in copied_batch_link
+        batch_link_dialog.get_by_role("button", name="关闭").click()
+
+        # Admin first-use flow asks only for nickname and defaults public participation off.
+        page.get_by_role("button", name="单独新建参赛者").click()
         dialog = page.locator("#member-dialog")
         assert dialog.locator('input[name="display_name"]').count() == 1
         assert dialog.locator('input[name="email"], input[name="password"]').count() == 0

@@ -16,12 +16,14 @@ import time
 import uuid
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 import httpx
 
 
 SIGNING_KEY_PREFIX = b"TokenFleet-HMAC-v1:\n"
 TOKEN_MAX = 9_000_000_000_000_000
+ACCOUNTING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 def expect(response: httpx.Response, status: int) -> dict:
@@ -134,13 +136,14 @@ def signed_upload(
 
 def usage_payload(tool: str, model: str, multiplier: int = 1) -> dict:
     now = datetime.now(timezone.utc)
+    accounting_date = now.astimezone(ACCOUNTING_TIMEZONE).date().isoformat()
     return {
         "schema_version": 1,
         "collector_version": "0.2.0-e2e",
         "generated_at": now.isoformat().replace("+00:00", "Z"),
         "buckets": [
             {
-                "date": now.date().isoformat(),
+                "date": accounting_date,
                 "timezone": "Asia/Shanghai",
                 "tool": tool,
                 "model": model,
@@ -217,7 +220,7 @@ def main() -> None:
     claude_model = f"claude-e2e-{run_id}"
     edge_model = (f"edge-model-{run_id}-" + "x" * 128)[:128]
     assert len(edge_model) == 128
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = datetime.now(ACCOUNTING_TIMEZONE).date().isoformat()
 
     with httpx.Client(base_url=normalized_base_url, timeout=10) as client:
         assert expect(client.get("/healthz"), 200)["status"] == "ok"
@@ -227,6 +230,57 @@ def main() -> None:
         )
         admin_me = expect(client.get("/api/v1/me", headers=auth(admin_token)), 200)
         assert admin_me["role"] == "admin"
+
+        # One bounded invitation batch must create exactly one public
+        # participant and personal enrollment token without exposing internals.
+        batch_created = expect(
+            client.post(
+                "/api/v1/admin/invitation-batches",
+                headers=auth(admin_token),
+                json={"capacity": 1, "expires_in_hours": 1},
+            ),
+            201,
+        )
+        batch_token = batch_created["invitation_token"]
+        batch_claim = client.post(
+            "/api/v1/public/invitation-batches/claim",
+            json={
+                "invitation_token": batch_token,
+                "display_name": f"批次参赛者 {run_id}",
+                "public_profile_enabled": True,
+            },
+        )
+        batch_claim_body = expect(batch_claim, 201)
+        assert batch_claim.headers["Cache-Control"] == "no-store"
+        assert set(batch_claim_body) == {
+            "nickname",
+            "enrollment_token",
+            "expires_at",
+        }
+        batch_device = enroll_with_token(
+            client,
+            batch_claim_body["enrollment_token"],
+        )
+        assert batch_device[0] and batch_device[1]
+        unavailable = client.post(
+            "/api/v1/public/invitation-batches/claim",
+            json={
+                "invitation_token": batch_token,
+                "display_name": f"批次满额 {run_id}",
+                "public_profile_enabled": True,
+            },
+        )
+        assert unavailable.status_code == 409
+        assert unavailable.json() == {"detail": "invitation batch unavailable"}
+        listed_batches = expect(
+            client.get(
+                "/api/v1/admin/invitation-batches",
+                headers=auth(admin_token),
+            ),
+            200,
+        )
+        assert all("invitation_token" not in item for item in listed_batches)
+        assert batch_token not in json.dumps(listed_batches)
 
         # Login-account creation is admin-only in the community product. A
         # member payload must fail rather than silently creating a legacy login.
@@ -491,6 +545,7 @@ def main() -> None:
                 "public_participants_created": 1,
                 "public_devices_aggregated": 2,
                 "public_private_keys_exposed": 0,
+                "self_service_batch_claimed": 1,
             },
             ensure_ascii=False,
         )

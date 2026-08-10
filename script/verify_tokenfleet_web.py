@@ -104,7 +104,7 @@ def verify_desktop(page: Page) -> dict[str, int]:
 
     page.get_by_role("link", name="成员", exact=True).click()
     wait_for_page(page, "成员")
-    page.get_by_role("button", name="新建参赛者并生成链接").click()
+    page.get_by_role("button", name="单独新建参赛者").click()
     member_dialog = page.locator("#member-dialog")
     member_dialog.wait_for(state="visible")
     member_dialog.locator('input[name="display_name"]').fill("演示回归成员")
@@ -275,6 +275,7 @@ def edge_payloads(mode: str) -> dict[str, object]:
         "/api/v1/organization": organization,
         "/api/v1/users": [user, participant],
         "/api/v1/devices": devices,
+        "/api/v1/admin/invitation-batches": [],
         "/api/v1/dashboard": {
             "rows": rows,
             "totals": totals,
@@ -424,6 +425,7 @@ def verify_mock_states(page: Page) -> dict[str, object]:
     assert "还没有配置价格版本" in page.locator(".page-body").inner_text()
     page.goto(f"{BASE_URL}/#/people")
     wait_for_page(page, "成员")
+    assert "/api/v1/admin/invitation-batches" in seen_paths, seen_paths
     page.get_by_role("button", name="为已有成员创建设备码").click()
     enrollment_dialog = page.locator("#enrollment-dialog")
     enrollment_select = enrollment_dialog.locator('select[name="user_id"]')
@@ -512,7 +514,7 @@ def verify_mock_states(page: Page) -> dict[str, object]:
     assert all(item["pass"] for item in contrast), contrast
     page.goto(f"{BASE_URL}/#/people")
     wait_for_page(page, "成员")
-    open_member = page.get_by_role("button", name="新建参赛者并生成链接")
+    open_member = page.get_by_role("button", name="单独新建参赛者")
     open_member.focus()
     page.keyboard.press("Enter")
     dialog = page.locator("#member-dialog")

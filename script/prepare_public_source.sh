@@ -8,10 +8,12 @@ usage() {
 Prepare a clean TokenFleet public-source snapshot without Git history.
 
 Usage:
-  ./script/prepare_public_source.sh --output /absolute/path/TokenFleet
+  TOKENFLEET_PRIVATE_MARKERS_FILE=/absolute/private/markers.txt \
+    ./script/prepare_public_source.sh --output /absolute/path/TokenFleet
 
 The output path must not already exist. The script never deletes or overwrites
-an existing directory.
+an existing directory. The private markers file must be mode 0600 (or stricter)
+and contain exactly three literal UTF-8 lines supplied outside this repository.
 USAGE
 }
 
@@ -51,6 +53,12 @@ OUTPUT="$OUTPUT_PARENT/$OUTPUT_NAME"
 [[ ! -e "$OUTPUT" && ! -L "$OUTPUT" ]] || fail "output already exists"
 command -v rsync >/dev/null 2>&1 || fail "rsync is required"
 command -v rg >/dev/null 2>&1 || fail "ripgrep (rg) is required"
+command -v python3 >/dev/null 2>&1 || fail "python3 is required"
+PRIVATE_MARKERS_FILE="${TOKENFLEET_PRIVATE_MARKERS_FILE:-}"
+[[ -n "$PRIVATE_MARKERS_FILE" ]] \
+  || fail "TOKENFLEET_PRIVATE_MARKERS_FILE is required"
+[[ "$PRIVATE_MARKERS_FILE" == /* ]] \
+  || fail "TOKENFLEET_PRIVATE_MARKERS_FILE must be an absolute path"
 
 cleanup() {
   local status=$?
@@ -119,22 +127,10 @@ if find "$OUTPUT" -type f \( \
   fail "credential, database, or private signing filename entered export"
 fi
 
-# Assemble personal deployment markers at runtime so the sanitizer does not
-# publish the very full strings it is meant to reject.
-PERSONAL_EMAIL_PATTERN='oreo''gong2''@''gmail''\.com'
-PERSONAL_HOME_PATTERN='/Users/''oreo''(?:/|$)'
-DEPLOYMENT_IP_PATTERN='47''\.97''\.20''\.13'
-
-if rg -n --hidden \
-    -g '!.git/**' \
-    -g '!*.png' -g '!*.jpg' -g '!*.jpeg' -g '!*.gif' -g '!*.icns' \
-    -e "$PERSONAL_EMAIL_PATTERN" \
-    -e "$PERSONAL_HOME_PATTERN" \
-    -e "$DEPLOYMENT_IP_PATTERN" \
-    -e 'BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY' \
-    "$OUTPUT"; then
-  fail "personal path, deployment identifier, or private key marker entered export"
-fi
+python3 "$ROOT_DIR/script/private_markers.py" \
+  --markers-file "$PRIVATE_MARKERS_FILE" \
+  --scan-root "$OUTPUT" \
+  || fail "maintainer-private marker or private key entered export"
 
 [[ -f "$OUTPUT/server/.env.example" ]] \
   || fail "safe server/.env.example placeholder was not exported"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 from ipaddress import ip_address
 from typing import Annotated
@@ -24,6 +24,7 @@ from .models import (
     DailyUsage,
     Device,
     EnrollmentToken,
+    InvitationBatch,
     Organization,
     PriceVersion,
     User,
@@ -41,6 +42,11 @@ from .schemas import (
     EnrollmentTokenCreate,
     EnrollmentTokenResponse,
     HealthResponse,
+    InvitationBatchClaim,
+    InvitationBatchClaimResponse,
+    InvitationBatchCreate,
+    InvitationBatchCreateResponse,
+    InvitationBatchSummary,
     OrganizationSettingsResponse,
     OrganizationSettingsUpdate,
     ParticipantCreate,
@@ -114,11 +120,14 @@ def readiness(
                 DailyUsage.is_deleted,
                 User.public_id,
                 User.public_profile_enabled,
+                User.normalized_display_name,
                 PriceVersion.public_estimate,
+                InvitationBatch.claimed_count,
             )
             .select_from(DailyUsage)
             .outerjoin(User, User.id == DailyUsage.user_id)
             .outerjoin(PriceVersion, PriceVersion.id == DailyUsage.price_version_id)
+            .outerjoin(InvitationBatch, InvitationBatch.org_id == DailyUsage.org_id)
             .limit(1)
         )
     except Exception as exc:  # pragma: no cover - backend-specific failure path
@@ -526,6 +535,188 @@ def create_participant_with_enrollment(
     )
 
 
+def _aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _invitation_batch_status(
+    batch: InvitationBatch, *, now: datetime | None = None
+) -> str:
+    current = now or utcnow()
+    if batch.closed_at is not None:
+        return "closed"
+    if _aware_utc(batch.expires_at) <= current:
+        return "expired"
+    if batch.claimed_count >= batch.capacity:
+        return "full"
+    return "open"
+
+
+def _invitation_batch_summary(batch: InvitationBatch) -> InvitationBatchSummary:
+    return InvitationBatchSummary(
+        id=batch.id,
+        capacity=batch.capacity,
+        claimed_count=batch.claimed_count,
+        expires_at=batch.expires_at,
+        closed_at=batch.closed_at,
+        created_at=batch.created_at,
+        status=_invitation_batch_status(batch),
+    )
+
+
+@router.post(
+    "/api/v1/admin/invitation-batches",
+    response_model=InvitationBatchCreateResponse,
+    status_code=201,
+)
+def create_invitation_batch(
+    payload: InvitationBatchCreate,
+    response: Response,
+    admin: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> InvitationBatchCreateResponse:
+    require_admin(admin)
+    raw_token = generate_enrollment_token()
+    batch = InvitationBatch(
+        org_id=admin.org_id,
+        created_by_user_id=admin.id,
+        token_hash=opaque_token_hash(raw_token),
+        capacity=payload.capacity,
+        claimed_count=0,
+        expires_at=utcnow() + timedelta(hours=payload.expires_in_hours),
+    )
+    session.add(batch)
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="invitation batch could not be created",
+        ) from exc
+    session.refresh(batch)
+    response.headers["Cache-Control"] = "no-store"
+    return InvitationBatchCreateResponse(
+        batch=_invitation_batch_summary(batch),
+        invitation_token=raw_token,
+    )
+
+
+@router.get(
+    "/api/v1/admin/invitation-batches",
+    response_model=list[InvitationBatchSummary],
+)
+def list_invitation_batches(
+    response: Response,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    admin: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> list[InvitationBatchSummary]:
+    require_admin(admin)
+    batches = session.scalars(
+        select(InvitationBatch)
+        .where(InvitationBatch.org_id == admin.org_id)
+        .order_by(InvitationBatch.created_at.desc(), InvitationBatch.id.desc())
+        .limit(limit)
+    ).all()
+    response.headers["Cache-Control"] = "no-store"
+    return [_invitation_batch_summary(batch) for batch in batches]
+
+
+@router.post(
+    "/api/v1/admin/invitation-batches/{batch_id}/close",
+    response_model=InvitationBatchSummary,
+)
+def close_invitation_batch(
+    batch_id: UUID,
+    response: Response,
+    admin: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> InvitationBatchSummary:
+    require_admin(admin)
+    batch = session.scalar(
+        select(InvitationBatch)
+        .where(
+            InvitationBatch.id == str(batch_id),
+            InvitationBatch.org_id == admin.org_id,
+        )
+        .with_for_update()
+    )
+    if batch is None:
+        raise HTTPException(status_code=404, detail="invitation batch not found")
+    if batch.closed_at is None:
+        batch.closed_at = utcnow()
+        session.commit()
+        session.refresh(batch)
+    response.headers["Cache-Control"] = "no-store"
+    return _invitation_batch_summary(batch)
+
+
+@router.post(
+    "/api/v1/public/invitation-batches/claim",
+    response_model=InvitationBatchClaimResponse,
+    status_code=201,
+)
+def claim_invitation_batch(
+    payload: InvitationBatchClaim,
+    request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> InvitationBatchClaimResponse:
+    _consume_enrollment_limit(request)
+    now = utcnow()
+    batch = session.scalar(
+        select(InvitationBatch)
+        .where(
+            InvitationBatch.token_hash
+            == opaque_token_hash(payload.invitation_token)
+        )
+        .with_for_update()
+    )
+    if batch is None or _invitation_batch_status(batch, now=now) != "open":
+        session.rollback()
+        raise HTTPException(status_code=409, detail="invitation batch unavailable")
+
+    enrollment_token = generate_enrollment_token()
+    enrollment_expires_at = now + timedelta(minutes=60)
+    participant = User(
+        org_id=batch.org_id,
+        email=None,
+        password_hash=None,
+        display_name=payload.display_name,
+        role=UserRole.MEMBER,
+        public_profile_enabled=payload.public_profile_enabled,
+    )
+    session.add(participant)
+    try:
+        session.flush()
+        session.add(
+            EnrollmentToken(
+                org_id=batch.org_id,
+                user_id=participant.id,
+                created_by_user_id=batch.created_by_user_id,
+                token_hash=opaque_token_hash(enrollment_token),
+                expires_at=enrollment_expires_at,
+            )
+        )
+        batch.claimed_count += 1
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="nickname unavailable",
+        ) from exc
+    response.headers["Cache-Control"] = "no-store"
+    return InvitationBatchClaimResponse(
+        nickname=participant.display_name or "",
+        enrollment_token=enrollment_token,
+        expires_at=enrollment_expires_at,
+    )
+
+
 def _list_users(admin: User, session: Session) -> list[User]:
     require_admin(admin)
     return list(
@@ -637,7 +828,14 @@ def update_user_status(
         and current_public_projection != previous_public_projection
     ):
         _advance_public_projection_version(session, target.org_id)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="user could not be updated",
+        ) from exc
     session.refresh(target)
     return target
 

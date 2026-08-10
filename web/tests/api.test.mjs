@@ -229,7 +229,7 @@ test("cost UI labels currencies explicitly and dialog cancel buttons close witho
   assert.match(appSource, /item\.effective_from/);
   assert.match(appSource, /formatMoney\(item\.input_per_million, currency\)/);
   const closeControls = appSource.match(/<button[^>]*data-action="close-dialog"[^>]*>/g) || [];
-  assert.equal(closeControls.length, 4);
+  assert.equal(closeControls.length, 6);
   closeControls.forEach((control) => assert.match(control, /type="button"/));
   assert.match(appSource, /if \(action === "close-dialog"\) target\.closest\("dialog"\)\?\.close\(\);/);
 });

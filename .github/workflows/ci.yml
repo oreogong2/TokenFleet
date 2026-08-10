@@ -78,9 +78,25 @@ jobs:
 
       - name: Verify public-source ZIP encoding and privacy gate
         run: |
+          python - "$RUNNER_TEMP/tokenfleet-private-markers.txt" <<'PY'
+          from pathlib import Path
+          import secrets
+          import sys
+
+          suffix = secrets.token_hex(16)
+          Path(sys.argv[1]).write_text(
+              f"ci-{suffix}@example.invalid\n"
+              f"/ci-private/{suffix}\n"
+              f"synthetic-origin-{suffix}\n",
+              encoding="utf-8",
+          )
+          PY
+          chmod 0600 "$RUNNER_TEMP/tokenfleet-private-markers.txt"
+          python -m unittest -v script/test_verify_public_source_archive.py
           git archive --format=zip --prefix=TokenFleet-ci/ \
             --output="$RUNNER_TEMP/tokenfleet-public-source.zip" HEAD
           python script/verify_public_source_archive.py \
+            --private-markers-file "$RUNNER_TEMP/tokenfleet-private-markers.txt" \
             "$RUNNER_TEMP/tokenfleet-public-source.zip"
 
       - name: Run isolated static-browser matrix

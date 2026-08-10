@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.0-beta.5 - 2026-08-11
+
+### Bounded self-service invitation batches
+
+- Added administrator-created invitation batches capped at 50 people and 24
+  hours, with hashed tokens, explicit close, and one uniform unavailable state.
+- Added organization-scoped NFKC/casefold nickname uniqueness enforced by a
+  database index, not a read-then-write check.
+- Made batch claim one PostgreSQL row-locked transaction that creates the
+  participant, a 60-minute personal enrollment token, and the capacity count.
+- Added `/join/batch` with fragment-only token capture, immediate URL scrubbing,
+  closure-only secrets, explicit public-profile consent, and no account system.
+- Moved private public-source markers out of repository source and added
+  fail-closed ZIP regression fixtures for traversal, encoding, size, and secret
+  markers.
+
 ## 0.1.0-beta.4 - 2026-08-10
 
 ### 50-person invited beta

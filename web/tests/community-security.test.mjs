@@ -9,7 +9,9 @@ import { createQrMatrix } from "../qr-code.js";
 import {
   captureJoinCode,
   clearJoinCode,
+  scrubJoinSecrets,
   scrubJoinFragment,
+  takeBatchInvitationToken,
   takeJoinCode,
 } from "../join-secret.js";
 import { breakdownList, publicShareUrl, publicTrend } from "../community-app.js";
@@ -93,6 +95,40 @@ test("same-document join re-entry replaces the in-memory code and scrubs every h
   ]);
   assert.equal(JSON.stringify(calls).includes(validCode), false);
   assert.equal(JSON.stringify(calls).includes(secondCode), false);
+});
+
+test("batch invitation is accepted only from a join-batch fragment and never from path or query", () => {
+  const batchToken = "Batch_0123456789-abcdefghijklmnop";
+  const calls = [];
+  const history = { replaceState: (...args) => calls.push(args) };
+
+  clearJoinCode();
+  const captured = scrubJoinSecrets(
+    { pathname: "/join/batch", search: "", hash: `#invite=${batchToken}` },
+    history,
+  );
+  assert.deepEqual(captured, { joinCode: "", batchInvitationToken: batchToken });
+  assert.equal(calls.at(-1)[2], "/join/batch");
+  assert.equal(JSON.stringify(calls).includes(batchToken), false);
+
+  assert.deepEqual(scrubJoinSecrets(
+    { pathname: "/join/batch", search: `?invite=${batchToken}&campaign=beta`, hash: "" },
+    history,
+  ), { joinCode: "", batchInvitationToken: "" });
+  assert.equal(calls.at(-1)[2], "/join/batch?campaign=beta");
+
+  assert.deepEqual(scrubJoinSecrets(
+    { pathname: `/join/batch/invite/${batchToken}`, search: "", hash: "" },
+    history,
+  ), { joinCode: "", batchInvitationToken: "" });
+  assert.equal(calls.at(-1)[2], "/join/batch");
+
+  captureJoinCode(
+    { pathname: "/join/batch", search: "", hash: `#invite=${batchToken}` },
+    history,
+  );
+  assert.equal(takeBatchInvitationToken(), batchToken);
+  assert.equal(takeBatchInvitationToken(), "");
 });
 
 test("poster model contains only public display fields and appends a rank beyond API limit", async () => {
@@ -240,11 +276,14 @@ test("join security order, deep-link assets, demo labels and license boundaries 
     readFile(new URL("../qr-code.js", import.meta.url), "utf8"),
   ]);
   const combined = `${joinSource}\n${communitySource}\n${posterSource}`;
-  assert.ok(appSource.startsWith('import { captureJoinCode, clearJoinCode, takeJoinCode } from "./join-secret.js";'));
+  assert.ok(appSource.startsWith('import {\n  captureJoinCode,\n  clearJoinCode,\n  takeBatchInvitationToken,\n  takeJoinCode,\n} from "./join-secret.js";'));
   assert.match(appSource, /hashchange[\s\S]*captureJoinCode\(\);[\s\S]*parseCommunityRoute/);
   assert.ok(joinSource.indexOf("if (globalThis.location) captureJoinCode();") < joinSource.indexOf('addEventListener?.("pagehide"'));
   assert.match(joinSource, /historyRef\?\.replaceState/);
   assert.match(joinSource, /\^\[A-Za-z0-9_-\]\{32,256\}\$/);
+  assert.match(communitySource, /data-community-action="claim-batch"/);
+  assert.match(communitySource, /issuedEnrollmentCode = ""/);
+  assert.equal(communitySource.includes("innerHTML = issuedEnrollmentCode"), false);
   assert.equal(combined.includes("localStorage"), false);
   assert.equal(combined.includes("sessionStorage"), false);
   assert.equal(combined.includes("console."), false);

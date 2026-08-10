@@ -28,6 +28,7 @@ from app.models import (
     Device,
     DeviceNonce,
     EnrollmentToken,
+    InvitationBatch,
     Organization,
     User,
     UserRole,
@@ -334,12 +335,12 @@ def test_postgres_migration_starts_from_fresh_database(
         session.commit()
     with pytest.raises(
         RuntimeError,
-        match="cannot downgrade while non-login participants exist",
+        match="cannot downgrade invitation batches while participants or batches exist",
     ):
         command.downgrade(migration_config, "bb8d4e1a2f73")
     with postgres_runtime.engine.begin() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "f4a9c2d8e6b1"
+            "c7b4e2a91d35"
         )
         connection.execute(
             text("DELETE FROM organizations WHERE slug = 'downgrade-guard'")
@@ -354,6 +355,7 @@ def test_postgres_migration_starts_from_fresh_database(
         "devices",
         "enrollment_tokens",
         "device_nonces",
+        "invitation_batches",
         "price_versions",
         "daily_usage",
     }
@@ -367,7 +369,11 @@ def test_postgres_migration_starts_from_fresh_database(
         column["name"]
         for column in inspect(postgres_runtime.engine).get_columns("users")
     }
-    assert {"public_id", "public_profile_enabled"} <= user_columns
+    assert {
+        "normalized_display_name",
+        "public_id",
+        "public_profile_enabled",
+    } <= user_columns
     price_columns = {
         column["name"]
         for column in inspect(postgres_runtime.engine).get_columns("price_versions")
@@ -484,7 +490,8 @@ def test_postgres_public_participant_projection_and_immediate_hide(
         assert uploaded.status_code == 200
 
         leaderboard = client.get(
-            "/api/v1/public/leaderboard", params={"metric": "cost"}
+            "/api/v1/public/leaderboard",
+            params={"period": "all", "metric": "cost"},
         )
         assert leaderboard.status_code == 200
         entry = leaderboard.json()["entries"][0]
@@ -501,7 +508,7 @@ def test_postgres_public_participant_projection_and_immediate_hide(
         assert enrolled["device_id"] not in leaderboard.text
         detail = client.get(
             f"/api/v1/public/members/{participant['public_id']}",
-            params={"metric": "cost"},
+            params={"period": "all", "metric": "cost"},
         )
         assert detail.status_code == 200
         assert detail.json()["rank"] == 1
@@ -515,9 +522,13 @@ def test_postgres_public_participant_projection_and_immediate_hide(
         assert hidden.status_code == 200
         assert hidden.json()["public_profile_enabled"] is False
         assert client.get(
-            f"/api/v1/public/members/{participant['public_id']}"
+            f"/api/v1/public/members/{participant['public_id']}",
+            params={"period": "all", "metric": "cost"},
         ).status_code == 404
-        assert client.get("/api/v1/public/leaderboard").json()["entries"] == []
+        assert client.get(
+            "/api/v1/public/leaderboard",
+            params={"period": "all", "metric": "cost"},
+        ).json()["entries"] == []
 
 
 def test_postgres_fifty_member_beta_capacity(postgres_runtime: PostgresRuntime) -> None:
@@ -576,6 +587,210 @@ def test_postgres_fifty_member_beta_capacity(postgres_runtime: PostgresRuntime) 
             .select_from(DailyUsage)
             .where(DailyUsage.org_id == team.org_id)
         ) == 50
+
+
+def test_postgres_invitation_batch_sixty_concurrent_claims_accept_exactly_fifty(
+    postgres_runtime: PostgresRuntime,
+) -> None:
+    team = _new_team(postgres_runtime, "batch-capacity")
+    app = _app(postgres_runtime)
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/v1/admin/invitation-batches",
+            headers=_admin_headers(client, team),
+            json={"capacity": 50, "expires_in_hours": 24},
+        )
+        assert created.status_code == 201, created.text
+        batch_id = created.json()["batch"]["id"]
+        invitation_token = created.json()["invitation_token"]
+
+    barrier = threading.Barrier(60)
+
+    def attempt(index: int) -> tuple[int, dict[str, object]]:
+        with TestClient(app) as concurrent_client:
+            barrier.wait(timeout=30)
+            response = concurrent_client.post(
+                "/api/v1/public/invitation-batches/claim",
+                json={
+                    "invitation_token": invitation_token,
+                    "display_name": f"并发成员-{index:02d}",
+                    "public_profile_enabled": True,
+                },
+            )
+            return response.status_code, response.json()
+
+    with ThreadPoolExecutor(max_workers=60) as executor:
+        results = list(executor.map(attempt, range(60)))
+
+    accepted = [body for status, body in results if status == 201]
+    rejected = [body for status, body in results if status == 409]
+    assert len(accepted) == 50
+    assert len(rejected) == 10
+    assert all(body == {"detail": "invitation batch unavailable"} for body in rejected)
+    assert all(
+        set(body) == {"nickname", "enrollment_token", "expires_at"}
+        for body in accepted
+    )
+
+    with Session(postgres_runtime.engine) as session:
+        batch = session.get(InvitationBatch, batch_id)
+        assert batch is not None and batch.claimed_count == 50
+        assert session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.org_id == team.org_id, User.email.is_(None))
+        ) == 50
+        assert session.scalar(
+            select(func.count())
+            .select_from(EnrollmentToken)
+            .where(EnrollmentToken.org_id == team.org_id)
+        ) == 50
+
+
+def test_postgres_invitation_batch_and_admin_same_nickname_have_one_winner(
+    postgres_runtime: PostgresRuntime,
+) -> None:
+    team = _new_team(postgres_runtime, "batch-nickname")
+    app = _app(postgres_runtime)
+    with TestClient(app) as client:
+        admin_headers = _admin_headers(client, team)
+        created = client.post(
+            "/api/v1/admin/invitation-batches",
+            headers=admin_headers,
+            json={"capacity": 50, "expires_in_hours": 24},
+        )
+        assert created.status_code == 201
+        batch_id = created.json()["batch"]["id"]
+        invitation_token = created.json()["invitation_token"]
+
+    barrier = threading.Barrier(2)
+
+    def claim() -> tuple[str, int]:
+        with TestClient(app) as concurrent_client:
+            barrier.wait(timeout=10)
+            response = concurrent_client.post(
+                "/api/v1/public/invitation-batches/claim",
+                json={
+                    "invitation_token": invitation_token,
+                    "display_name": "ＲＡＣＥ NAME",
+                    "public_profile_enabled": True,
+                },
+            )
+            return "claim", response.status_code
+
+    def create_admin() -> tuple[str, int]:
+        with TestClient(app) as concurrent_client:
+            barrier.wait(timeout=10)
+            response = concurrent_client.post(
+                "/api/v1/admin/users",
+                headers=admin_headers,
+                json={
+                    "email": f"race-{uuid.uuid4().hex[:12]}@example.com",
+                    "password": secrets.token_urlsafe(24),
+                    "role": "admin",
+                    "display_name": "race name",
+                },
+            )
+            return "admin", response.status_code
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(function) for function in (claim, create_admin)]
+        outcomes = dict(future.result() for future in futures)
+
+    assert sorted(outcomes.values()) == [201, 409]
+    with Session(postgres_runtime.engine) as session:
+        assert session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(
+                User.org_id == team.org_id,
+                User.normalized_display_name == "race name",
+            )
+        ) == 1
+        batch = session.get(InvitationBatch, batch_id)
+        assert batch is not None
+        assert batch.claimed_count == (1 if outcomes["claim"] == 201 else 0)
+        assert session.scalar(
+            select(func.count())
+            .select_from(EnrollmentToken)
+            .where(EnrollmentToken.org_id == team.org_id)
+        ) == (1 if outcomes["claim"] == 201 else 0)
+
+
+def test_postgres_invitation_batch_rbac_and_claim_response_whitelist(
+    postgres_runtime: PostgresRuntime,
+) -> None:
+    team = _new_team(postgres_runtime, "batch-rbac")
+    app = _app(postgres_runtime)
+    with TestClient(app) as client:
+        with Session(postgres_runtime.engine) as session:
+            member = session.get(User, team.member_id)
+            assert member is not None and member.email is not None
+            member_email = member.email
+        member_login = client.post(
+            "/api/v1/auth/token",
+            json={
+                "org_slug": team.org_slug,
+                "email": member_email,
+                "password": team.password,
+            },
+        )
+        assert member_login.status_code == 200
+        member_headers = {
+            "Authorization": f"Bearer {member_login.json()['access_token']}"
+        }
+        assert client.post(
+            "/api/v1/admin/invitation-batches",
+            json={"capacity": 1, "expires_in_hours": 1},
+        ).status_code == 401
+        assert client.post(
+            "/api/v1/admin/invitation-batches",
+            headers=member_headers,
+            json={"capacity": 1, "expires_in_hours": 1},
+        ).status_code == 403
+        assert client.get(
+            "/api/v1/admin/invitation-batches",
+            headers=member_headers,
+        ).status_code == 403
+
+        created = client.post(
+            "/api/v1/admin/invitation-batches",
+            headers=_admin_headers(client, team),
+            json={"capacity": 1, "expires_in_hours": 1},
+        )
+        assert created.status_code == 201
+        assert client.post(
+            f"/api/v1/admin/invitation-batches/{created.json()['batch']['id']}/close",
+            headers=member_headers,
+        ).status_code == 403
+
+        active = client.post(
+            "/api/v1/admin/invitation-batches",
+            headers=_admin_headers(client, team),
+            json={"capacity": 1, "expires_in_hours": 1},
+        )
+        claimed = client.post(
+            "/api/v1/public/invitation-batches/claim",
+            json={
+                "invitation_token": active.json()["invitation_token"],
+                "display_name": "匿名入口成员",
+                "public_profile_enabled": True,
+            },
+        )
+        assert claimed.status_code == 201
+        assert claimed.headers["Cache-Control"] == "no-store"
+        assert set(claimed.json()) == {"nickname", "enrollment_token", "expires_at"}
+        forbidden = {
+            "batch_id",
+            "created_by_user_id",
+            "id",
+            "org_id",
+            "organization",
+            "participant",
+            "public_id",
+            "user_id",
+        }
+        assert forbidden.isdisjoint(claimed.json())
 
 
 def test_two_postgres_connections_upsert_same_natural_key_once(
