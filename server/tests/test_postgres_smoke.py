@@ -490,7 +490,8 @@ def test_postgres_public_participant_projection_and_immediate_hide(
         assert uploaded.status_code == 200
 
         leaderboard = client.get(
-            "/api/v1/public/leaderboard", params={"metric": "cost"}
+            "/api/v1/public/leaderboard",
+            params={"period": "all", "metric": "cost"},
         )
         assert leaderboard.status_code == 200
         entry = leaderboard.json()["entries"][0]
@@ -507,7 +508,7 @@ def test_postgres_public_participant_projection_and_immediate_hide(
         assert enrolled["device_id"] not in leaderboard.text
         detail = client.get(
             f"/api/v1/public/members/{participant['public_id']}",
-            params={"metric": "cost"},
+            params={"period": "all", "metric": "cost"},
         )
         assert detail.status_code == 200
         assert detail.json()["rank"] == 1
@@ -521,9 +522,13 @@ def test_postgres_public_participant_projection_and_immediate_hide(
         assert hidden.status_code == 200
         assert hidden.json()["public_profile_enabled"] is False
         assert client.get(
-            f"/api/v1/public/members/{participant['public_id']}"
+            f"/api/v1/public/members/{participant['public_id']}",
+            params={"period": "all", "metric": "cost"},
         ).status_code == 404
-        assert client.get("/api/v1/public/leaderboard").json()["entries"] == []
+        assert client.get(
+            "/api/v1/public/leaderboard",
+            params={"period": "all", "metric": "cost"},
+        ).json()["entries"] == []
 
 
 def test_postgres_fifty_member_beta_capacity(postgres_runtime: PostgresRuntime) -> None:
