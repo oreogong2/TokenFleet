@@ -56,7 +56,8 @@ cd /opt/tokenfleet
 ```
 
 最后一条命令会在终端无回显地询问管理员密码。密码至少 12 位，不写入环境模板。
-服务使用单 worker，符合当前进程内登录/公开读取限流的发布边界。
+服务使用单 worker，符合当前进程内登录、公开读取和设备登记限流的发布边界。
+Nginx 还会在代理前对设备登记按来源 IP 执行 `60 次/分钟` 的共享网关限流。
 
 ## 5. 配置 Nginx 与免费证书
 
@@ -74,7 +75,7 @@ sudo ./deploy/install_nginx_certbot.sh \
 1. 校验 DNS 与服务器 IPv4；
 2. 校验 TokenFleet 本机 readiness；
 3. 安装只代理到 `127.0.0.1` 的 Nginx 站点；
-4. 覆盖外部伪造的 `X-Forwarded-For`，并增加网关限流；
+4. 覆盖外部伪造的 `X-Forwarded-For`，并为登录、公开榜和设备登记增加网关限流；
 5. 用 Certbot 申请 Let's Encrypt 证书、强制 HTTPS；
 6. 启用自动续期并真实执行一次 `certbot renew --dry-run`。
 
@@ -157,3 +158,5 @@ git checkout --detach <verified-commit-sha>
 - 主要成本：一台 2 核 4G 服务器、可选云盘/快照和超额流量；
 - 当前单机方案适合早期社群。要做多实例或更高 SLA 时，必须先增加共享限流、
   独立数据库和外部备份，不能直接横向启动多个 App worker。
+- 当前 2 核 4G、PostgreSQL 17、单 worker 方案按 50 人邀请制 Beta 验收；若要扩大到
+  多 worker/多主机，必须先为账号、公开榜和登记端点完成跨实例共享限流实测。

@@ -2,6 +2,18 @@
 
 本手册只描述未来可选的 Developer ID + 公证 DMG 分发，不是当前社群成员的安装前提。当前版本采用 `docs/INSTALL.md` 中的固定 tag 免费源码安装；本脚本只发布独立的 TokenFleet，不会下载、安装、退出或覆盖上游 TokenStep。若未来启用公开 DMG，才需要自己的 Apple Developer ID、公证凭据、固定社群 HTTPS 服务、更新 API 和 HTTPS 下载地址；这些外部条件未配置前不得把 DMG 路径称为“已上线”。
 
+当前公开源码 ZIP 必须从已复核提交创建并经过仓库门禁；不要使用 Finder 临时压缩：
+
+```bash
+git archive --format=zip --prefix=TokenFleet-source/ \
+  --output=/tmp/TokenFleet-source.zip HEAD
+python3 script/verify_public_source_archive.py /tmp/TokenFleet-source.zip
+shasum -a 256 /tmp/TokenFleet-source.zip
+```
+
+验证器会拒绝未标 UTF-8 的中文文件名、路径穿越、凭据/数据库文件名、个人部署标记、
+私钥头和异常大文件。CI 对每个提交执行同一门禁；发布附件仍需重新核对 SHA-256。
+
 ## 1. 发布前提
 
 - Apple Developer Program 账号；

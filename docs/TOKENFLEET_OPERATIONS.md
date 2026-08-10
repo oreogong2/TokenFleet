@@ -4,7 +4,7 @@
 
 ## 1. 推荐部署形态
 
-### 1.1 5–10 人社群试运行
+### 1.1 50 人邀请制 Beta
 
 - 一台受控 Linux/macOS 主机；
 - 单个 FastAPI 进程；
@@ -14,6 +14,8 @@
 - 管理员、私有账本和写入端点只允许经认证访问；匿名只读 `/rank` 与
   `/api/v1/public/*` 可经 TLS/WAF 对外开放，并使用独立限流与扫描上限；
 - 不把 Token 用量用于绩效评价。
+- 50 人可以在同一天获得使用资格；安装支持和设备码可分几个时段处理，但已接入
+  成员无需等待后续批次。每人、每台设备使用独立单次码，不群发共享码。
 
 ### 1.2 生产部署前必须补齐
 
@@ -22,7 +24,7 @@
   证据时只允许单进程，禁止多 worker/多主机上线；
 - 数据库、备份和派生 device signing key 的静态加密；
 - 集中审计、告警和恢复演练；
-- 5–10 人连续 14 天试运行，P0/P1 为 0。
+- 50 人邀请测试完成并连续运行至少 14 天，P0/P1 为 0。
 
 ## 2. 安全配置
 
@@ -38,6 +40,9 @@ export PUBLIC_RATE_LIMIT_WINDOW_SECONDS='60'
 export PUBLIC_MAX_SCAN_ROWS='250000'
 export PUBLIC_CACHE_TTL_SECONDS='15'
 export PUBLIC_CACHE_MAX_ENTRIES='1024'
+export ENROLLMENT_RATE_LIMIT_ATTEMPTS='60'
+export ENROLLMENT_RATE_LIMIT_WINDOW_SECONDS='60'
+export ENROLLMENT_RATE_LIMIT_MAX_KEYS='10000'
 export TRUSTED_PROXY_CIDRS='10.0.0.0/8'
 export TRUSTED_PROXY_HOPS='1'
 ```
@@ -57,7 +62,7 @@ export TRUSTED_PROXY_HOPS='1'
 - Mac 正式包另需把同源 canonical HTTPS origin 写入签名 Info.plist；成员界面不能
   覆盖服务器地址。
 
-服务内存登录限流只覆盖当前进程，无法统计其他 worker/实例的请求。发布审批
+服务内存登录、公开读取和设备登记限流只覆盖当前进程，无法统计其他 worker/实例的请求。发布审批
 必须记录“单进程”拓扑，或提供网关/Redis 共享限流的配置与跨实例 `429` 验证；
 单元测试中的进程内 `429` 不能关闭这项生产门禁。
 
@@ -188,6 +193,7 @@ marker；即使客户端随后 force 重传旧 exact 桶，也不会复活已过
 
 - `readyz` 非 200；
 - 登录 429/401 激增；
+- 设备登记 429/400 激增；
 - 用量上报 401/403/409/422/5xx；
 - nonce 重放与时钟偏差；
 - 数据库空间和备份新鲜度；
@@ -195,6 +201,10 @@ marker；即使客户端随后 force 重传旧 exact 桶，也不会复活已过
 - 匿名公榜 429、扫描上限 `503` +
   `public_projection_scan_limit_exceeded` 和异常 tool/model 标签；
 - 客户端 `last_successful_sync_at` 长时间不更新。
+
+公开价格运维规则：某工具/模型最新生效版本若被设为私有，该生效日之后的新用量
+会在公开榜显示“未定价”，不会回退套用更早的公开价格。管理员每次新增或关闭
+`public_estimate` 后都要复查成本页警告和匿名榜；这是失败关闭，不是数据丢失。
 
 应用日志不得记录 Authorization、签名、设备 secret、上报正文或生财凭据。
 官方客户端只发送聚合 schema；服务端拒绝显式内容字段和控制/格式字符，但无法

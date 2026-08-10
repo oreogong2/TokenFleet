@@ -119,12 +119,18 @@ if find "$OUTPUT" -type f \( \
   fail "credential, database, or private signing filename entered export"
 fi
 
+# Assemble personal deployment markers at runtime so the sanitizer does not
+# publish the very full strings it is meant to reject.
+PERSONAL_EMAIL_PATTERN='oreo''gong2''@''gmail''\.com'
+PERSONAL_HOME_PATTERN='/Users/''oreo''(?:/|$)'
+DEPLOYMENT_IP_PATTERN='47''\.97''\.20''\.13'
+
 if rg -n --hidden \
     -g '!.git/**' \
     -g '!*.png' -g '!*.jpg' -g '!*.jpeg' -g '!*.gif' -g '!*.icns' \
-    -e 'oreogong2@gmail\.com' \
-    -e '/Users/oreo(?:/|$)' \
-    -e '47\.97\.20\.13' \
+    -e "$PERSONAL_EMAIL_PATTERN" \
+    -e "$PERSONAL_HOME_PATTERN" \
+    -e "$DEPLOYMENT_IP_PATTERN" \
     -e 'BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY' \
     "$OUTPUT"; then
   fail "personal path, deployment identifier, or private key marker entered export"

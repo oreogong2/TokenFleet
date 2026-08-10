@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.0-beta.4 - 2026-08-10
+
+### 50-person invited beta
+
+- Added application- and Nginx-level enrollment rate limits and a real
+  PostgreSQL capacity regression for 50 independent participants.
+- Prevented source reinstall and rollback from silently disabling community
+  sync or changing the pinned community origin.
+- Scrubbed unsupported path-shaped join codes, cleared private in-memory Web
+  state at logout, and warned when a newly private price makes future public
+  usage explicitly unpriced.
+- Hardened Codex quota process lookup and added a fail-closed public source ZIP
+  verifier for paths, UTF-8 filenames, size limits and sensitive markers.
+- Replaced staged eligibility with a same-day 50-person operations checklist;
+  each member and device still receives an independent one-time code.
+
 ## 0.1.0-beta.3 - 2026-08-10
 
 ### Documentation

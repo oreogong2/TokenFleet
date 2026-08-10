@@ -208,6 +208,49 @@ def test_admin_creates_non_login_participant_and_one_time_enrollment(harness) ->
     assert device.user_id == participant["id"]
 
 
+def test_fifty_member_beta_cohort_enrolls_uploads_and_appears_once(harness) -> None:
+    _enable_alpha_public_board(harness)
+    public_ids: set[str] = set()
+    device_ids: set[str] = set()
+
+    for index in range(50):
+        created = _create_participant(
+            harness,
+            display_name=f"Beta 成员 {index + 1:02d}",
+            public_profile_enabled=True,
+        )
+        device = _enroll_participant(harness, created)
+        uploaded = harness.signed_post(
+            device,
+            harness.usage_payload(
+                buckets=[
+                    _bucket(
+                        harness,
+                        model="beta-capacity-model",
+                        input_tokens=index + 1,
+                        output_tokens=1,
+                        cache_read_tokens=0,
+                        cache_write_tokens=0,
+                    )
+                ]
+            ),
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        public_ids.add(created["participant"]["public_id"])
+        device_ids.add(device.id)
+
+    board = harness.client.get(
+        "/api/v1/public/leaderboard",
+        params={"period": "today", "metric": "tokens", "limit": 100},
+    )
+    assert board.status_code == 200, board.text
+    payload = board.json()
+    assert payload["total_entries"] == 50
+    assert len(payload["entries"]) == 50
+    assert {entry["public_id"] for entry in payload["entries"]} == public_ids
+    assert all(identifier not in board.text for identifier in device_ids)
+
+
 @pytest.mark.parametrize(
     ("expires_in_minutes", "expected_status"),
     [(0, 422), (1, 201), (60, 201), (1_440, 201), (1_441, 422)],

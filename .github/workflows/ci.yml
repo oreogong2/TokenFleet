@@ -76,6 +76,13 @@ jobs:
           cd ..
           PYTHONDONTWRITEBYTECODE=1 .ci-venv/bin/python script/verify_mutating_test_safety.py
 
+      - name: Verify public-source ZIP encoding and privacy gate
+        run: |
+          git archive --format=zip --prefix=TokenFleet-ci/ \
+            --output="$RUNNER_TEMP/tokenfleet-public-source.zip" HEAD
+          python script/verify_public_source_archive.py \
+            "$RUNNER_TEMP/tokenfleet-public-source.zip"
+
       - name: Run isolated static-browser matrix
         run: |
           set -euo pipefail

@@ -142,6 +142,9 @@ All settings are environment variables:
 | `PUBLIC_MAX_SCAN_ROWS` | `250000` | Hard cap on exact visible candidate rows for one public period, checked before tool/model filters; broader requests return `503` with `public_projection_scan_limit_exceeded`. |
 | `PUBLIC_CACHE_TTL_SECONDS` | `15` | Shared/browser and process-local public projection TTL; constrained to 1–300 seconds. |
 | `PUBLIC_CACHE_MAX_ENTRIES` | `1024` | Process-local bounded LRU entry count. |
+| `ENROLLMENT_RATE_LIMIT_ATTEMPTS` | `60` | Anonymous device-enrollment attempts allowed per verified client IP in the process-local window. Invalid codes consume this budget before the token table is queried. |
+| `ENROLLMENT_RATE_LIMIT_WINDOW_SECONDS` | `60` | Device-enrollment sliding-window duration. |
+| `ENROLLMENT_RATE_LIMIT_MAX_KEYS` | `10000` | Hard cap for device-enrollment limiter buckets. |
 | `USAGE_RATE_LIMIT_DEVICE_ATTEMPTS` | `12` | Authenticated usage requests allowed per device in the database-shared window. |
 | `USAGE_RATE_LIMIT_ORG_ATTEMPTS` | `600` | Authenticated usage requests allowed across an organization in that window. |
 | `USAGE_RATE_LIMIT_WINDOW_SECONDS` | `60` | Usage window; must not exceed nonce retention. |
@@ -165,11 +168,11 @@ connection: Unix-domain-socket peers do not expose an IP that this CIDR trust
 model can verify. Configure Uvicorn's own proxy allow-list to the same ingress
 CIDRs and prevent direct public access to the application socket.
 
-These in-process login and public-read limiters are defense in depth for a single
+These in-process login, public-read, and enrollment limiters are defense in depth for a single
 instance. They cannot observe attempts handled by another worker or host, and the
 application cannot reliably infer its deployment topology. **Production release
 gate:** run exactly one application process, or provide and verify a gateway,
-Redis, or another shared limiter for both route classes before any multi-worker or
+Redis, or another shared limiter for all three route classes before any multi-worker or
 multi-instance rollout. Process-local `429` tests are not evidence that this
 multi-instance gate is satisfied.
 

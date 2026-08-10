@@ -519,6 +519,55 @@ def test_postgres_public_participant_projection_and_immediate_hide(
         ).status_code == 404
         assert client.get("/api/v1/public/leaderboard").json()["entries"] == []
 
+
+def test_postgres_fifty_member_beta_capacity(postgres_runtime: PostgresRuntime) -> None:
+    team = _new_team(postgres_runtime, "beta50")
+    app = _app(postgres_runtime, public_org_slug=team.org_slug)
+    public_ids: set[str] = set()
+    device_ids: set[str] = set()
+
+    with TestClient(app) as client:
+        admin_headers = _admin_headers(client, team)
+        for index in range(50):
+            created = client.post(
+                "/api/v1/admin/participants",
+                headers=admin_headers,
+                json={
+                    "display_name": f"PG Beta {index + 1:02d}",
+                    "public_profile_enabled": True,
+                    "expires_in_minutes": 60,
+                },
+            )
+            assert created.status_code == 201, created.text
+            created_body = created.json()
+            enrolled = _enroll(
+                client,
+                created_body["enrollment_token"],
+                str(uuid.uuid4()),
+            )
+            payload = _usage_payload(generated_at=datetime.now(timezone.utc))
+            payload["buckets"][0]["input_tokens"] = index + 1
+            uploaded = _signed_usage(
+                client,
+                device_id=enrolled["device_id"],
+                device_secret=enrolled["device_secret"],
+                payload=payload,
+            )
+            assert uploaded.status_code == 200, uploaded.text
+            public_ids.add(created_body["participant"]["public_id"])
+            device_ids.add(enrolled["device_id"])
+
+        leaderboard = client.get(
+            "/api/v1/public/leaderboard",
+            params={"period": "all", "metric": "tokens", "limit": 100},
+        )
+        assert leaderboard.status_code == 200, leaderboard.text
+        response = leaderboard.json()
+        assert response["total_entries"] == 50
+        assert len(response["entries"]) == 50
+        assert {item["public_id"] for item in response["entries"]} == public_ids
+        assert all(device_id not in leaderboard.text for device_id in device_ids)
+
     with Session(postgres_runtime.engine) as session:
         assert session.scalar(
             select(func.count())

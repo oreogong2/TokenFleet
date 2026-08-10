@@ -26,6 +26,9 @@ class Settings:
     public_max_scan_rows: int = 250_000
     public_cache_ttl_seconds: int = 15
     public_cache_max_entries: int = 1_024
+    enrollment_rate_limit_attempts: int = 60
+    enrollment_rate_limit_window_seconds: int = 60
+    enrollment_rate_limit_max_keys: int = 10_000
     usage_rate_limit_device_attempts: int = 12
     usage_rate_limit_org_attempts: int = 600
     usage_rate_limit_window_seconds: int = 60
@@ -109,6 +112,24 @@ class Settings:
                 os.getenv(
                     "PUBLIC_CACHE_MAX_ENTRIES",
                     defaults.public_cache_max_entries,
+                )
+            ),
+            enrollment_rate_limit_attempts=int(
+                os.getenv(
+                    "ENROLLMENT_RATE_LIMIT_ATTEMPTS",
+                    defaults.enrollment_rate_limit_attempts,
+                )
+            ),
+            enrollment_rate_limit_window_seconds=int(
+                os.getenv(
+                    "ENROLLMENT_RATE_LIMIT_WINDOW_SECONDS",
+                    defaults.enrollment_rate_limit_window_seconds,
+                )
+            ),
+            enrollment_rate_limit_max_keys=int(
+                os.getenv(
+                    "ENROLLMENT_RATE_LIMIT_MAX_KEYS",
+                    defaults.enrollment_rate_limit_max_keys,
                 )
             ),
             usage_rate_limit_device_attempts=int(

@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.models import DailyUsage, Device, EnrollmentToken, User, utcnow
+from app.middleware import parse_trusted_proxy_cidrs
+from app.rate_limit import PublicReadRateLimiter
 from app.security import opaque_token_hash
 
 
@@ -57,6 +59,67 @@ def test_enrollment_token_is_one_time_and_raw_value_is_not_stored(harness) -> No
         assert stored is not None and stored.used_at is not None
         assert stored.token_hash != token
         assert token not in repr(stored.__dict__)
+
+
+def test_anonymous_enrollment_is_rate_limited_before_token_table_mutation(
+    harness,
+) -> None:
+    token = _invite(harness)
+    harness.app.state.enrollment_rate_limiter = PublicReadRateLimiter(
+        attempts=2,
+        window_seconds=60,
+        max_keys=10,
+    )
+
+    for _index in range(2):
+        rejected = harness.client.post(
+            "/api/v1/devices/enroll",
+            json=_enrollment_body("invalid-token-" + str(uuid.uuid4()), str(uuid.uuid4())),
+        )
+        assert rejected.status_code == 400
+
+    limited = harness.client.post(
+        "/api/v1/devices/enroll",
+        json=_enrollment_body(token, str(uuid.uuid4())),
+    )
+    assert limited.status_code == 429
+    assert int(limited.headers["Retry-After"]) >= 1
+    assert token not in limited.text
+    with harness.session_factory() as session:
+        stored = session.scalar(
+            select(EnrollmentToken).where(
+                EnrollmentToken.token_hash == opaque_token_hash(token)
+            )
+        )
+        assert stored is not None and stored.used_at is None
+        assert session.scalar(select(func.count()).select_from(Device)) == 0
+
+
+def test_enrollment_rejects_unverifiable_trusted_proxy_chain_without_db_touch(
+    harness,
+) -> None:
+    token = _invite(harness)
+    harness.app.state.trusted_proxy_networks = parse_trusted_proxy_cidrs(
+        "127.0.0.1/32"
+    )
+    harness.app.state.trusted_proxy_hops = 1
+    limiter = PublicReadRateLimiter(attempts=2, window_seconds=60, max_keys=10)
+    harness.app.state.enrollment_rate_limiter = limiter
+
+    rejected = harness.client.post(
+        "/api/v1/devices/enroll",
+        headers={"X-Forwarded-For": "unknown, 198.51.100.25"},
+        json=_enrollment_body(token, str(uuid.uuid4())),
+    )
+    assert rejected.status_code == 400
+    assert limiter._events == {}
+    with harness.session_factory() as session:
+        stored = session.scalar(
+            select(EnrollmentToken).where(
+                EnrollmentToken.token_hash == opaque_token_hash(token)
+            )
+        )
+        assert stored is not None and stored.used_at is None
 
 
 def test_concurrent_enrollment_consumes_token_exactly_once_on_sqlite(harness) -> None:

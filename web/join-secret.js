@@ -26,6 +26,17 @@ function decodeCode(value) {
   return /^[A-Za-z0-9_-]{32,256}$/.test(code) ? code : "";
 }
 
+function scrubPath(pathname) {
+  const original = String(pathname || "") || "/";
+  // The product never generates path-carried enrollment codes. Still erase any
+  // extra path below /join before rendering so a manually constructed URL
+  // cannot leave a valid or malformed code in browser history or screenshots.
+  if (/^\/join\/(?:code\/)?[^/?#]{1,512}\/?$/i.test(original)) {
+    return { hadCode: true, safePath: "/join" };
+  }
+  return { hadCode: false, safePath: original };
+}
+
 function scrubHash(hash) {
   const original = String(hash || "");
   const fragment = original.replace(/^#/, "");
@@ -56,17 +67,18 @@ function scrubHash(hash) {
 
 export function scrubJoinFragment(locationRef, historyRef) {
   if (!locationRef) return "";
-  const joinLocation = isJoinLocation(locationRef);
+  const path = scrubPath(locationRef.pathname);
+  const joinLocation = isJoinLocation({ ...locationRef, pathname: path.safePath });
   const search = new URLSearchParams(String(locationRef.search || "").replace(/^\?/, ""));
   const refusedQueryCode = search.has("code");
   search.delete("code");
   const hash = scrubHash(locationRef.hash);
-  if (hash.hadCode || refusedQueryCode) {
+  if (path.hadCode || hash.hadCode || refusedQueryCode) {
     const safeSearch = search.toString();
     historyRef?.replaceState(
       null,
       "",
-      `${locationRef.pathname}${safeSearch ? `?${safeSearch}` : ""}${hash.safeHash}`,
+      `${path.safePath}${safeSearch ? `?${safeSearch}` : ""}${hash.safeHash}`,
     );
   }
   return joinLocation ? decodeCode(hash.code) : "";

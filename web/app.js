@@ -74,6 +74,17 @@ const state = {
   pageData: null,
 };
 
+function clearPrivateState() {
+  state.me = null;
+  state.dashboard = null;
+  state.route = routeFromLocation();
+  state.filters = { ...dateRangeForTimezone(initialTimezone) };
+  state.loading = false;
+  state.pageLoading = false;
+  state.error = null;
+  state.pageData = null;
+}
+
 function routeFromLocation() {
   const value = location.hash.replace(/^#\/?/, "") || "overview";
   const [name, id] = value.split("/");
@@ -407,13 +418,29 @@ function priceEditor() {
   return `<article class="panel full-panel pricing-editor"><div class="panel-head"><div><span class="panel-kicker">ADD PRICE VERSION</span><h2>新增模型价格</h2></div><span class="soft-badge">仅管理员</span></div><p class="form-note">请按供应商公开价格或实际合同自行核验后录入；TokenFleet 不预填“当前官方价”。新版本用于此后上报，已有未定价明细不会自动重算。</p><form data-action="create-price"><div class="pricing-identity-grid"><label>工具<input name="tool" list="observed-tools" maxlength="128" autocomplete="off" required placeholder="例如 Codex"></label><label>模型<input name="model" list="observed-models" maxlength="128" autocomplete="off" required placeholder="填写上报中的精确模型名"></label><label>币种<input name="currency" minlength="3" maxlength="3" pattern="[A-Za-z]{3}" autocomplete="off" required placeholder="USD"></label><label>生效日期<input name="effective_from" type="date" value="${escapeHTML(effectiveFrom)}" required></label></div><div class="pricing-rate-grid"><label>输入 / 百万<input name="input_per_million" type="number" inputmode="decimal" min="0" step="0.00000001" required></label><label>输出 / 百万<input name="output_per_million" type="number" inputmode="decimal" min="0" step="0.00000001" required></label><label>缓存读 / 百万<input name="cache_read_per_million" type="number" inputmode="decimal" min="0" step="0.00000001" required></label><label>缓存写 / 百万<input name="cache_write_per_million" type="number" inputmode="decimal" min="0" step="0.00000001" required></label></div><label class="consent-check"><input name="public_estimate" type="checkbox" value="true" checked><span><strong>用于社群榜 API 等价估算</strong><small>显式开启后，这个冻结价格版本才可用于匿名榜的估算费用；协议价或私有价格请取消勾选。费率本身不会出现在公开接口。</small></span></label><datalist id="observed-tools">${tools.map((name) => `<option value="${escapeHTML(name)}"></option>`).join("")}</datalist><datalist id="observed-models">${models.map((name) => `<option value="${escapeHTML(name)}"></option>`).join("")}</datalist><button class="primary-button small" type="submit">保存价格版本</button></form></article>`;
 }
 
+function latestPrivatePriceVersions(items) {
+  const latest = new Map();
+  items.forEach((item) => {
+    const key = `${String(item.tool || "").toLocaleLowerCase()}\u0000${String(item.model || "").toLocaleLowerCase()}`;
+    const current = latest.get(key);
+    if (!current || String(item.effective_from || "") > String(current.effective_from || "")) {
+      latest.set(key, item);
+    }
+  });
+  return [...latest.values()].filter((item) => item.public_estimate !== true);
+}
+
 function renderCosts() {
   const pricing = state.pageData || {};
   const items = normalizePriceRows(pricing);
   const totals = state.dashboard?.totals || {};
   const estimate = formatCostBreakdown(totals);
   const versionLabel = items.length ? `${items.length} 个价格版本` : "未配置";
-  return `<div class="cost-ledger"><article class="cost-card estimate"><span>01 / ESTIMATE</span><h2>${escapeHTML(estimate)}</h2><strong>API 等价估算</strong><p>${escapeHTML(costEstimateNote(totals, "按币种分别列示，不做隐含汇率换算。"))}</p></article><article class="cost-card actual"><span>02 / INVOICE</span><h2>—</h2><strong>实际 API 账单</strong><p>尚未导入供应商发票，不能拿估算冒充真实支出。</p></article><article class="cost-card fixed"><span>03 / FIXED</span><h2>—</h2><strong>固定订阅费用</strong><p>Claude/Codex 套餐与席位费应另行登记。</p></article></div>${state.me?.role === "admin" ? priceEditor() : ""}<article class="panel full-panel"><div class="panel-head"><div><span class="panel-kicker">PRICE SNAPSHOT</span><h2>模型价格版本</h2></div><span class="soft-badge">${escapeHTML(versionLabel)}</span></div>${items.length ? `<div class="table-scroll"><table><thead><tr><th>模型</th><th>工具</th><th>生效日期</th><th>币种</th><th>输入 / 百万</th><th>输出 / 百万</th><th>缓存读 / 百万</th><th>缓存写 / 百万</th><th>社群榜估算</th></tr></thead><tbody>${items.map((item) => { const currency = item.currency || "USD"; return `<tr><td><strong>${escapeHTML(item.model)}</strong></td><td>${escapeHTML(item.tool || "—")}</td><td><time datetime="${escapeHTML(item.effective_from || "")}">${escapeHTML(item.effective_from || "—")}</time></td><td><strong>${escapeHTML(currency)}</strong></td><td>${escapeHTML(formatMoney(item.input_per_million, currency))}</td><td>${escapeHTML(formatMoney(item.output_per_million, currency))}</td><td>${escapeHTML(formatMoney(item.cache_read_per_million, currency))}</td><td>${escapeHTML(formatMoney(item.cache_write_per_million, currency))}</td><td><button type="button" class="switch-control" role="switch" aria-checked="${item.public_estimate === true}" aria-label="${escapeHTML(item.model || "价格版本")}允许用于社群榜估算" data-action="toggle-price-public" data-price-id="${escapeHTML(item.id || "")}" data-enabled="${item.public_estimate !== true}" ${item.id ? "" : 'disabled title="该版本缺少可更新 ID"'}><span aria-hidden="true"></span><b>${item.public_estimate === true ? "允许" : "私有"}</b></button></td></tr>`; }).join("")}</tbody></table></div>` : emptyInline("还没有配置价格版本")}</article>`;
+  const latestPrivate = latestPrivatePriceVersions(items);
+  const publicCoverageWarning = latestPrivate.length
+    ? `<div class="boundary-card" role="alert"><span class="boundary-icon">!</span><div><strong>有 ${latestPrivate.length} 个工具/模型的最新价格版本是私有价格</strong><p>这些版本生效后的新用量会在公开榜显示“未定价”，不会继续沿用更早的公开价格。请确认这是预期行为。</p></div></div>`
+    : "";
+  return `<div class="cost-ledger"><article class="cost-card estimate"><span>01 / ESTIMATE</span><h2>${escapeHTML(estimate)}</h2><strong>API 等价估算</strong><p>${escapeHTML(costEstimateNote(totals, "按币种分别列示，不做隐含汇率换算。"))}</p></article><article class="cost-card actual"><span>02 / INVOICE</span><h2>—</h2><strong>实际 API 账单</strong><p>尚未导入供应商发票，不能拿估算冒充真实支出。</p></article><article class="cost-card fixed"><span>03 / FIXED</span><h2>—</h2><strong>固定订阅费用</strong><p>Claude/Codex 套餐与席位费应另行登记。</p></article></div>${state.me?.role === "admin" ? priceEditor() : ""}${publicCoverageWarning}<article class="panel full-panel"><div class="panel-head"><div><span class="panel-kicker">PRICE SNAPSHOT</span><h2>模型价格版本</h2></div><span class="soft-badge">${escapeHTML(versionLabel)}</span></div>${items.length ? `<div class="table-scroll"><table><thead><tr><th>模型</th><th>工具</th><th>生效日期</th><th>币种</th><th>输入 / 百万</th><th>输出 / 百万</th><th>缓存读 / 百万</th><th>缓存写 / 百万</th><th>社群榜估算</th></tr></thead><tbody>${items.map((item) => { const currency = item.currency || "USD"; return `<tr><td><strong>${escapeHTML(item.model)}</strong></td><td>${escapeHTML(item.tool || "—")}</td><td><time datetime="${escapeHTML(item.effective_from || "")}">${escapeHTML(item.effective_from || "—")}</time></td><td><strong>${escapeHTML(currency)}</strong></td><td>${escapeHTML(formatMoney(item.input_per_million, currency))}</td><td>${escapeHTML(formatMoney(item.output_per_million, currency))}</td><td>${escapeHTML(formatMoney(item.cache_read_per_million, currency))}</td><td>${escapeHTML(formatMoney(item.cache_write_per_million, currency))}</td><td><button type="button" class="switch-control" role="switch" aria-checked="${item.public_estimate === true}" aria-label="${escapeHTML(item.model || "价格版本")}允许用于社群榜估算" data-action="toggle-price-public" data-price-id="${escapeHTML(item.id || "")}" data-enabled="${item.public_estimate !== true}" ${item.id ? "" : 'disabled title="该版本缺少可更新 ID"'}><span aria-hidden="true"></span><b>${item.public_estimate === true ? "允许" : "私有"}</b></button></td></tr>`; }).join("")}</tbody></table></div>` : emptyInline("还没有配置价格版本")}</article>`;
 }
 
 function renderSettings() {
@@ -786,6 +813,8 @@ document.addEventListener("click", async (event) => {
   if (action === "logout") {
     const logoutGeneration = beginNavigation();
     clearApiKey();
+    clearJoinCode();
+    clearPrivateState();
     if (demoMode) location.href = "./";
     else if (isCurrentNavigation(logoutGeneration)) renderLogin();
   }
@@ -842,6 +871,7 @@ document.addEventListener("click", async (event) => {
     if (target.dataset.pending === "true" || !target.dataset.priceId) return;
     const enabled = target.dataset.enabled === "true";
     if (enabled && !confirm("允许这个冻结价格版本用于匿名社群榜的 API 等价估算？费率本身不会公开。")) return;
+    if (!enabled && !confirm("设为私有后，如果它是该工具/模型最新生效的价格，新用量会在公开榜显示“未定价”，不会沿用旧公开价格。确认继续？")) return;
     target.dataset.pending = "true";
     target.disabled = true;
     target.setAttribute("aria-busy", "true");

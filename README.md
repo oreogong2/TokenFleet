@@ -89,7 +89,9 @@ TokenFleet 默认只做本地统计；社群同步由成员收到专属链接、
 
 它只读取 Token 用量元数据，例如日期、模型、客户端名称和 Token 数量，用于生成趋势、圆环和统计图。
 
-它不会上传你的代码、prompt、对话正文或项目文件。正式客户端固定唯一社群 HTTPS 地址，成员不能把历史日聚合误发到任意服务器。
+它不会上传你的代码、prompt、对话正文或项目文件。官方安装命令会把唯一社群 HTTPS
+地址写进客户端配置，运行时不提供成员覆盖入口，因此历史日聚合不能改发到任意服务器；
+这个地址由安装/构建产物固定，而不是把某个域名硬编码进通用源码。
 
 「消耗金额」只是本地粗略估算，不等于真实账单。
 
@@ -185,7 +187,7 @@ TokenStepSwift/dist/TokenFleet.app
 Developer ID 签名 + Apple 公证：
 
 ```bash
-TOKENFLEET_VERSION=0.1.0-beta.3 \
+TOKENFLEET_VERSION=0.1.0-beta.4 \
 TOKENFLEET_BUNDLE_ID="com.yourcompany.TokenFleet" \
 TOKENFLEET_TEAM_ID="ABCDE12345" \
 TOKENFLEET_UPDATE_API_URL="https://updates.example.com/tokenfleet/latest" \

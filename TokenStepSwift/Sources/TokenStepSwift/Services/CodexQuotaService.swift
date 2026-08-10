@@ -2,6 +2,12 @@ import Foundation
 
 enum CodexQuotaService {
     private static let requestID = 2
+    private static let trustedExecutablePaths = [
+        "/opt/homebrew/bin/codex",
+        "/usr/local/bin/codex",
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local/bin/codex").path
+    ]
 
     static func read() throws -> CodexQuotaSnapshot {
         let output = try runAppServerRequest()
@@ -58,8 +64,11 @@ enum CodexQuotaService {
         var errorOutput = Data()
         var didReceiveQuotaResponse = false
 
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["codex", "app-server", "--listen", "stdio://"]
+        guard let executableURL = firstExecutableURL(paths: trustedExecutablePaths) else {
+            throw TokenStepError.message(L("暂未读取到 Codex 额度"))
+        }
+        process.executableURL = executableURL
+        process.arguments = ["app-server", "--listen", "stdio://"]
         process.environment = appServerEnvironment()
         process.standardInput = inputPipe
         process.standardOutput = outputPipe
@@ -188,14 +197,25 @@ enum CodexQuotaService {
         throw TokenStepError.message(L("暂未读取到 Codex 额度"))
     }
 
+    static func firstExecutableURL(
+        paths: [String],
+        fileManager: FileManager = .default
+    ) -> URL? {
+        for path in paths where path.hasPrefix("/") && !path.contains("/../") {
+            let url = URL(fileURLWithPath: path).standardizedFileURL
+            guard url.path == path, fileManager.isExecutableFile(atPath: path) else { continue }
+            return url
+        }
+        return nil
+    }
+
     private static func appServerEnvironment() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
-        let defaultPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-        if let existing = environment["PATH"], !existing.isEmpty {
-            environment["PATH"] = "\(defaultPath):\(existing)"
-        } else {
-            environment["PATH"] = defaultPath
-        }
+        // The selected Codex binary is an explicit absolute path. Keep a fixed
+        // child PATH only for its interpreter/runtime and never append the App's
+        // inherited PATH, which may contain the working directory or writable
+        // tool shims ahead of the intended installation.
+        environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         return environment
     }
 }

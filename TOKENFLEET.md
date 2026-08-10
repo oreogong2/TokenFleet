@@ -61,8 +61,9 @@ PYTHONPATH=clients/windows python3 -m unittest discover -s clients/windows/tests
 - SQLite 单实例开发/小团队试运行：已通过自动化与真实浏览器联调；
 - PostgreSQL 数据层：真实 PostgreSQL 17 迁移、回滚/再升级、schema 漂移、自然键/质量/tombstone/配额并发、跨连接设备与组织限速、一次性注册竞争和三设备极值黑盒均已通过；
 - PostgreSQL 生产部署：仍需在目标环境完成 TLS、数据库/备份加密、单进程或网关级共享人类登录限流、监控和恢复演练；
-- 生产稳定版：必须再完成 5–10 人、14 天试运行且 P0/P1 为 0；
+- 生产稳定版：当前 50 人邀请测试用于集中收集反馈；要改称稳定版，仍须完成至少 14 天
+  连续运行且 P0/P1 为 0；
 - macOS 社群连接：file-login Keychain 凭据存储、固定 HTTPS origin、本机稳定自签安装、升级回滚与安全关闭路径均已落地；自动化只使用隔离临时钥匙串。向社群下发前仍须在一台干净 Mac 的真实登录钥匙串完成首次登记、重启、升级复用和卸载保留人工验收。
-- Windows 参赛端：首版支持 Codex / Claude Code 采集、DPAPI 安全连接、安装时固定社群 origin、计划任务自动同步和上榜，跨平台自动化 22 项通过；不采集 CC Switch，也不宣称具备 macOS 同级完整桌面明细。向社群下发前仍须在真实 Windows 10/11 完成 DPAPI、计划任务、升级和卸载 E2E。
+- Windows 参赛端：首版支持 Codex / Claude Code 采集、DPAPI 安全连接、安装时固定社群 origin、计划任务自动同步和上榜，跨平台自动化 26 项通过；不采集 CC Switch，也不宣称具备 macOS 同级完整桌面明细。向社群下发前仍须在真实 Windows 10/11 完成 DPAPI、计划任务、升级和卸载 E2E。
 
 TokenStep 上游代码遵循 MIT License；本仓库保留原版权与许可声明，见 `LICENSE` 与 `NOTICE`。

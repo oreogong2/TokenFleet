@@ -217,6 +217,9 @@ mkdir -p "$INSTALL_ROOT"
 mkdir -p "$STATE_ROOT/backups"
 chmod 700 "$STATE_ROOT" "$STATE_ROOT/backups"
 TARGET_APP="$INSTALL_ROOT/TokenFleet.app"
+BACKEND_FILE="$STATE_ROOT/current-backend"
+FINGERPRINT_FILE="$STATE_ROOT/signing-identity.sha1"
+ORIGIN_FILE="$STATE_ROOT/community-origin"
 
 cleanup() {
   local status=$?
@@ -259,6 +262,34 @@ cleanup() {
 }
 trap cleanup EXIT
 
+RECORDED_BACKEND=""
+if [[ -e "$BACKEND_FILE" || -L "$BACKEND_FILE" ]]; then
+  [[ -f "$BACKEND_FILE" && ! -L "$BACKEND_FILE" ]] || {
+    tokenfleet_source_error "the recorded credential backend is not a regular file"
+    exit 2
+  }
+  RECORDED_BACKEND="$(/usr/bin/tr -d '[:space:]' <"$BACKEND_FILE")"
+  [[ "$RECORDED_BACKEND" == "$TOKENFLEET_SOURCE_BACKEND_ENABLED" \
+      || "$RECORDED_BACKEND" == "$TOKENFLEET_SOURCE_BACKEND_DISABLED" ]] || {
+    tokenfleet_source_error "the recorded credential backend is malformed"
+    exit 2
+  }
+fi
+
+RECORDED_ORIGIN=""
+if [[ -e "$ORIGIN_FILE" || -L "$ORIGIN_FILE" ]]; then
+  [[ -f "$ORIGIN_FILE" && ! -L "$ORIGIN_FILE" ]] || {
+    tokenfleet_source_error "the recorded community origin is not a regular file"
+    exit 2
+  }
+  RECORDED_ORIGIN="$(/usr/bin/tr -d '\r\n' <"$ORIGIN_FILE")"
+  /usr/bin/python3 "$ROOT_DIR/script/validate_community_origin.py" "$RECORDED_ORIGIN" \
+    >/dev/null || {
+      tokenfleet_source_error "the recorded community origin is malformed"
+      exit 2
+    }
+fi
+
 CURRENT_BACKEND=""
 CURRENT_FINGERPRINT=""
 if [[ -e "$TARGET_APP" || -L "$TARGET_APP" ]]; then
@@ -276,11 +307,6 @@ if [[ -e "$TARGET_APP" || -L "$TARGET_APP" ]]; then
       tokenfleet_source_error "the existing sync build has no readable signing certificate"
       exit 2
     }
-    if [[ "$MODE" == "local-only" && "$ALLOW_DISABLE_SYNC" != true ]]; then
-      tokenfleet_source_error "the installed App has community sync enabled"
-      tokenfleet_source_error "add --allow-disable-community-sync to make the downgrade explicit"
-      exit 2
-    fi
   fi
   if [[ "$TEST_MODE" != "1" ]] && /usr/bin/pgrep -x TokenFleet >/dev/null 2>&1; then
     tokenfleet_source_error "quit TokenFleet before upgrading or replacing it"
@@ -288,9 +314,22 @@ if [[ -e "$TARGET_APP" || -L "$TARGET_APP" ]]; then
   fi
 fi
 
+if [[ "$MODE" == "local-only" && "$ALLOW_DISABLE_SYNC" != true \
+    && ( "$CURRENT_BACKEND" == "$TOKENFLEET_SOURCE_BACKEND_ENABLED" \
+      || "$RECORDED_BACKEND" == "$TOKENFLEET_SOURCE_BACKEND_ENABLED" ) ]]; then
+  tokenfleet_source_error "this Mac has community sync enabled or recorded"
+  tokenfleet_source_error "add --allow-disable-community-sync to make the downgrade explicit"
+  exit 2
+fi
+
+if [[ "$MODE" == "community" && -n "$RECORDED_ORIGIN" \
+    && "$RECORDED_ORIGIN" != "$COMMUNITY_SERVER_URL" ]]; then
+  tokenfleet_source_error "the requested community origin differs from this Mac's recorded origin"
+  tokenfleet_source_error "do not change origins in place; re-enroll through an approved migration"
+  exit 2
+fi
+
 RECORDED_FINGERPRINT=""
-FINGERPRINT_FILE="$STATE_ROOT/signing-identity.sha1"
-ORIGIN_FILE="$STATE_ROOT/community-origin"
 if [[ -f "$FINGERPRINT_FILE" && ! -L "$FINGERPRINT_FILE" ]]; then
   RECORDED_FINGERPRINT="$(/usr/bin/tr -d '[:space:]' <"$FINGERPRINT_FILE")"
   [[ ${#RECORDED_FINGERPRINT} -eq 40 && "$RECORDED_FINGERPRINT" =~ ^[0-9A-F]+$ ]] || {

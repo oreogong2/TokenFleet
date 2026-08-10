@@ -41,9 +41,10 @@ enrollment token；两项在同一事务完成。该流程默认有效 60 分钟
 剪贴板。邀请码只负责登记一台设备，长期上传使用该设备独立 secret；分享图和公开
 网页从不包含 enrollment token 或 device secret。
 
-正式 macOS 构建把唯一 canonical HTTPS 社群 origin 作为签名包配置；Windows 参赛端
-由成员在首次连接时显式输入管理员提供的 HTTPS origin，并把规范化后的 origin 与
-设备凭据绑定。两端都拒绝空值、HTTP、userinfo、query、fragment 和 loopback。
+官方 macOS 安装/构建把唯一 canonical HTTPS 社群 origin 写入 App 配置；Windows
+安装器把同一类 origin 写入带完整性校验的安装配置。两端通用源码都不硬编码生产
+域名，运行时也不允许成员在 `connect` 或设置里覆盖；升级必须保持相同 origin。
+两端都拒绝空值、HTTP、userinfo、query、fragment 和 loopback。
 成员只在隐藏输入中提交一次性码。连接确认文案必须说明会立即同步当前可验证的
 历史日桶，并持续后台同步。`/join` 读取 fragment 后立即调用 `history.replaceState`
 清掉地址栏/历史中的码，并在 `pagehide` 清空内存。

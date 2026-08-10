@@ -72,6 +72,12 @@ def create_app(*, settings: Settings | None = None, engine: Engine | None = None
         raise RuntimeError(
             "public cache TTL must be 1-300 seconds and max entries must be positive"
         )
+    if (
+        resolved_settings.enrollment_rate_limit_attempts < 1
+        or resolved_settings.enrollment_rate_limit_window_seconds < 1
+        or resolved_settings.enrollment_rate_limit_max_keys < 1
+    ):
+        raise RuntimeError("enrollment rate-limit settings must be positive")
     if len(resolved_settings.public_org_slug.strip()) > 64:
         raise RuntimeError("PUBLIC_ORG_SLUG cannot exceed 64 characters")
     if (
@@ -124,6 +130,11 @@ def create_app(*, settings: Settings | None = None, engine: Engine | None = None
         attempts=resolved_settings.public_rate_limit_attempts,
         window_seconds=resolved_settings.public_rate_limit_window_seconds,
         max_keys=resolved_settings.public_rate_limit_max_keys,
+    )
+    application.state.enrollment_rate_limiter = PublicReadRateLimiter(
+        attempts=resolved_settings.enrollment_rate_limit_attempts,
+        window_seconds=resolved_settings.enrollment_rate_limit_window_seconds,
+        max_keys=resolved_settings.enrollment_rate_limit_max_keys,
     )
     application.state.public_projection_cache = PublicProjectionCache(
         ttl_seconds=resolved_settings.public_cache_ttl_seconds,

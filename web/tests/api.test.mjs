@@ -273,6 +273,8 @@ test("global navigation generation gates admin/public loads, mutations, dialogs 
   assert.match(appSource, /async function loadPage\(generation = navigationGeneration\)[\s\S]*const route = \{ \.\.\.state\.route \};[\s\S]*isCurrentNavigation\(generation\)/);
   assert.match(appSource, /const generation = navigationGeneration;[\s\S]*createEnrollment[\s\S]*if \(!isCurrentNavigation\(generation\)\) return;[\s\S]*showOneTimeConnection\(result, generation\)/);
   assert.match(appSource, /if \(action === "logout"\) \{[\s\S]*beginNavigation\(\);[\s\S]*renderLogin/);
+  assert.match(appSource, /function clearPrivateState\(\)[\s\S]*state\.me = null;[\s\S]*state\.dashboard = null;[\s\S]*state\.pageData = null;/);
+  assert.match(appSource, /if \(action === "logout"\) \{[\s\S]*clearApiKey\(\);[\s\S]*clearJoinCode\(\);[\s\S]*clearPrivateState\(\);/);
   assert.match(appSource, /people\.filter\(\(person\) => person\.status === "active" && person\.role === "member"\)/);
 });
 
@@ -327,6 +329,8 @@ test("admins can create verified price versions without bundled price guesses", 
   assert.match(appSource, /不预填“当前官方价”/);
   assert.match(appSource, /已有未定价明细不会自动重算/);
   assert.match(appSource, /await api\.updatePricing\(/);
+  assert.match(appSource, /latestPrivatePriceVersions\(items\)/);
+  assert.match(appSource, /新用量会在公开榜显示“未定价”/);
   assert.match(appSource, /currency: String\(data\.currency/);
   assert.match(appSource, /\.toUpperCase\(\)/);
   assert.match(appSource, /input_per_million: String\(data\.input_per_million/);

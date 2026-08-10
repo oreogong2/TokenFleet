@@ -238,11 +238,31 @@ if TOKENFLEET_SOURCE_TEST_MODE=1 \
     TOKENFLEET_SOURCE_STATE_ROOT="$COMMUNITY_STATE_ROOT" \
     TOKENFLEET_SOURCE_TEST_STABLE_FIXTURE=1 \
     TOKENFLEET_SOURCE_TEST_STABLE_SHA1="$IDENTITY_ONE" \
-    TOKENFLEET_SOURCE_TEST_FAIL_STATE_COMMIT=after-community-origin \
     TOKENFLEET_VERSION="0.1.0-source.3" \
       "$ROOT_DIR/script/install_from_source.sh" \
         --enable-community-sync \
         --community-server "$ALTERNATE_ORIGIN" \
+        --yes \
+        --no-launch >/dev/null 2>&1; then
+  fail "community install silently changed the recorded origin"
+fi
+[[ "$(fingerprint_tree "$COMMUNITY_APP")" == "$COMMUNITY_BASELINE" ]] \
+  || fail "rejected origin change modified the prior community App"
+[[ "$(/bin/cat "$ORIGIN_FILE")" == "$COMMUNITY_ORIGIN" \
+    && "$(/usr/bin/tr -d '[:space:]' <"$PIN_FILE")" == "$PERSISTED_PIN" \
+    && "$(/bin/cat "$COMMUNITY_STATE_ROOT/current-backend")" == "$TOKENFLEET_SOURCE_BACKEND_ENABLED" ]] \
+  || fail "rejected origin change modified persisted community state"
+
+if TOKENFLEET_SOURCE_TEST_MODE=1 \
+    TOKENFLEET_SOURCE_INSTALL_ROOT="$COMMUNITY_INSTALL_ROOT" \
+    TOKENFLEET_SOURCE_STATE_ROOT="$COMMUNITY_STATE_ROOT" \
+    TOKENFLEET_SOURCE_TEST_STABLE_FIXTURE=1 \
+    TOKENFLEET_SOURCE_TEST_STABLE_SHA1="$IDENTITY_ONE" \
+    TOKENFLEET_SOURCE_TEST_FAIL_STATE_COMMIT=after-community-origin \
+    TOKENFLEET_VERSION="0.1.0-source.3" \
+      "$ROOT_DIR/script/install_from_source.sh" \
+        --enable-community-sync \
+        --community-server "$COMMUNITY_ORIGIN" \
         --yes \
         --no-launch >/dev/null 2>&1; then
   fail "injected community state-publication failure unexpectedly succeeded"
@@ -258,6 +278,19 @@ COMMUNITY_BACKUP="$COMMUNITY_STATE_ROOT/backups/TokenFleet-20010101T000000Z-comm
 /usr/bin/ditto "$COMMUNITY_APP" "$COMMUNITY_BACKUP"
 mv "$COMMUNITY_APP" "$TEST_ROOT/removed-community-current.app"
 [[ ! -e "$COMMUNITY_APP" ]] || fail "could not simulate a missing current App"
+
+if TOKENFLEET_SOURCE_TEST_MODE=1 \
+    TOKENFLEET_SOURCE_INSTALL_ROOT="$COMMUNITY_INSTALL_ROOT" \
+    TOKENFLEET_SOURCE_STATE_ROOT="$COMMUNITY_STATE_ROOT" \
+      "$ROOT_DIR/script/install_from_source.sh" \
+        --local-only \
+        --no-launch >/dev/null 2>&1; then
+  fail "missing App plus persisted community state silently installed local-only"
+fi
+[[ ! -e "$COMMUNITY_APP" \
+    && "$(/bin/cat "$COMMUNITY_STATE_ROOT/current-backend")" == "$TOKENFLEET_SOURCE_BACKEND_ENABLED" \
+    && "$(/bin/cat "$ORIGIN_FILE")" == "$COMMUNITY_ORIGIN" ]] \
+  || fail "rejected missing-App downgrade changed App or persisted community state"
 
 TOKENFLEET_SOURCE_TEST_MODE=1 \
 TOKENFLEET_SOURCE_INSTALL_ROOT="$COMMUNITY_INSTALL_ROOT" \

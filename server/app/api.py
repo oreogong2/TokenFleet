@@ -185,6 +185,17 @@ def _consume_public_read_limit(request: Request) -> None:
         )
 
 
+def _consume_enrollment_limit(request: Request) -> None:
+    limiter_key = _client_rate_key(request)
+    retry_after = request.app.state.enrollment_rate_limiter.consume(limiter_key)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="too many device enrollment attempts",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
 def _normalized_public_filter(value: str | None, field_name: str) -> str | None:
     if value is None:
         return None
@@ -695,9 +706,14 @@ def create_enrollment_token_alias(
 @router.post("/api/v1/devices/enroll", response_model=DeviceEnrollResponse, status_code=201)
 def enroll_device(
     payload: DeviceEnrollRequest,
+    request: Request,
     response: Response,
     session: Session = Depends(get_session),
 ) -> DeviceEnrollResponse:
+    # Consume the anonymous network bucket before touching the token table.
+    # One-time codes are high entropy, but this closes the database-amplification
+    # path and is deliberately independent from whether a code is valid.
+    _consume_enrollment_limit(request)
     now = utcnow()
     claimed = session.execute(
         update(EnrollmentToken)

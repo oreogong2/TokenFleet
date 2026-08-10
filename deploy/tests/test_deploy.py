@@ -33,6 +33,8 @@ class ProductionEnvironmentTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o600)
             self.assertEqual(values["TOKENFLEET_DOMAIN"], "rank.example.com")
             self.assertEqual(values["PUBLIC_ORG_SLUG"], "example-community")
+            self.assertEqual(values["ENROLLMENT_RATE_LIMIT_ATTEMPTS"], "60")
+            self.assertEqual(values["ENROLLMENT_RATE_LIMIT_WINDOW_SECONDS"], "60")
             self.assertNotIn(values["POSTGRES_PASSWORD"], captured.getvalue())
             self.assertNotIn(values["JWT_SECRET"], captured.getvalue())
 
@@ -118,6 +120,8 @@ class ProductionAssetTests(unittest.TestCase):
         self.assertIn("limit_req_status 429", site)
         self.assertIn("tokenfleet_public_ip", site)
         self.assertIn("tokenfleet_login_ip", site)
+        self.assertIn("tokenfleet_enrollment_ip", site)
+        self.assertIn("location = /api/v1/devices/enroll", site)
         self.assertIn("client_max_body_size 2m", site)
 
         direct_tls = (
@@ -130,6 +134,8 @@ class ProductionAssetTests(unittest.TestCase):
         self.assertNotIn("proxy_pass", bootstrap)
         self.assertIn("X-Forwarded-For $remote_addr", proxy)
         self.assertIn("limit_req_status 429", direct_tls)
+        self.assertIn("tokenfleet_enrollment_ip", direct_tls)
+        self.assertIn("location = /api/v1/devices/enroll", direct_tls)
         self.assertIn("/etc/letsencrypt/live/__TOKENFLEET_DOMAIN__", direct_tls)
         self.assertNotIn("$proxy_add_x_forwarded_for", direct_tls)
 

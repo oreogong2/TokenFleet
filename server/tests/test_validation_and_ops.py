@@ -286,6 +286,13 @@ def test_runtime_settings_reject_unsafe_nonce_and_rate_limits() -> None:
                 public_cache_ttl_seconds=301,
             )
         )
+    with pytest.raises(RuntimeError, match="enrollment rate-limit"):
+        create_app(
+            settings=Settings(
+                jwt_secret=safe_secret,
+                enrollment_rate_limit_attempts=0,
+            )
+        )
 
 
 def test_organization_settings_are_admin_only_and_validate_timezone(harness) -> None:
