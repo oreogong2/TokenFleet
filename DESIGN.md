@@ -5,8 +5,8 @@
 TokenFleet is an AI usage log, not a generic analytics dashboard. Its visual
 language combines warm paper, precise ledger lines, square signal marks, and a
 single deep green accent. Pages should feel calm, accountable, and easy to scan.
-The first three-second read is always: my usage, my position, and what composed
-the number.
+The first three-second read is always: usage scale, leading positions, and what
+composed the number. Anonymous pages never guess which visitor is a member.
 
 ## 2. Color Palette & Roles
 
@@ -43,8 +43,8 @@ decorative wash. Pages use one light theme; overlays may use a charcoal scrim.
 - Secondary buttons use transparent or paper surfaces with an ink border.
 - Filter controls are direct segmented buttons, not select menus followed by an
   “apply” action.
-- Ranking lists place the current member first in a distinct mint ledger row,
-  followed by a clearly marked top three.
+- Anonymous ranking lists start with a clearly marked top three and then the
+  remaining participants. They do not infer or pin a “current member”.
 - Do not synthesize avatars. Nickname and rank are the identity layer until a
   user-authorized avatar source exists.
 - Share preview has one entry point and only two actions: “保存图片” and “关闭”.
@@ -54,8 +54,9 @@ decorative wash. Pages use one light theme; overlays may use a charcoal scrim.
 - Base spacing unit: 4 px; primary rhythm: 8, 12, 16, 24, 32, 48, 64.
 - Web content max width: 1280 px.
 - Prefer hairline divisions and asymmetric editorial grids over card walls.
-- Leaderboards prioritize the current member, then the top three, then the rest.
-- Mac App primary navigation is consolidated into “用量 / 社群 / 设置”.
+- Leaderboards prioritize the top three and then the remaining participants.
+- Mac App primary navigation is consolidated into “今日 / 历史 / 社群”, with
+  “设置” available through a separate entry point.
 - Usage ranges are “今天 / 近 7 天 / 近 30 天 / 近 90 天 / 全部”.
 
 ## 6. Depth & Elevation
@@ -77,9 +78,11 @@ to turn every section into a card.
 - Show observed tool and model names with their actual usage.
 - Keep public copy explicit about what is and is not uploaded.
 - Use real empty, loading, error, and success states.
-- Show chart values on mouse hover, keyboard focus, and touch selection.
-- Keep exported ranking images to the current member, top 10, and one scannable
-  QR code for the complete ranking.
+- Show chart values on mouse hover and keyboard focus. A future touch-specific
+  interaction must use an explicit tap path rather than depend on hover.
+- Keep global ranking images to the top 10 and one scannable QR code for the
+  complete ranking. When sharing from a member profile, add that selected member
+  as a separate focus row even when they are outside the top 10.
 
 ### Don't
 
@@ -94,10 +97,11 @@ to turn every section into a card.
 
 - Below 900 px, filter rails may scroll horizontally and leaderboard metrics
   split into two readable rows.
-- Below 640 px, leaderboard rows retain rank, nickname, leading models, and total;
-  the four Token classes move into the detail view.
+- Below 640 px, leaderboard rows retain rank, nickname, primary metric, and total;
+  the four Token classes remain in the row and reflow into a two-column grid.
 - Touch targets are at least 44 px where the platform permits.
-- Chart selection works by tap on touch devices and never depends on hover alone.
+- Chart values remain readable without hover; do not claim tap selection until
+  an explicit touch path has browser coverage.
 - Long nicknames, tool names, and model names truncate without moving numeric
   columns.
 

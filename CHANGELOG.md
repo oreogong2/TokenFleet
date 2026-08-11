@@ -7,10 +7,10 @@
 - Rebuilt the public leaderboard as a responsive warm-paper interface with
   direct period, accounting, tool, and model filters and clearer participant
   counts.
-- Consolidated sharing into one accessible poster preview with a larger current
-  participant summary, Top 10 context, a scannable leaderboard QR code, and
-  save/close actions.
-- Added mouse, keyboard, and touch values to Web trend charts, and simplified
+- Consolidated sharing into one accessible poster preview with global Top 10
+  context, an extra selected-member summary when launched from a member profile,
+  a scannable leaderboard QR code, and save/close actions.
+- Added mouse-hover and keyboard-focus values to Web trend charts, and simplified
   the Mac client around Today, History, Community, and Settings with explicit
   daily-goal progress and 7/30/90-day/all-time history.
 - Added a privacy-safe first-50 feedback checklist for measuring unsupported
