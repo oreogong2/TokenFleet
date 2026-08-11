@@ -6,15 +6,22 @@ from uuid import uuid4
 
 from alembic import command
 from alembic.config import Config
+from fastapi.testclient import TestClient
 import pytest
 from sqlalchemy import create_engine, func, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 
+from app.middleware import parse_trusted_proxy_cidrs
 from app.models import EnrollmentToken, InvitationBatch, User, UserRole, utcnow
+from app.rate_limit import PublicReadRateLimiter
 from app.security import opaque_token_hash
 
 
 SERVER_ROOT = Path(__file__).resolve().parents[1]
+EXPANDING_NICKNAMES = (
+    "\ufdfa" * 29,
+    "\ufdfa" * 28 + "\u0390" * 3,
+)
 
 
 def _create_batch(harness, *, capacity: int = 50, expires_in_hours: int = 24):
@@ -37,6 +44,17 @@ def _claim(harness, token: str, nickname: str):
             "public_profile_enabled": True,
         },
     )
+
+
+def _claim_database_state(harness, batch_id: str) -> tuple[int, int, int]:
+    with harness.session_factory() as session:
+        batch = session.get(InvitationBatch, batch_id)
+        assert batch is not None
+        return (
+            session.scalar(select(func.count()).select_from(User)) or 0,
+            session.scalar(select(func.count()).select_from(EnrollmentToken)) or 0,
+            batch.claimed_count,
+        )
 
 
 def _recursive_keys(value) -> set[str]:
@@ -126,6 +144,237 @@ def test_anonymous_claim_is_atomic_and_response_is_public_field_whitelist(harnes
             .select_from(EnrollmentToken)
             .where(EnrollmentToken.user_id == participant.id)
         ) == 1
+
+
+@pytest.mark.parametrize("nickname", EXPANDING_NICKNAMES)
+def test_expanding_claim_nickname_returns_422_without_side_effects(
+    harness,
+    nickname: str,
+) -> None:
+    created = _create_batch(harness, capacity=2)
+    with harness.session_factory() as session:
+        before_users = session.scalar(select(func.count()).select_from(User)) or 0
+        before_tokens = (
+            session.scalar(select(func.count()).select_from(EnrollmentToken)) or 0
+        )
+
+    response = _claim(
+        harness,
+        created["invitation_token"],
+        f"  {nickname}  ",
+    )
+    assert response.status_code == 422
+    assert response.headers["Cache-Control"] == "no-store"
+    assert nickname not in response.text
+    assert created["invitation_token"] not in response.text
+
+    with harness.session_factory() as session:
+        batch = session.get(InvitationBatch, created["batch"]["id"])
+        assert batch is not None and batch.claimed_count == 0
+        assert session.scalar(select(func.count()).select_from(User)) == before_users
+        assert (
+            session.scalar(select(func.count()).select_from(EnrollmentToken))
+            == before_tokens
+        )
+
+
+@pytest.mark.parametrize("nickname", EXPANDING_NICKNAMES)
+def test_expanding_admin_nickname_returns_422_without_side_effects(
+    harness,
+    nickname: str,
+) -> None:
+    with harness.session_factory() as session:
+        before_users = session.scalar(select(func.count()).select_from(User)) or 0
+        before_tokens = (
+            session.scalar(select(func.count()).select_from(EnrollmentToken)) or 0
+        )
+
+    response = harness.client.post(
+        "/api/v1/admin/participants",
+        headers=harness.auth("a_admin"),
+        json={
+            "display_name": f"  {nickname}  ",
+            "public_profile_enabled": True,
+            "expires_in_minutes": 60,
+        },
+    )
+    assert response.status_code == 422
+    assert response.headers["Cache-Control"] == "no-store"
+    assert nickname not in response.text
+
+    with harness.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(User)) == before_users
+        assert (
+            session.scalar(select(func.count()).select_from(EnrollmentToken))
+            == before_tokens
+        )
+
+
+def test_claim_uses_direct_ip_and_an_independent_process_local_bucket(harness) -> None:
+    created = _create_batch(harness, capacity=2)
+    before = _claim_database_state(harness, created["batch"]["id"])
+    limiter = PublicReadRateLimiter(attempts=2, window_seconds=60, max_keys=10)
+    harness.app.state.claim_rate_limiter = limiter
+
+    with TestClient(
+        harness.app,
+        client=("198.51.100.25", 50_000),
+    ) as direct_client:
+        for index, forwarded_for in enumerate(
+            ("203.0.113.99", "203.0.113.100"),
+            start=1,
+        ):
+            rejected = direct_client.post(
+                "/api/v1/public/invitation-batches/claim",
+                headers={"X-Forwarded-For": forwarded_for},
+                json={
+                    "invitation_token": f"invalid-claim-token-{index:02d}" + "x" * 32,
+                    "display_name": f"无效直连-{index}",
+                    "public_profile_enabled": True,
+                },
+            )
+            assert rejected.status_code == 409
+
+        limited = direct_client.post(
+            "/api/v1/public/invitation-batches/claim",
+            headers={"X-Forwarded-For": "203.0.113.101"},
+            json={
+                "invitation_token": created["invitation_token"],
+                "display_name": "不会创建的成员",
+                "public_profile_enabled": True,
+            },
+        )
+
+    assert limited.status_code == 429
+    assert limited.json() == {"detail": "too many invitation batch claim attempts"}
+    assert int(limited.headers["Retry-After"]) >= 1
+    assert created["invitation_token"] not in limited.text
+    assert len(limiter._events) == 1
+    assert harness.app.state.enrollment_rate_limiter._events == {}
+    assert limiter is not harness.app.state.enrollment_rate_limiter
+    assert _claim_database_state(harness, created["batch"]["id"]) == before
+
+
+def test_claim_uses_verified_forwarded_ip_for_trusted_proxy_buckets(harness) -> None:
+    created = _create_batch(harness, capacity=2)
+    before = _claim_database_state(harness, created["batch"]["id"])
+    harness.app.state.trusted_proxy_networks = parse_trusted_proxy_cidrs(
+        "10.0.0.0/8"
+    )
+    harness.app.state.trusted_proxy_hops = 1
+    limiter = PublicReadRateLimiter(attempts=2, window_seconds=60, max_keys=10)
+    harness.app.state.claim_rate_limiter = limiter
+
+    with TestClient(
+        harness.app,
+        client=("10.20.30.40", 50_000),
+    ) as proxy_client:
+        for index in range(2):
+            rejected = proxy_client.post(
+                "/api/v1/public/invitation-batches/claim",
+                headers={"X-Forwarded-For": "198.51.100.25"},
+                json={
+                    "invitation_token": f"invalid-proxy-token-{index:02d}" + "x" * 32,
+                    "display_name": f"无效代理-{index}",
+                    "public_profile_enabled": True,
+                },
+            )
+            assert rejected.status_code == 409
+
+        limited = proxy_client.post(
+            "/api/v1/public/invitation-batches/claim",
+            headers={"X-Forwarded-For": "198.51.100.25"},
+            json={
+                "invitation_token": created["invitation_token"],
+                "display_name": "不会创建的代理成员",
+                "public_profile_enabled": True,
+            },
+        )
+        separate_client = proxy_client.post(
+            "/api/v1/public/invitation-batches/claim",
+            headers={"X-Forwarded-For": "198.51.100.26"},
+            json={
+                "invitation_token": "separate-forwarded-client-" + "x" * 32,
+                "display_name": "另一来源",
+                "public_profile_enabled": True,
+            },
+        )
+
+    assert limited.status_code == 429
+    assert int(limited.headers["Retry-After"]) >= 1
+    assert separate_client.status_code == 409
+    assert len(limiter._events) == 2
+    assert _claim_database_state(harness, created["batch"]["id"]) == before
+
+
+@pytest.mark.parametrize(
+    ("client_address", "forwarded_for"),
+    [
+        (("10.20.30.40", 50_000), None),
+        (("10.20.30.40", 50_000), "bogus, 198.51.100.25"),
+        (("10.20.30.40", 50_000), "unknown, 198.51.100.25"),
+        (("10.20.30.40", 50_000), "198.51.100.25:443"),
+        (("10.20.30.40", 50_000), ", ".join(["198.51.100.25"] * 33)),
+        (("192.0.2.10", 50_000), "198.51.100.25"),
+    ],
+)
+def test_claim_rejects_unverifiable_proxy_identity_without_side_effects(
+    harness,
+    client_address: tuple[str, int],
+    forwarded_for: str | None,
+) -> None:
+    created = _create_batch(harness, capacity=2)
+    before = _claim_database_state(harness, created["batch"]["id"])
+    harness.app.state.trusted_proxy_networks = parse_trusted_proxy_cidrs(
+        "10.0.0.0/8"
+    )
+    harness.app.state.trusted_proxy_hops = 1
+    limiter = PublicReadRateLimiter(attempts=2, window_seconds=60, max_keys=10)
+    harness.app.state.claim_rate_limiter = limiter
+    headers = {"X-Forwarded-For": forwarded_for} if forwarded_for else {}
+
+    with TestClient(harness.app, client=client_address) as proxy_client:
+        rejected = proxy_client.post(
+            "/api/v1/public/invitation-batches/claim",
+            headers=headers,
+            json={
+                "invitation_token": created["invitation_token"],
+                "display_name": "不会创建的错误代理成员",
+                "public_profile_enabled": True,
+            },
+        )
+
+    assert rejected.status_code == 400
+    assert rejected.json() == {"detail": "invalid client network identity"}
+    assert limiter._events == {}
+    assert _claim_database_state(harness, created["batch"]["id"]) == before
+
+
+def test_claim_rejects_uds_peer_without_side_effects(harness) -> None:
+    created = _create_batch(harness, capacity=2)
+    before = _claim_database_state(harness, created["batch"]["id"])
+    harness.app.state.trusted_proxy_networks = parse_trusted_proxy_cidrs(
+        "10.0.0.0/8"
+    )
+    harness.app.state.trusted_proxy_hops = 1
+    limiter = PublicReadRateLimiter(attempts=2, window_seconds=60, max_keys=10)
+    harness.app.state.claim_rate_limiter = limiter
+
+    with TestClient(harness.app, client=None) as uds_client:
+        rejected = uds_client.post(
+            "/api/v1/public/invitation-batches/claim",
+            headers={"X-Forwarded-For": "198.51.100.25"},
+            json={
+                "invitation_token": created["invitation_token"],
+                "display_name": "不会创建的 UDS 成员",
+                "public_profile_enabled": True,
+            },
+        )
+
+    assert rejected.status_code == 400
+    assert rejected.json() == {"detail": "invalid client network identity"}
+    assert limiter._events == {}
+    assert _claim_database_state(harness, created["batch"]["id"]) == before
 
 
 def test_batch_unavailable_response_is_identical_for_invalid_closed_expired_and_full(

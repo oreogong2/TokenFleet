@@ -142,6 +142,9 @@ All settings are environment variables:
 | `PUBLIC_MAX_SCAN_ROWS` | `250000` | Hard cap on exact visible candidate rows for one public period, checked before tool/model filters; broader requests return `503` with `public_projection_scan_limit_exceeded`. |
 | `PUBLIC_CACHE_TTL_SECONDS` | `15` | Shared/browser and process-local public projection TTL; constrained to 1–300 seconds. |
 | `PUBLIC_CACHE_MAX_ENTRIES` | `1024` | Process-local bounded LRU entry count. |
+| `CLAIM_RATE_LIMIT_ATTEMPTS` | `10` | Schema-valid anonymous invitation-claim attempts allowed per verified client IP in an independent process-local window. Attempts consume this bucket before the batch token is queried and never consume the enrollment bucket. |
+| `CLAIM_RATE_LIMIT_WINDOW_SECONDS` | `60` | Invitation-claim sliding-window duration. |
+| `CLAIM_RATE_LIMIT_MAX_KEYS` | `10000` | Hard cap for invitation-claim limiter buckets. |
 | `ENROLLMENT_RATE_LIMIT_ATTEMPTS` | `60` | Anonymous device-enrollment attempts allowed per verified client IP in the process-local window. Invalid codes consume this budget before the token table is queried. |
 | `ENROLLMENT_RATE_LIMIT_WINDOW_SECONDS` | `60` | Device-enrollment sliding-window duration. |
 | `ENROLLMENT_RATE_LIMIT_MAX_KEYS` | `10000` | Hard cap for device-enrollment limiter buckets. |
@@ -156,8 +159,9 @@ All settings are environment variables:
 | `BOOTSTRAP_ADMIN_PASSWORD` | unset | CLI-only transient bootstrap input. |
 
 The in-process account login limiter is always active. Without an explicit
-trusted-proxy configuration, per-IP login and public-read limits use the direct
-TCP peer and ignore caller-supplied forwarding headers. Behind a reverse proxy,
+trusted-proxy configuration, per-IP login, public-read, invitation-claim, and
+device-enrollment limits use the direct TCP peer and ignore caller-supplied
+forwarding headers. Behind a reverse proxy,
 configure both `TRUSTED_PROXY_CIDRS` and `TRUSTED_PROXY_HOPS`; otherwise every
 caller will legitimately appear to be the proxy and share its bucket. Trusted
 requests select the client from `X-Forwarded-For` at the configured hop, and
@@ -168,13 +172,14 @@ connection: Unix-domain-socket peers do not expose an IP that this CIDR trust
 model can verify. Configure Uvicorn's own proxy allow-list to the same ingress
 CIDRs and prevent direct public access to the application socket.
 
-These in-process login, public-read, and enrollment limiters are defense in depth for a single
-instance. They cannot observe attempts handled by another worker or host, and the
-application cannot reliably infer its deployment topology. **Production release
-gate:** run exactly one application process, or provide and verify a gateway,
-Redis, or another shared limiter for all three route classes before any multi-worker or
-multi-instance rollout. Process-local `429` tests are not evidence that this
-multi-instance gate is satisfied.
+These four in-process limiter classes—login, public-read, invitation-claim, and
+device-enrollment—are defense in depth for a single instance. They cannot observe
+attempts handled by another worker or host, and the application cannot reliably
+infer its deployment topology. **Production release gate:** run exactly one
+application process, or provide and verify a gateway, Redis, or another shared
+limiter for all four route classes before any multi-worker or multi-instance
+rollout. Process-local `429` tests are not evidence that this multi-instance gate
+is satisfied.
 
 ## Database lifecycle
 
@@ -250,6 +255,9 @@ immediately.
   `POST /api/v1/admin/invitation-batches/{batch_id}/close` (admin)
 - `POST /api/v1/public/invitation-batches/claim` (anonymous invite capability)
   - request: `{invitation_token, display_name, public_profile_enabled:true}`
+  - each schema-valid request consumes the independent verified-client-IP claim
+    bucket before the batch token is queried; the default is 10 attempts per 60
+    seconds and does not share the 60-per-minute device-enrollment bucket
   - locks the batch row and atomically creates a non-login participant, a
     60-minute personal enrollment token, and `claimed_count + 1`
   - a duplicate normalized nickname rolls back all three writes; invalid,

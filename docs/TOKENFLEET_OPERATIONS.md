@@ -11,8 +11,9 @@
 - SQLite 数据库放在加密磁盘；
 - 由 Caddy/Nginx/云负载均衡终止 TLS；
 - 每日自动备份，保留至少 14 天；
-- 管理员、私有账本和写入端点只允许经认证访问；匿名只读 `/rank` 与
-  `/api/v1/public/*` 可经 TLS/WAF 对外开放，并使用独立限流与扫描上限；
+- 管理员、私有账本和写入端点只允许经认证访问；匿名只读 `/rank`、公开榜与成员
+  详情接口可经 TLS/WAF 对外开放，并使用独立限流与扫描上限；批次领取是唯一匿名
+  写入口，并使用独立的来源 IP 限流桶；
 - 不把 Token 用量用于绩效评价。
 - 50 人可以在同一天通过一个管理员创建的受限批次链接获得使用资格；批次最多
   50 人、最长 24 小时且可关闭。成员填写唯一昵称后各自获得 60 分钟单次设备码；
@@ -21,8 +22,8 @@
 ### 1.2 生产部署前必须补齐
 
 - 在目标 PostgreSQL 版本与网络环境重跑迁移、双连接并发 upsert/deadlock smoke；
-- **多实例发布阻断：** 在网关或 Redis 落地并验证共享登录限流；没有共享限流
-  证据时只允许单进程，禁止多 worker/多主机上线；
+- **多实例发布阻断：** 在网关或 Redis 落地并验证共享登录、公开读取、批次领取和
+  设备登记限流；没有四类共享限流证据时只允许单进程，禁止多 worker/多主机上线；
 - 数据库、备份和派生 device signing key 的静态加密；
 - 集中审计、告警和恢复演练；
 - 50 人邀请测试完成并连续运行至少 14 天，P0/P1 为 0。
@@ -41,6 +42,9 @@ export PUBLIC_RATE_LIMIT_WINDOW_SECONDS='60'
 export PUBLIC_MAX_SCAN_ROWS='250000'
 export PUBLIC_CACHE_TTL_SECONDS='15'
 export PUBLIC_CACHE_MAX_ENTRIES='1024'
+export CLAIM_RATE_LIMIT_ATTEMPTS='10'
+export CLAIM_RATE_LIMIT_WINDOW_SECONDS='60'
+export CLAIM_RATE_LIMIT_MAX_KEYS='10000'
 export ENROLLMENT_RATE_LIMIT_ATTEMPTS='60'
 export ENROLLMENT_RATE_LIMIT_WINDOW_SECONDS='60'
 export ENROLLMENT_RATE_LIMIT_MAX_KEYS='10000'
@@ -63,9 +67,11 @@ export TRUSTED_PROXY_HOPS='1'
 - Mac 正式包另需把同源 canonical HTTPS origin 写入签名 Info.plist；成员界面不能
   覆盖服务器地址。
 
-服务内存登录、公开读取和设备登记限流只覆盖当前进程，无法统计其他 worker/实例的请求。发布审批
-必须记录“单进程”拓扑，或提供网关/Redis 共享限流的配置与跨实例 `429` 验证；
-单元测试中的进程内 `429` 不能关闭这项生产门禁。
+通过 schema 校验的批次领取请求会在查询批次 token 前消费独立来源 IP 桶，默认每
+60 秒 10 次；它不与每分钟 60 次的设备登记桶共享计数。服务内存中的登录、公开
+读取、批次领取和设备登记四类限流都只覆盖当前进程，无法统计其他 worker/实例的
+请求。发布审批必须记录“单进程”拓扑，或提供网关/Redis 共享限流的配置与跨实例
+`429` 验证；单元测试中的进程内 `429` 不能关闭这项生产门禁。
 
 ## 3. 初始化与启动
 
@@ -88,8 +94,9 @@ PUBLIC_ORG_SLUG='your-team' \
 `<LB CIDR>` 必须替换为实际负载均衡/反向代理出口 CIDR，并与
 `TRUSTED_PROXY_CIDRS` 一致；`TRUSTED_PROXY_HOPS` 必须等于从入口到应用的可信
 代理跳数。未配置这两个应用参数时，TokenFleet 忽略转发头，并用直连 TCP
-对端作为应用内 per-IP 登录/公开读取桶；若直连对端实际是反向代理，所有请求会
-按代理地址共桶，因此生产代理部署必须配置这两个参数并保留网关限流。缺失或
+对端作为应用内 per-IP 登录、公开读取、批次领取和设备登记桶；若直连对端实际是
+反向代理，所有请求会按代理地址共桶，因此生产代理部署必须配置这两个参数并保留
+网关限流。缺失或
 畸形的可信转发链直接返回 `400`，不会绕过限流或进入全局共享桶。当前 CIDR
 信任模型要求代理用 TCP 回源；Unix socket 不提供可验证的对端 IP，不作为支持的
 生产拓扑。

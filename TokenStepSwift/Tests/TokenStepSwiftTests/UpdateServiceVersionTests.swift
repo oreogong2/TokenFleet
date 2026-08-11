@@ -11,7 +11,8 @@ final class UpdateServiceVersionTests: XCTestCase {
         XCTAssertLessThan(Version("0.1.0-beta.2"), Version("0.1.0-beta.3"))
         XCTAssertLessThan(Version("0.1.0-beta.3"), Version("0.1.0-beta.4"))
         XCTAssertLessThan(Version("0.1.0-beta.4"), Version("0.1.0-beta.5"))
-        XCTAssertLessThan(Version("0.1.0-beta.5"), Version("0.1.0-rc.1"))
+        XCTAssertLessThan(Version("0.1.0-beta.5"), Version("0.1.0-beta.6"))
+        XCTAssertLessThan(Version("0.1.0-beta.6"), Version("0.1.0-rc.1"))
     }
 
     func testBuildMetadataDoesNotChangePrecedence() {

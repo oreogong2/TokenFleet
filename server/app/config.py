@@ -26,6 +26,9 @@ class Settings:
     public_max_scan_rows: int = 250_000
     public_cache_ttl_seconds: int = 15
     public_cache_max_entries: int = 1_024
+    claim_rate_limit_attempts: int = 10
+    claim_rate_limit_window_seconds: int = 60
+    claim_rate_limit_max_keys: int = 10_000
     enrollment_rate_limit_attempts: int = 60
     enrollment_rate_limit_window_seconds: int = 60
     enrollment_rate_limit_max_keys: int = 10_000
@@ -112,6 +115,24 @@ class Settings:
                 os.getenv(
                     "PUBLIC_CACHE_MAX_ENTRIES",
                     defaults.public_cache_max_entries,
+                )
+            ),
+            claim_rate_limit_attempts=int(
+                os.getenv(
+                    "CLAIM_RATE_LIMIT_ATTEMPTS",
+                    defaults.claim_rate_limit_attempts,
+                )
+            ),
+            claim_rate_limit_window_seconds=int(
+                os.getenv(
+                    "CLAIM_RATE_LIMIT_WINDOW_SECONDS",
+                    defaults.claim_rate_limit_window_seconds,
+                )
+            ),
+            claim_rate_limit_max_keys=int(
+                os.getenv(
+                    "CLAIM_RATE_LIMIT_MAX_KEYS",
+                    defaults.claim_rate_limit_max_keys,
                 )
             ),
             enrollment_rate_limit_attempts=int(

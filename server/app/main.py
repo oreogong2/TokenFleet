@@ -73,6 +73,12 @@ def create_app(*, settings: Settings | None = None, engine: Engine | None = None
             "public cache TTL must be 1-300 seconds and max entries must be positive"
         )
     if (
+        resolved_settings.claim_rate_limit_attempts < 1
+        or resolved_settings.claim_rate_limit_window_seconds < 1
+        or resolved_settings.claim_rate_limit_max_keys < 1
+    ):
+        raise RuntimeError("claim rate-limit settings must be positive")
+    if (
         resolved_settings.enrollment_rate_limit_attempts < 1
         or resolved_settings.enrollment_rate_limit_window_seconds < 1
         or resolved_settings.enrollment_rate_limit_max_keys < 1
@@ -130,6 +136,11 @@ def create_app(*, settings: Settings | None = None, engine: Engine | None = None
         attempts=resolved_settings.public_rate_limit_attempts,
         window_seconds=resolved_settings.public_rate_limit_window_seconds,
         max_keys=resolved_settings.public_rate_limit_max_keys,
+    )
+    application.state.claim_rate_limiter = PublicReadRateLimiter(
+        attempts=resolved_settings.claim_rate_limit_attempts,
+        window_seconds=resolved_settings.claim_rate_limit_window_seconds,
+        max_keys=resolved_settings.claim_rate_limit_max_keys,
     )
     application.state.enrollment_rate_limiter = PublicReadRateLimiter(
         attempts=resolved_settings.enrollment_rate_limit_attempts,

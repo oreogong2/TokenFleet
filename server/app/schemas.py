@@ -17,9 +17,13 @@ from pydantic import (
 )
 
 TOKEN_MAX = 9_000_000_000_000_000
+PUBLIC_NICKNAME_MAX_LENGTH = 128
+NORMALIZED_PUBLIC_NICKNAME_MAX_LENGTH = 512
 Trimmed128 = Annotated[str, Field(min_length=1, max_length=128)]
 VersionString = Annotated[str, Field(min_length=1, max_length=64)]
-PublicNickname = Annotated[str, Field(min_length=1, max_length=128)]
+PublicNickname = Annotated[
+    str, Field(min_length=1, max_length=PUBLIC_NICKNAME_MAX_LENGTH)
+]
 NonNegativeIntegerString = Annotated[str, Field(pattern=r"^(0|[1-9][0-9]*)$")]
 FORBIDDEN_LABEL_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Zl", "Zp"})
 
@@ -37,6 +41,16 @@ def validate_label_characters(value: str) -> str:
 
 
 def validate_public_nickname(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value.strip())
+    normalized_identity = normalized.casefold()
+    if (
+        not normalized_identity
+        or len(normalized) > NORMALIZED_PUBLIC_NICKNAME_MAX_LENGTH
+        or len(normalized_identity) > NORMALIZED_PUBLIC_NICKNAME_MAX_LENGTH
+    ):
+        raise ValueError(
+            "display_name cannot be normalized to an empty or oversized value"
+        )
     if any(
         unicodedata.category(character) in FORBIDDEN_LABEL_CATEGORIES
         for character in value

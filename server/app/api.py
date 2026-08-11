@@ -205,6 +205,17 @@ def _consume_enrollment_limit(request: Request) -> None:
         )
 
 
+def _consume_claim_limit(request: Request) -> None:
+    limiter_key = _client_rate_key(request)
+    retry_after = request.app.state.claim_rate_limiter.consume(limiter_key)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="too many invitation batch claim attempts",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
 def _normalized_public_filter(value: str | None, field_name: str) -> str | None:
     if value is None:
         return None
@@ -665,7 +676,7 @@ def claim_invitation_batch(
     response: Response,
     session: Session = Depends(get_session),
 ) -> InvitationBatchClaimResponse:
-    _consume_enrollment_limit(request)
+    _consume_claim_limit(request)
     now = utcnow()
     batch = session.scalar(
         select(InvitationBatch)

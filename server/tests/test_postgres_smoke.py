@@ -607,7 +607,10 @@ def test_postgres_invitation_batch_sixty_concurrent_claims_accept_exactly_fifty(
     barrier = threading.Barrier(60)
 
     def attempt(index: int) -> tuple[int, dict[str, object]]:
-        with TestClient(app) as concurrent_client:
+        with TestClient(
+            app,
+            client=(f"198.51.100.{index + 1}", 50_000 + index),
+        ) as concurrent_client:
             barrier.wait(timeout=30)
             response = concurrent_client.post(
                 "/api/v1/public/invitation-batches/claim",
@@ -624,6 +627,7 @@ def test_postgres_invitation_batch_sixty_concurrent_claims_accept_exactly_fifty(
 
     accepted = [body for status, body in results if status == 201]
     rejected = [body for status, body in results if status == 409]
+    assert all(status != 429 for status, _body in results)
     assert len(accepted) == 50
     assert len(rejected) == 10
     assert all(body == {"detail": "invitation batch unavailable"} for body in rejected)

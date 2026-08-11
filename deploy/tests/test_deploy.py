@@ -33,6 +33,9 @@ class ProductionEnvironmentTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o600)
             self.assertEqual(values["TOKENFLEET_DOMAIN"], "rank.example.com")
             self.assertEqual(values["PUBLIC_ORG_SLUG"], "example-community")
+            self.assertEqual(values["CLAIM_RATE_LIMIT_ATTEMPTS"], "10")
+            self.assertEqual(values["CLAIM_RATE_LIMIT_WINDOW_SECONDS"], "60")
+            self.assertEqual(values["CLAIM_RATE_LIMIT_MAX_KEYS"], "10000")
             self.assertEqual(values["ENROLLMENT_RATE_LIMIT_ATTEMPTS"], "60")
             self.assertEqual(values["ENROLLMENT_RATE_LIMIT_WINDOW_SECONDS"], "60")
             self.assertNotIn(values["POSTGRES_PASSWORD"], captured.getvalue())
@@ -93,6 +96,18 @@ class ProductionAssetTests(unittest.TestCase):
         self.assertNotIn("ports:", db_section)
         self.assertIn("172.30.50.1/32", compose)
         self.assertIn('TRUSTED_PROXY_HOPS: "1"', compose)
+        self.assertIn(
+            "CLAIM_RATE_LIMIT_ATTEMPTS: ${CLAIM_RATE_LIMIT_ATTEMPTS:-10}",
+            compose,
+        )
+        self.assertIn(
+            "CLAIM_RATE_LIMIT_WINDOW_SECONDS: ${CLAIM_RATE_LIMIT_WINDOW_SECONDS:-60}",
+            compose,
+        )
+        self.assertIn(
+            "CLAIM_RATE_LIMIT_MAX_KEYS: ${CLAIM_RATE_LIMIT_MAX_KEYS:-10000}",
+            compose,
+        )
 
     def test_runtime_is_nonroot_readonly_and_single_worker(self) -> None:
         dockerfile = (DEPLOY_ROOT / "Dockerfile").read_text(encoding="utf-8")

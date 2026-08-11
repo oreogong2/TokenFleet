@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.0-beta.6 - 2026-08-11
+
+### Invitation claim boundary hardening
+
+- Rejected public nicknames whose NFKC/casefold identity exceeds the database
+  limit during request validation, before participant or token writes.
+- Gave invitation-batch claims a dedicated process-local limiter of 10 attempts
+  per verified client IP per minute, independent of the 60/minute device
+  enrollment bucket.
+- Added direct-client, trusted-proxy, malformed-chain, UDS, SQLite, PostgreSQL,
+  and production-configuration regressions for the two boundary fixes.
+
 ## 0.1.0-beta.5 - 2026-08-11
 
 ### Bounded self-service invitation batches
