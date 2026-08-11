@@ -188,7 +188,7 @@ TokenStepSwift/dist/TokenFleet.app
 Developer ID 签名 + Apple 公证：
 
 ```bash
-TOKENFLEET_VERSION=0.1.0-beta.6 \
+TOKENFLEET_VERSION=0.1.0-beta.7 \
 TOKENFLEET_BUNDLE_ID="com.yourcompany.TokenFleet" \
 TOKENFLEET_TEAM_ID="ABCDE12345" \
 TOKENFLEET_UPDATE_API_URL="https://updates.example.com/tokenfleet/latest" \

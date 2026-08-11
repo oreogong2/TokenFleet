@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.0-beta.7 - 2026-08-11
+
+### Community experience refinement
+
+- Rebuilt the public leaderboard as a responsive warm-paper interface with
+  direct period, accounting, tool, and model filters and clearer participant
+  counts.
+- Consolidated sharing into one accessible poster preview with a larger current
+  participant summary, Top 10 context, a scannable leaderboard QR code, and
+  save/close actions.
+- Added mouse, keyboard, and touch values to Web trend charts, and simplified
+  the Mac client around Today, History, Community, and Settings with explicit
+  daily-goal progress and 7/30/90-day/all-time history.
+- Added a privacy-safe first-50 feedback checklist for measuring unsupported
+  tools without collecting prompts, conversations, code, paths, or secrets.
+
 ## 0.1.0-beta.6 - 2026-08-11
 
 ### Invitation claim boundary hardening
