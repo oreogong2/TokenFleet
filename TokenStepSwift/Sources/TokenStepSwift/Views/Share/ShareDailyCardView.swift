@@ -94,10 +94,10 @@ struct ShareDailyCardView: View {
             HStack(alignment: .center, spacing: 18) {
                 ZStack {
                     Circle()
-                        .fill(lap.color.opacity(0.09))
+                        .fill(Color.tokenGreenDark.opacity(0.09))
                         .frame(width: 228, height: 228)
                         .blur(radius: 10)
-                    ProgressRingView(progress: lap.currentLapProgress, lineWidth: 20, color: lap.color)
+                    ProgressRingView(progress: min(max(lap.rawProgress, 0), 1), lineWidth: 20, color: .tokenGreenDark)
                         .frame(width: 212, height: 212)
                     VStack(spacing: 7) {
                         Text(dayNumber)
@@ -105,7 +105,7 @@ struct ShareDailyCardView: View {
                             .foregroundStyle(Color.tokenInk)
                             .minimumScaleFactor(0.42)
                             .lineLimit(1)
-                        Text(LFormat("/ %@ 每圈", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
+                        Text(LFormat("目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
                             .font(.headline.weight(.heavy))
                             .foregroundStyle(.secondary)
                     }
@@ -120,17 +120,17 @@ struct ShareDailyCardView: View {
                     HStack(alignment: .lastTextBaseline, spacing: 8) {
                         Text(totalCompletionText)
                             .font(.system(size: 58, weight: .black, design: .rounded))
-                            .foregroundStyle(lap.color)
+                            .foregroundStyle(Color.tokenGreenDark)
                             .lineLimit(1)
                         Text(L("总完成度"))
                             .font(.callout.weight(.heavy))
                             .foregroundStyle(.secondary)
                     }
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(lap.completedLapsText)
+                        Text(LFormat("今日用量 %@", TokenStepFormat.tokens(day.totalTokens, compact: true)))
                             .font(.title3.weight(.heavy))
                             .foregroundStyle(Color.tokenInk.opacity(0.78))
-                        Text(lap.perLapGoalText)
+                        Text(LFormat("每日目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(.secondary)
                         Text(mode == .yesterday ? comparisonText : L("今日 Token"))

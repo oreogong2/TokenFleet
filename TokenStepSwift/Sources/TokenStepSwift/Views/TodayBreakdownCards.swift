@@ -27,7 +27,7 @@ struct TodayBreakdownCard: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
                 } else {
-                    VStack(spacing: 12) {
+                    VStack(spacing: 14) {
                         ForEach(Array(rows.prefix(maxRows).enumerated()), id: \.element.id) { index, row in
                             TodayBreakdownRowView(
                                 row: row,
@@ -66,7 +66,7 @@ private struct TodayBreakdownRowView: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(row.name)
-                .font(.callout.weight(.semibold))
+                .font(.headline.weight(.bold))
                 .foregroundStyle(Color.tokenInk.opacity(0.78))
                 .lineLimit(1)
                 .frame(width: 138, alignment: .leading)
@@ -81,15 +81,15 @@ private struct TodayBreakdownRowView: View {
                     }
                 }
             }
-            .frame(height: 8)
+            .frame(height: 10)
 
             Text("\(TokenStepFormat.tokens(row.tokens, compact: true)) · \(TokenStepFormat.percent(row.percent))")
-                .font(.callout.weight(.semibold))
+                .font(.headline.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .monospacedDigit()
                 .frame(width: 126, alignment: .trailing)
         }
-        .frame(height: 24)
+        .frame(height: 30)
     }
 }

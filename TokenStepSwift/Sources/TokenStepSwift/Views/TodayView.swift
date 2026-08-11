@@ -13,18 +13,19 @@ struct TodayView: View {
     }
 
     private var hero: some View {
-        let lap = appState.todayLap
+        let progress = min(max(appState.progress, 0), 1)
+        let percent = TokenStepFormat.percent(appState.progress * 100)
         return TokenCard {
             HStack(alignment: .center, spacing: 34) {
                 ZStack {
-                    ProgressRingView(progress: lap.currentLapProgress, lineWidth: 20, color: lap.color)
+                    ProgressRingView(progress: progress, lineWidth: 20, color: .tokenGreenDark)
                     VStack(spacing: 6) {
                         Text(TokenStepFormat.tokens(appState.today.totalTokens))
                             .font(.system(size: 42, weight: .heavy, design: .rounded))
                             .foregroundStyle(Color.tokenInk)
                             .minimumScaleFactor(0.42)
                             .lineLimit(1)
-                        Text(LFormat("/ %@ 每圈", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
+                        Text(LFormat("目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
                             .font(.headline.weight(.bold))
                             .foregroundStyle(.secondary)
                     }
@@ -34,26 +35,21 @@ struct TodayView: View {
 
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(lap.lapStatusText)
-                            .font(.system(size: 35, weight: .heavy, design: .rounded))
-                            .foregroundStyle(lap.color)
+                        Text(L("今日目标进度"))
+                            .font(.title3.weight(.heavy))
+                            .foregroundStyle(Color.tokenInk)
+                        Text(percent)
+                            .font(.system(size: 44, weight: .heavy, design: .rounded))
+                            .foregroundStyle(Color.tokenGreenDark)
                             .monospacedDigit()
-                        Text(lap.completedTokensText)
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.secondary)
-                        Text(lap.perLapGoalText)
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.secondary)
                     }
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(L("圈数进度"))
-                            .font(.headline.weight(.heavy))
-                            .foregroundStyle(Color.tokenInk)
-                        LapProgressChips(lap: lap)
-                    }
+                    ProgressView(value: progress)
+                        .tint(Color.tokenGreenDark)
+                        .frame(maxWidth: 360)
 
                     HStack(spacing: 10) {
+                        MetricPill(label: L("每日目标"), value: TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true))
                         MetricPill(label: L("消耗金额"), value: TokenStepFormat.money(appState.today.cost))
                         MetricPill(label: L("本月均值"), value: TokenStepFormat.tokens(appState.monthAverage, compact: true))
                     }
@@ -152,49 +148,5 @@ private struct CompactMetricCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-}
-
-private struct LapProgressChips: View {
-    var lap: TokenStepLapProgress
-
-    private var visibleCompletedLaps: [Int] {
-        let completed = max(0, lap.completedLaps)
-        guard completed > 0 else { return [] }
-        if completed <= 2 { return Array(1...completed) }
-        return Array(max(1, completed - 1)...completed)
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ForEach(visibleCompletedLaps, id: \.self) { item in
-                LapChip(title: LFormat("%d圈完成", item), detail: TokenStepFormat.tokens(item * lap.safeGoal, compact: true), active: false, color: .tokenGreen)
-            }
-            LapChip(title: LFormat("%@进行中", lap.lapTitle), detail: lap.lapPercentText, active: true, color: lap.color)
-        }
-    }
-}
-
-private struct LapChip: View {
-    var title: String
-    var detail: String
-    var active: Bool
-    var color: Color
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Label(title, systemImage: active ? "arrow.clockwise.circle.fill" : "checkmark.circle.fill")
-                .font(.caption.weight(.heavy))
-                .labelStyle(.titleAndIcon)
-                .lineLimit(1)
-            Text(detail)
-                .font(.caption.weight(.bold))
-                .monospacedDigit()
-        }
-        .foregroundStyle(active ? color : Color.tokenInk.opacity(0.68))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(active ? color.opacity(0.12) : Color.tokenTrack.opacity(0.46), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(active ? color.opacity(0.36) : Color.black.opacity(0.045)))
     }
 }

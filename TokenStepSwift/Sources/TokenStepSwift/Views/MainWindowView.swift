@@ -3,7 +3,7 @@ import SwiftUI
 enum AppSection: String, CaseIterable, Identifiable {
     case today
     case history
-    case privacy
+    case community
 
     var id: String { rawValue }
 
@@ -11,7 +11,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .today: L("今日")
         case .history: L("历史")
-        case .privacy: L("隐私")
+        case .community: L("社群")
         }
     }
 
@@ -19,7 +19,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .today: L("今日消耗")
         case .history: L("历史活动")
-        case .privacy: L("隐私")
+        case .community: L("社群榜")
         }
     }
 
@@ -27,7 +27,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .today: L("今天的 Token 使用节奏")
         case .history: L("长期节奏和所有历史记录")
-        case .privacy: L("只统计数量，不读取内容")
+        case .community: L("和一群人一起，看见进步的速度")
         }
     }
 
@@ -35,7 +35,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .today: "figure.walk.circle.fill"
         case .history: "square.grid.3x3.fill"
-        case .privacy: "lock.shield.fill"
+        case .community: "person.3.fill"
         }
     }
 
@@ -43,7 +43,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .today: "today"
         case .history: "history-30d"
-        case .privacy: "privacy"
+        case .community: "community"
         }
     }
 
@@ -240,8 +240,8 @@ struct MainWindowView: View {
             TodayView()
         case .history:
             HistoryView()
-        case .privacy:
-            PrivacyView()
+        case .community:
+            CommunityView()
         }
     }
 }

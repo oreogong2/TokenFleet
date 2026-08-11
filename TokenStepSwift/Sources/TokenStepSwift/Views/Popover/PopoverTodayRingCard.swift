@@ -4,7 +4,8 @@ struct PopoverTodayRingCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        let lap = appState.todayLap
+        let progress = min(max(appState.progress, 0), 1)
+        let percent = TokenStepFormat.percent(appState.progress * 100)
         return TokenCard {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
@@ -19,14 +20,14 @@ struct PopoverTodayRingCard: View {
 
                 HStack(spacing: 20) {
                     ZStack {
-                        ProgressRingView(progress: lap.currentLapProgress, lineWidth: 16, color: lap.color)
+                        ProgressRingView(progress: progress, lineWidth: 16, color: .tokenGreenDark)
                         VStack(spacing: 3) {
                             Text(TokenStepFormat.tokens(appState.today.totalTokens))
                                 .font(.system(size: 31, weight: .heavy, design: .rounded))
                                 .foregroundStyle(Color.tokenInk)
                                 .minimumScaleFactor(0.52)
                                 .lineLimit(1)
-                            Text(LFormat("/ %@ 每圈", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
+                            Text(LFormat("目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
                                 .font(.callout.weight(.bold))
                                 .foregroundStyle(.secondary)
                         }
@@ -35,14 +36,14 @@ struct PopoverTodayRingCard: View {
                     .frame(width: 148, height: 148)
 
                     VStack(alignment: .leading, spacing: 11) {
-                        Text(lap.lapTitle)
+                        Text(L("今日目标进度"))
                             .font(.headline.weight(.heavy))
                             .foregroundStyle(Color.tokenInk)
-                        Text(lap.lapPercentText)
+                        Text(percent)
                             .font(.system(size: 43, weight: .heavy, design: .rounded))
-                            .foregroundStyle(lap.color)
+                            .foregroundStyle(Color.tokenGreenDark)
                             .monospacedDigit()
-                        Text(lap.completedLapsText)
+                        Text(LFormat("每日目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
                             .font(.headline.weight(.bold))
                             .foregroundStyle(.secondary)
 

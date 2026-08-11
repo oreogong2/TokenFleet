@@ -11,7 +11,7 @@ import {
   sanitizePublicFilters,
 } from "./community-contract.js";
 import { createCommunityDemoApi } from "./community-demo-data.js";
-import { buildCommunityPosterModel, downloadCommunityPoster } from "./community-poster.js";
+import { buildCommunityPosterModel, createCommunityPosterBlob } from "./community-poster.js";
 import { formatTokenCount, toTokenBigInt, tokenRatio } from "./server-adapter.js";
 
 function escapeHTML(value) {
@@ -80,13 +80,25 @@ function publicHeader({ title, description }) {
   return `<header class="community-header"><a class="community-brand" href="#/rank" aria-label="TokenFleet 社群榜首页"><span>TF</span><strong>TokenFleet</strong><small>COMMUNITY LEDGER</small></a><nav aria-label="公开页面导航"><a href="#/rank">社群榜</a><a href="/">管理员后台</a></nav></header><section class="community-hero"><span class="panel-kicker">PUBLIC / PRIVACY-SAFE</span><h1>${escapeHTML(title)}</h1><p>${escapeHTML(description)}</p></section>`;
 }
 
-function filterOptions(values, current, emptyLabel) {
-  const options = [...new Set([current, ...(Array.isArray(values) ? values : [])].filter(Boolean))];
-  return `<option value="">${escapeHTML(emptyLabel)}</option>${options.map((value) => `<option value="${escapeHTML(value)}" ${current === value ? "selected" : ""}>${escapeHTML(value)}</option>`).join("")}`;
+function filterHref(filters, route, name, value) {
+  return localHref({
+    kind: route.kind === "profile" ? "profile" : "leaderboard",
+    publicId: route.publicId,
+    filters: sanitizePublicFilters({ ...filters, [name]: value }),
+  });
+}
+
+function filterGroup(label, name, values, current, filters, route, emptyLabel = "") {
+  const namedOptions = [...new Set([current, ...(Array.isArray(values) ? values : [])].filter(Boolean))]
+    .map((value) => [value, value]);
+  const options = emptyLabel
+    ? [["", emptyLabel], ...namedOptions]
+    : values;
+  return `<div class="community-filter-group" role="group" aria-label="${escapeHTML(label)}"><strong>${escapeHTML(label)}</strong><div>${options.map(([value, optionLabel]) => `<a href="${filterHref(filters, route, name, value)}" ${current === value ? 'aria-current="true"' : ""}>${escapeHTML(optionLabel)}</a>`).join("")}</div></div>`;
 }
 
 function filterForm(filters, route, { tools = [], models = [] } = {}) {
-  return `<form class="community-filters" data-community-action="filters"><label>时间<select name="period">${PUBLIC_PERIODS.map(([value, label]) => `<option value="${value}" ${filters.period === value ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>口径<select name="metric">${PUBLIC_METRICS.map(([value, label]) => `<option value="${value}" ${filters.metric === value ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>工具<select name="tool">${filterOptions(tools, filters.tool, "全部工具")}</select></label><label>模型<select name="model">${filterOptions(models, filters.model, "全部模型")}</select></label><input type="hidden" name="public_id" value="${escapeHTML(route.publicId || "")}"><button class="primary-button small" type="submit">应用筛选</button></form>`;
+  return `<nav class="community-filters" aria-label="排行榜筛选">${filterGroup("日期", "period", PUBLIC_PERIODS, filters.period, filters, route)}${filterGroup("口径", "metric", PUBLIC_METRICS, filters.metric, filters, route)}${filterGroup("工具", "tool", tools, filters.tool, filters, route, "全部工具")}${filterGroup("模型", "model", models, filters.model, filters, route, "全部模型")}</nav>`;
 }
 
 function totalsCells(person) {
@@ -107,13 +119,14 @@ function shareButton({ publicId = "", displayName = "", enabled }) {
   return `<button class="secondary-button small" type="button" data-community-action="share" aria-label="${escapeHTML(label)}" ${publicId ? `data-public-id="${escapeHTML(publicId)}"` : ""} ${enabled ? "" : 'disabled title="部署 HTTPS 公开地址后可生成二维码海报"'}>生成分享图片</button>`;
 }
 
-function leaderboardRows(data, canShare) {
-  return data.participants.map((person) => `<article class="community-rank-row"><span class="community-rank ${person.rank && person.rank <= 3 ? "is-top" : ""}">${person.rank ? String(person.rank).padStart(2, "0") : "—"}</span><a class="community-person" href="${localHref({ kind: "profile", publicId: person.publicId, filters: data })}"><span class="avatar">${escapeHTML(person.displayName.slice(0, 1) || "?")}</span><span><strong title="${escapeHTML(person.displayName)}">${escapeHTML(person.displayName)}</strong><small>查看公开构成与趋势</small></span></a>${totalsCells(person)}<div class="community-primary"><span>${escapeHTML(metricLabel(data.metric))}</span><strong title="${escapeHTML(metricDisplay(person, data.metric, false))}">${escapeHTML(metricDisplay(person, data.metric))}</strong><small>${escapeHTML(formatPublicCost(person.cost))}</small></div>${shareButton({ publicId: person.publicId, displayName: person.displayName, enabled: canShare })}</article>`).join("");
+function leaderboardRows(data) {
+  const medals = ["", "金", "银", "铜"];
+  return data.participants.map((person) => `<article class="community-rank-row"><span class="community-rank ${person.rank && person.rank <= 3 ? "is-top" : ""}">${person.rank && person.rank <= 3 ? `<i aria-hidden="true">${medals[person.rank]}</i>` : ""}<b>${person.rank ? String(person.rank).padStart(2, "0") : "—"}</b></span><a class="community-person" href="${localHref({ kind: "profile", publicId: person.publicId, filters: data })}"><span><strong title="${escapeHTML(person.displayName)}">${escapeHTML(person.displayName)}</strong><small>查看用量构成与趋势</small></span></a>${totalsCells(person)}<div class="community-primary"><span>${escapeHTML(metricLabel(data.metric))}</span><strong title="${escapeHTML(metricDisplay(person, data.metric, false))}">${escapeHTML(metricDisplay(person, data.metric))}</strong><small>${escapeHTML(formatPublicCost(person.cost))}</small></div></article>`).join("");
 }
 
 function renderLeaderboard({ data, filters, canonicalUrl }) {
   const canShare = Boolean(canonicalUrl);
-  return `<main id="main-content" class="community-shell">${publicHeader({ title: "把 AI 用量放在同一把尺上", description: "匿名可访问的本地社群榜。看聚合数量与 API 等价估算，不看任何对话内容。" })}${filterForm(filters, { kind: "leaderboard" }, { tools: data.availableTools, models: data.availableModels })}<section class="community-summary"><div><span>公开参赛者</span><strong>${data.totalEntries}</strong></div><div><span>时间</span><strong>${escapeHTML(periodLabel(data.period))}</strong></div><div><span>当前口径</span><strong>${escapeHTML(metricLabel(data.metric))}</strong></div>${shareButton({ enabled: canShare })}</section>${timezoneNotice(data)}<section class="community-board" aria-labelledby="leaderboard-title"><div class="community-board-head"><div><span class="panel-kicker">ONE COMMUNITY / ONE BOARD</span><h2 id="leaderboard-title">社群排行榜</h2></div>${data.generatedAt ? `<small>更新于 ${escapeHTML(data.generatedAt)}</small>` : ""}</div>${data.participants.length ? leaderboardRows(data, canShare) : `<div class="community-empty"><span>∅</span><h2>这个筛选下还没有参赛者</h2><p>换一个时间、工具或模型再看看。</p></div>`}</section>${privacyNotice()}<footer class="community-footer">TokenFleet · 只记数量，不看内容</footer><div class="community-toast" aria-live="polite"></div></main>`;
+  return `<main id="main-content" class="community-shell">${publicHeader({ title: "让自己 AI Native 化，Learn in Public.", description: "只记录 AI 用量，不查看任何对话内容。和一群人一起，看见进步的速度。" })}${filterForm(filters, { kind: "leaderboard" }, { tools: data.availableTools, models: data.availableModels })}<section class="community-summary"><div><span>参与人数</span><strong>${data.totalEntries}</strong></div><div><span>日期</span><strong>${escapeHTML(periodLabel(data.period))}</strong></div><div><span>当前口径</span><strong>${escapeHTML(metricLabel(data.metric))}</strong></div>${shareButton({ enabled: canShare })}</section>${timezoneNotice(data)}<section class="community-board" aria-labelledby="leaderboard-title"><div class="community-board-head"><div><span class="panel-kicker">TOKEN USAGE / COMMUNITY</span><h2 id="leaderboard-title">Token 消耗排行榜</h2></div>${data.generatedAt ? `<small>更新于 ${escapeHTML(data.generatedAt)}</small>` : ""}</div>${data.participants.length ? leaderboardRows(data) : `<div class="community-empty"><span>∅</span><h2>这个筛选下还没有参与者</h2><p>换一个日期、工具或模型再看看。</p></div>`}</section>${privacyNotice()}<footer class="community-footer">TokenFleet · 看见 AI 使用进步</footer><div class="community-toast" aria-live="polite"></div></main>`;
 }
 
 function breakdownValue(item, metric) {
@@ -189,7 +202,13 @@ export function publicTrend(items, metric, parentCost = {}) {
     return { x, y, item, value };
   });
   const line = points.map(({ x, y }) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  return `<div class="community-trend"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${items.length} 天${escapeHTML(metricLabel(metric))}趋势"><line x1="${inset}" y1="${height * .5}" x2="${width - inset}" y2="${height * .5}"/><polyline points="${line}"/>${points.map(({ x, y, item, value }) => `<circle cx="${x}" cy="${y}" r="4"><title>${escapeHTML(item.date)}：${escapeHTML(value === null ? "未定价" : metric === "cost" ? formatPublicCost(item.cost) : formatTokens(value, false))}</title></circle>`).join("")}</svg><div><span>${escapeHTML(items[0]?.date || "")}</span><strong>峰值 ${escapeHTML(metric === "cost" ? "按公开标准价" : formatTokens(maximum))}</strong><span>${escapeHTML(items.at(-1)?.date || "")}</span></div></div>`;
+  const observations = points.map(({ x, y, item, value }) => {
+    const displayValue = value === null ? "未定价" : metric === "cost" ? formatPublicCost(item.cost) : formatTokens(value, false);
+    const tooltipX = Math.max(4, Math.min(width - 150, x - 75));
+    const tooltipY = y < 54 ? y + 16 : y - 50;
+    return `<g class="chart-observation" tabindex="0" role="img" aria-label="${escapeHTML(item.date)}，${escapeHTML(displayValue)}"><circle cx="${x}" cy="${y}" r="17" class="chart-hit"/><circle cx="${x}" cy="${y}" r="4" class="chart-point"/><g class="chart-tooltip" aria-hidden="true"><rect x="${tooltipX}" y="${tooltipY}" width="150" height="38" rx="6"/><text x="${tooltipX + 10}" y="${tooltipY + 15}">${escapeHTML(item.date)}</text><text x="${tooltipX + 10}" y="${tooltipY + 30}" class="chart-tooltip-value">${escapeHTML(displayValue)}</text></g></g>`;
+  }).join("");
+  return `<div class="community-trend"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${items.length} 天${escapeHTML(metricLabel(metric))}趋势"><line x1="${inset}" y1="${height * .5}" x2="${width - inset}" y2="${height * .5}"/><polyline points="${line}"/>${observations}</svg><div><span>${escapeHTML(items[0]?.date || "")}</span><strong>峰值 ${escapeHTML(metric === "cost" ? "按公开标准价" : formatTokens(maximum))}</strong><span>${escapeHTML(items.at(-1)?.date || "")}</span></div></div>`;
 }
 
 function renderProfile({ person, leaderboard, filters, canonicalUrl }) {
@@ -258,6 +277,7 @@ export function mountCommunityApp({
   let issuedEnrollmentCode = "";
   let leaderboard = null;
   let focus = null;
+  let posterObjectUrl = "";
   const filters = sanitizePublicFilters(route.filters || {});
   const canonicalUrl = publicShareUrl({ route, filters, documentRef, locationRef, demoMode });
   const api = demoMode
@@ -273,6 +293,25 @@ export function mountCommunityApp({
     issuedEnrollmentCode = "";
   };
   const active = () => !disposed && isCurrent();
+  const posterUrlApi = documentRef.defaultView?.URL || URL;
+  const closePoster = () => {
+    root.querySelector(".community-poster-modal")?.remove();
+    if (posterObjectUrl) posterUrlApi.revokeObjectURL(posterObjectUrl);
+    posterObjectUrl = "";
+  };
+  const showPosterPreview = (blob) => {
+    closePoster();
+    posterObjectUrl = posterUrlApi.createObjectURL(blob);
+    const overlay = documentRef.createElement("div");
+    overlay.className = "community-poster-modal";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-labelledby", "community-poster-title");
+    overlay.innerHTML = `<section><header><div><span>分享预览</span><h2 id="community-poster-title">Token 消耗排行榜</h2></div><button type="button" data-community-action="close-poster" aria-label="关闭分享预览">×</button></header><img alt="Token 消耗排行榜分享图片预览"><footer><button class="primary-button" type="button" data-community-action="save-poster">保存图片</button><button class="secondary-button" type="button" data-community-action="close-poster">关闭</button><p>手机端可长按图片保存或转发给朋友</p></footer></section>`;
+    overlay.querySelector("img").src = posterObjectUrl;
+    root.append(overlay);
+    overlay.querySelector('[data-community-action="save-poster"]')?.focus({ preventScroll: true });
+  };
   globalThis.addEventListener?.("pagehide", clearSecret, { signal: controller.signal });
   if (active()) {
     documentRef.body.classList.add("community-mode");
@@ -341,18 +380,6 @@ export function mountCommunityApp({
 
   root.addEventListener("submit", async (event) => {
     if (!active()) return;
-    const form = event.target.closest('[data-community-action="filters"]');
-    if (form) {
-      event.preventDefault();
-      const values = Object.fromEntries(new FormData(form));
-      const nextFilters = sanitizePublicFilters(values);
-      locationRef.hash = communityHref({
-        kind: route.kind === "profile" ? "profile" : "leaderboard",
-        publicId: route.publicId,
-        filters: nextFilters,
-      });
-      return;
-    }
     const batchForm = event.target.closest('[data-community-action="claim-batch"]');
     if (!batchForm) return;
     event.preventDefault();
@@ -410,6 +437,19 @@ export function mountCommunityApp({
     const target = event.target.closest("[data-community-action]");
     if (!target) return;
     const action = target.dataset.communityAction;
+    if (action === "close-poster") {
+      closePoster();
+      return;
+    }
+    if (action === "save-poster") {
+      if (!posterObjectUrl) return;
+      const link = documentRef.createElement("a");
+      link.href = posterObjectUrl;
+      link.download = `TokenFleet-排行榜-${new Date().toISOString().slice(0, 10)}.png`;
+      link.rel = "noopener";
+      link.click();
+      return;
+    }
     if (action === "copy-join-code") {
       if (!secret) return;
       const currentSecret = secret;
@@ -452,9 +492,9 @@ export function mountCommunityApp({
           : canonicalUrl;
         if (!posterUrl) throw new Error("部署同源 HTTPS 公开地址后才能生成二维码海报");
         const model = buildCommunityPosterModel({ leaderboard, focus: selected, filters, publicUrl: posterUrl, demo: demoMode });
-        await downloadCommunityPoster(model, { documentRef, isActive: active });
+        const blob = await createCommunityPosterBlob(model, { documentRef });
         if (!active()) return;
-        showToast(root, "分享图片已在浏览器本地生成", false, active);
+        showPosterPreview(blob);
       } catch (error) {
         if (!active()) return;
         showToast(root, error?.message || "分享图片生成失败", true, active);
@@ -467,10 +507,15 @@ export function mountCommunityApp({
     }
   }, { signal: controller.signal });
 
+  root.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && posterObjectUrl) closePoster();
+  }, { signal: controller.signal });
+
   void load();
   return () => {
     if (disposed) return;
     disposed = true;
+    closePoster();
     clearSecret();
     controller.abort();
     documentRef.body.classList.remove("community-mode");

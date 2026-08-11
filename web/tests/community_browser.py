@@ -183,8 +183,11 @@ def main():
             assert page.get_by_text("演示·这是一个专门验证窄屏截断", exact=False).count() == 1
             assert page.get_by_text("演示数据 · 不是真实排名或真实成员数据", exact=True).count() == 1
             assert page.locator('input[name="tool"], input[name="model"]').count() == 0
-            assert page.locator('select[name="tool"] option[value="Kimi CLI"]').count() == 1
-            assert page.locator('select[name="model"] option[value="kimi-k2"]').count() == 1
+            assert page.get_by_role("link", name="Kimi CLI", exact=True).count() == 1
+            assert page.get_by_role("link", name="kimi-k2", exact=True).count() == 1
+            assert page.get_by_role("link", name="全部工具", exact=True).count() == 1
+            assert page.get_by_role("link", name="全部模型", exact=True).count() == 1
+            assert page.get_by_role("button", name="应用筛选").count() == 0
             assert page.get_by_text("未跨时区重新归日", exact=False).count() == 1
             if width == 1440:
                 headline = page.locator(".community-hero h1")
@@ -209,6 +212,12 @@ def main():
         assert page.locator(".community-distribution").count() == 2
         assert page.locator(".community-distribution em").first.inner_text() not in {"0", "—"}
         assert page.locator(".community-trend svg").count() == 1
+        first_observation = page.locator(".community-trend .chart-observation").first
+        first_observation.focus()
+        page.wait_for_timeout(180)
+        assert first_observation.locator(".chart-tooltip").evaluate(
+            "element => getComputedStyle(element).opacity"
+        ) == "1"
         assert_no_horizontal_overflow(page)
 
         # Root-absolute assets keep real SPA deep links working after a hard refresh.
@@ -220,8 +229,15 @@ def main():
         page.locator(".community-detail-grid").wait_for()
         page.reload(wait_until="networkidle")
         page.locator(".community-detail-grid").wait_for()
-        assert resource_status["/styles.css"] == 200
-        assert resource_status["/app.js"] == 200
+        asset_status = page.evaluate(
+            """async () => Object.fromEntries(await Promise.all(
+              ['/styles.css', '/app.js'].map(async path => [
+                path,
+                (await fetch(path, {cache: 'no-store'})).status,
+              ])
+            ))"""
+        )
+        assert asset_status == {"/styles.css": 200, "/app.js": 200}
         assert page.get_by_role("link", name="管理员后台").evaluate("link => link.href") == f"{base}/"
         assert page.get_by_text("演示数据 · 不是真实排名或真实成员数据", exact=True).count() == 1
 
@@ -231,8 +247,12 @@ def main():
             wait_until="networkidle",
         )
         page.get_by_text("Top 100 之外", exact=False).wait_for()
+        page.locator('[data-community-action="share"]').click()
+        page.locator(".community-poster-modal img").wait_for()
+        assert page.get_by_role("button", name="保存图片", exact=True).count() == 1
+        assert page.get_by_role("button", name="关闭", exact=True).count() == 1
         with page.expect_download() as download_info:
-            page.locator('[data-community-action="share"]').click()
+            page.get_by_role("button", name="保存图片", exact=True).click()
         download = download_info.value
         poster_path = str(ARTIFACT_DIR / "tokenfleet-community-poster.png")
         download.save_as(poster_path)
@@ -240,7 +260,7 @@ def main():
 
         # Empty state is deliberate and still keyboard-accessible.
         page.goto(f"{base}/?demo=1&scenario=empty#/rank", wait_until="networkidle")
-        page.get_by_text("这个筛选下还没有参赛者", exact=True).wait_for()
+        page.get_by_text("这个筛选下还没有参与者", exact=True).wait_for()
         assert_no_horizontal_overflow(page)
 
         # The secret is removed before the join DOM appears, never persisted, and never rendered.
@@ -525,15 +545,13 @@ def main():
         assert page.locator(".community-board").count() == 1
         assert page.locator(".cost-ledger").count() == 0
 
-        # A delayed member lookup for sharing cannot toast or download after route disposal.
+        # In-progress poster generation cannot open a modal or download after route disposal.
         page.goto(
             f"{base}/?demo=1&scenario=slow-share#/rank",
             wait_until="networkidle",
         )
-        first_row = page.locator(".community-rank-row").first
-        nickname = first_row.locator(".community-person strong").inner_text()
-        share = first_row.locator('[data-community-action="share"]')
-        assert nickname in share.get_attribute("aria-label")
+        share = page.locator('[data-community-action="share"]')
+        assert share.count() == 1
         stale_downloads = []
         page.on("download", lambda download: stale_downloads.append(download.suggested_filename))
         share.click()
@@ -542,6 +560,7 @@ def main():
         page.get_by_role("heading", name="总览", exact=True).wait_for()
         page.wait_for_timeout(350)
         assert stale_downloads == []
+        assert page.locator(".community-poster-modal").count() == 0
         assert page.locator(".community-toast, .community-board").count() == 0
 
         # A delayed enrollment mutation cannot append its one-time secret dialog to /rank.

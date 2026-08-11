@@ -299,7 +299,13 @@ function seriesChart(series = []) {
   });
   const line = points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
   const area = `${inset},${height - inset} ${line} ${width - inset},${height - inset}`;
-  return `<div class="chart-wrap"><svg class="series-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${series.length} 天 Token 趋势"><defs><linearGradient id="chart-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#159bd0" stop-opacity=".28"/><stop offset="1" stop-color="#159bd0" stop-opacity="0"/></linearGradient></defs><line x1="${inset}" y1="${height * 0.35}" x2="${width - inset}" y2="${height * 0.35}" class="chart-grid"/><line x1="${inset}" y1="${height * 0.68}" x2="${width - inset}" y2="${height * 0.68}" class="chart-grid"/><polygon points="${area}" fill="url(#chart-area)"/><polyline points="${line}" class="chart-line"/>${points.map(([x, y, item]) => `<circle cx="${x}" cy="${y}" r="3" class="chart-point"><title>${escapeHTML(item.date)}：${formatTokens(item.total_tokens, { compact: false })}</title></circle>`).join("")}</svg><div class="chart-axis"><span>${escapeHTML(series[0].date)}</span><span>峰值 ${formatTokens(max)}</span><span>${escapeHTML(series.at(-1).date)}</span></div></div>`;
+  const observations = points.map(([x, y, item]) => {
+    const value = formatTokens(item.total_tokens, { compact: false });
+    const tooltipX = Math.max(4, Math.min(width - 150, x - 75));
+    const tooltipY = y < 54 ? y + 16 : y - 50;
+    return `<g class="chart-observation" tabindex="0" role="img" aria-label="${escapeHTML(item.date)}，${escapeHTML(value)}"><circle cx="${x}" cy="${y}" r="16" class="chart-hit"/><circle cx="${x}" cy="${y}" r="3.5" class="chart-point"/><g class="chart-tooltip" aria-hidden="true"><rect x="${tooltipX}" y="${tooltipY}" width="150" height="38" rx="6"/><text x="${tooltipX + 10}" y="${tooltipY + 15}">${escapeHTML(item.date)}</text><text x="${tooltipX + 10}" y="${tooltipY + 30}" class="chart-tooltip-value">${escapeHTML(value)}</text></g></g>`;
+  }).join("");
+  return `<div class="chart-wrap"><svg class="series-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${series.length} 天 Token 趋势"><defs><linearGradient id="chart-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d774f" stop-opacity=".24"/><stop offset="1" stop-color="#1d774f" stop-opacity="0"/></linearGradient></defs><line x1="${inset}" y1="${height * 0.35}" x2="${width - inset}" y2="${height * 0.35}" class="chart-grid"/><line x1="${inset}" y1="${height * 0.68}" x2="${width - inset}" y2="${height * 0.68}" class="chart-grid"/><polygon points="${area}" fill="url(#chart-area)"/><polyline points="${line}" class="chart-line"/>${observations}</svg><div class="chart-axis"><span>${escapeHTML(series[0].date)}</span><span>峰值 ${formatTokens(max)}</span><span>${escapeHTML(series.at(-1).date)}</span></div></div>`;
 }
 
 function distribution(items = [], color = "blue") {

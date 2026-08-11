@@ -2,24 +2,21 @@ import SwiftUI
 
 struct StatsView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var range: StatsRange = .thirtyDays
 
     var body: some View {
         VStack(spacing: 22) {
             HStack(spacing: 18) {
-                StatHeroMetric(label: L("累计 Token 消耗"), value: TokenStepFormat.tokens(appState.snapshot.totals.tokens), symbol: "figure.walk")
-                StatHeroMetric(label: L("消耗金额"), value: TokenStepFormat.money(appState.snapshot.totals.cost), symbol: "dollarsign.circle")
-                StatHeroMetric(label: L("活跃天数"), value: localizedDays(appState.snapshot.totals.activeDays), symbol: "flame")
+                StatHeroMetric(label: L("Token 消耗"), value: TokenStepFormat.tokens(selectedTokens), symbol: "figure.walk")
+                StatHeroMetric(label: L("消耗金额"), value: TokenStepFormat.money(selectedCost), symbol: "dollarsign.circle")
+                StatHeroMetric(label: L("活跃天数"), value: localizedDays(selectedActiveDays), symbol: "flame")
             }
 
             recentActivityCard
 
             HStack(alignment: .top, spacing: 22) {
-                usageList(title: L("按客户端"), subtitle: L("累计总量分布"), rows: appState.snapshot.tools.map {
-                    UsageStatRow(name: $0.tool, value: $0.tokens, percent: $0.percentValue, color: $0.displayColor)
-                })
-                usageList(title: L("按模型"), subtitle: "Top \(min(appState.snapshot.models.count, 10)) / \(appState.snapshot.models.count)", rows: appState.snapshot.models.prefix(10).map {
-                    UsageStatRow(name: $0.model, value: $0.tokens, percent: $0.percentValue, color: $0.displayColor)
-                })
+                usageList(title: L("按客户端"), subtitle: range.label, rows: toolRows)
+                usageList(title: L("按模型"), subtitle: "Top \(min(modelRows.count, 10)) / \(modelRows.count)", rows: Array(modelRows.prefix(10)))
             }
         }
     }
@@ -29,7 +26,7 @@ struct StatsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(L("最近 30 天"))
+                        Text(range.title)
                             .font(.title3.weight(.heavy))
                             .foregroundStyle(Color.tokenInk)
                         Text(L("柱越高，用量越多；颜色代表客户端"))
@@ -37,6 +34,14 @@ struct StatsView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    Picker(L("时间范围"), selection: $range) {
+                        ForEach(StatsRange.allCases) { item in
+                            Text(item.label).tag(item)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 310)
                     TokenToolLegend(tools: recentTools, showsGoalLine: true)
                     Text(LFormat("今天 %@", TokenStepFormat.tokens(appState.today.totalTokens, compact: true)))
                         .font(.callout.weight(.bold))
@@ -46,7 +51,7 @@ struct StatsView: View {
                         .background(Color.tokenMint.opacity(0.28), in: Capsule())
                 }
 
-                StackedActivityBarsView(rows: appState.snapshot.daily, goal: appState.settings.dailyGoalTokens)
+                StackedActivityBarsView(rows: selectedRows, goal: appState.settings.dailyGoalTokens, maxCount: range.chartDays)
                     .frame(height: 96)
             }
         }
@@ -90,7 +95,90 @@ struct StatsView: View {
     }
 
     private var recentTools: [String] {
-        uniqueToolNames(in: Array(appState.snapshot.daily.suffix(30)))
+        uniqueToolNames(in: selectedRows)
+    }
+
+    private var selectedRows: [DailyUsage] {
+        guard let days = range.days else { return appState.snapshot.daily }
+        return Array(appState.snapshot.daily.suffix(days))
+    }
+
+    private var selectedTokens: Int {
+        selectedRows.reduce(0) { $0 + $1.totalTokens }
+    }
+
+    private var selectedCost: Double {
+        selectedRows.reduce(0) { $0 + $1.cost }
+    }
+
+    private var selectedActiveDays: Int {
+        selectedRows.filter { $0.totalTokens > 0 }.count
+    }
+
+    private var toolRows: [UsageStatRow] {
+        let values = aggregate(\.tools)
+        return values.map { name, value in
+            UsageStatRow(name: name, value: value, percent: percent(value), color: tokenToolColor(name))
+        }
+    }
+
+    private var modelRows: [UsageStatRow] {
+        aggregate(\.models).map { name, value in
+            UsageStatRow(name: name, value: value, percent: percent(value), color: .tokenGreenDark)
+        }
+    }
+
+    private func aggregate(_ keyPath: KeyPath<DailyUsage, [String: Int]>) -> [(String, Int)] {
+        var values: [String: Int] = [:]
+        for day in selectedRows {
+            for (name, value) in day[keyPath: keyPath] {
+                values[name, default: 0] += value
+            }
+        }
+        return values.sorted {
+            if $0.value == $1.value { return $0.key < $1.key }
+            return $0.value > $1.value
+        }
+    }
+
+    private func percent(_ value: Int) -> Double {
+        guard selectedTokens > 0 else { return 0 }
+        return Double(value) * 100 / Double(selectedTokens)
+    }
+}
+
+private enum StatsRange: String, CaseIterable, Identifiable {
+    case sevenDays
+    case thirtyDays
+    case ninetyDays
+    case all
+
+    var id: String { rawValue }
+
+    var days: Int? {
+        switch self {
+        case .sevenDays: 7
+        case .thirtyDays: 30
+        case .ninetyDays: 90
+        case .all: nil
+        }
+    }
+
+    var chartDays: Int {
+        min(days ?? 90, 90)
+    }
+
+    var label: String {
+        switch self {
+        case .sevenDays: L("近 7 天")
+        case .thirtyDays: L("近 30 天")
+        case .ninetyDays: L("近 90 天")
+        case .all: L("全部")
+        }
+    }
+
+    var title: String {
+        self == .all ? L("全部用量（图表显示最近 90 天）") : label
     }
 }
 

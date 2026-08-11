@@ -10,11 +10,11 @@ struct StatusBarLabelView: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            Image(nsImage: StatusBarIconRenderer.progressRing(progress: lap.currentLapProgress, lap: lap.currentLap, refreshing: refreshing))
+            Image(nsImage: StatusBarIconRenderer.progressRing(progress: min(max(lap.rawProgress, 0), 1), lap: 1, refreshing: refreshing))
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 22, height: 22)
-                .accessibilityLabel("\(lap.lapTitle) \(lap.lapPercentText)")
+                .accessibilityLabel("\(L("今日目标进度")) \(TokenStepFormat.percent(lap.rawProgress * 100))")
                 .id("\(theme.id)-\(language.resolved.id)")
 
             Text(TokenStepFormat.tokens(tokens, compact: true, language: language))
@@ -244,9 +244,9 @@ struct TokenCard<Content: View>: View {
     var body: some View {
         content
             .padding(24)
-            .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.black.opacity(0.06)))
-            .shadow(color: Color.black.opacity(0.055), radius: 24, x: 0, y: 14)
+            .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.black.opacity(0.07)))
+            .shadow(color: Color.black.opacity(0.05), radius: 18, x: 0, y: 10)
     }
 }
 

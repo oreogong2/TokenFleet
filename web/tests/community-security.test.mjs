@@ -178,9 +178,9 @@ test("unpriced entries stay explicit in posters and QR generation is determinist
   assert.equal(maximum.length, 177);
   assert.throws(() => createQrMatrix(`https://example.com/${"a".repeat(2954)}`), /过长/);
   assert.ok(
-    COMMUNITY_POSTER_LAYOUT.urlX + COMMUNITY_POSTER_LAYOUT.urlMaxWidth
-      < COMMUNITY_POSTER_LAYOUT.qrX,
-    "human-readable URL must not extend underneath the QR panel",
+    COMMUNITY_POSTER_LAYOUT.qrX + COMMUNITY_POSTER_LAYOUT.qrSize < COMMUNITY_POSTER_LAYOUT.urlX
+      || COMMUNITY_POSTER_LAYOUT.urlX + COMMUNITY_POSTER_LAYOUT.urlMaxWidth < COMMUNITY_POSTER_LAYOUT.qrX,
+    "human-readable URL and QR columns must not overlap",
   );
 });
 

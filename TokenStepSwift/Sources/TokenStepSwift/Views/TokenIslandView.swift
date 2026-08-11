@@ -72,8 +72,8 @@ struct TokenIslandRingView: View {
     var body: some View {
         HStack(spacing: 5) {
             Image(nsImage: StatusBarIconRenderer.progressRing(
-                progress: lap.currentLapProgress,
-                lap: lap.currentLap,
+                progress: min(max(lap.rawProgress, 0), 1),
+                lap: 1,
                 refreshing: refreshing,
                 size: 16,
                 radius: 6.2,
@@ -83,7 +83,7 @@ struct TokenIslandRingView: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 15, height: 15)
-                .accessibilityLabel("\(lap.lapTitle) \(lap.lapPercentText)")
+                .accessibilityLabel("\(L("今日目标进度")) \(TokenStepFormat.percent(lap.rawProgress * 100))")
                 .id("\(theme.id)-\(language.resolved.id)")
 
             Text(TokenStepFormat.tokens(tokens, compact: true, language: language))
@@ -114,9 +114,9 @@ private struct TokenIslandExpandedView: View {
             HStack(alignment: .center, spacing: 16) {
                 ring
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(lap.lapStatusText)
+                    Text(L("今日目标进度"))
                         .font(.system(size: 20, weight: .heavy, design: .rounded))
-                        .foregroundStyle(lap.color)
+                        .foregroundStyle(Color.tokenGreenDark)
                         .monospacedDigit()
                         .lineLimit(1)
                     Text(TokenStepFormat.tokens(appState.today.totalTokens))
@@ -124,7 +124,7 @@ private struct TokenIslandExpandedView: View {
                         .foregroundStyle(Color.tokenInk)
                         .monospacedDigit()
                         .lineLimit(1)
-                    Text(lap.perLapGoalText)
+                    Text(LFormat("每日目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
                         .font(.caption.weight(.bold))
                         .foregroundStyle(Color.tokenInk.opacity(0.55))
                         .lineLimit(1)
@@ -184,14 +184,14 @@ private struct TokenIslandExpandedView: View {
 
     private var ring: some View {
         ZStack {
-            ProgressRingView(progress: lap.currentLapProgress, lineWidth: 9, color: lap.color)
+            ProgressRingView(progress: min(max(lap.rawProgress, 0), 1), lineWidth: 9, color: .tokenGreenDark)
             VStack(spacing: 2) {
                 Text(TokenStepFormat.tokens(appState.today.totalTokens, compact: true))
                     .font(.system(size: 17, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
                     .minimumScaleFactor(0.62)
                     .lineLimit(1)
-                Text(lap.lapTitle)
+                Text(TokenStepFormat.percent(lap.rawProgress * 100))
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(Color.tokenInk.opacity(0.48))
             }
