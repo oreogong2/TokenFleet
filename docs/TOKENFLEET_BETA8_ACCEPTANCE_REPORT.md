@@ -33,8 +33,8 @@ CI：GitHub Actions `31730659034` 四项全部通过。
 | 静态浏览器 | 通过 | 1440、820、390 px；7 条管理路由、空／长模型／最大数、401/403/503、键盘焦点、reduced motion、对比度；console/page error 为 0。 |
 | 社群浏览器竞态 | 通过 | 排行、分享、补发一次性码和退出的跨路由慢响应均不泄露旧弹窗或原始码。 |
 | 临时真实联调 | 通过 | 临时 SQLite 完成批次领取、成员补发、3 台设备、极值 Token、公开榜、成本、错误登录、退出清理；浏览器 console/page error 为 0，完成后服务与临时状态均删除。 |
-| Swift 完整门禁 | arm64 与 x86_64 均通过 | 本机与 PR CI 的源码、真实 XCTest、网络/Keychain/同步状态机、Codex/Claude/CC Switch fixture、费用覆盖、迁移、本地化和语言刷新均通过；分享卡实际完成 ImageRenderer、复制用 PNG 和临时 JPEG 写入。本机与有 GPU 的 Apple runner 均已在 Rosetta 下执行整套 `x86_64` 门禁并通过。 |
-| universal 构建 | 本机、Apple CI 与真实 Intel runner 均通过 | `TokenFleet` 与 `Contents/Helpers/TokenFleetHelper` 均由 `lipo` 确认为 `x86_64 arm64`；版本 `0.1.0-beta.8`；新 ICNS 有效。官方 `macos-15-intel` runner 已证明 `uname -m=x86_64`，原生通过 131 项非 GPU XCTest、2 项分享非渲染测试、完整采集／同步、App/Helper 构建以及安装／升级／回滚／卸载。该无显示器 runner 不提供 Metal 设备，因此 x86_64 分享卡真实渲染由有 GPU 的 Apple runner 在 Rosetta 下执行并通过；真实 Intel 成员机的可见界面仍需人工验收。 |
+| Swift 完整门禁 | arm64 与 x86_64 均通过 | 本机源码门禁与 PR macOS CI 的真实 XCTest、网络/Keychain/同步状态机、Codex/Claude/CC Switch fixture、费用覆盖、迁移、本地化和语言刷新均通过；分享卡实际完成 ImageRenderer、复制用 PNG 和临时 JPEG 写入。本机与有 GPU 的 Apple runner 均已在 Rosetta 下执行整套 `x86_64` 门禁并通过。 |
+| universal 产物与 Intel 原生切片 | 均通过 | 本机与 Apple CI 的 `TokenFleet`、`Contents/Helpers/TokenFleetHelper` 均由 `lipo` 确认为 `x86_64 arm64`；版本 `0.1.0-beta.8`；新 ICNS 有效。官方 `macos-15-intel` runner 已证明 `uname -m=x86_64`，原生通过 131 项非 GPU XCTest、2 项分享非渲染测试、完整采集／同步、x86_64 App/Helper 构建以及安装／升级／回滚／卸载。该无显示器 runner 不提供 Metal 设备，因此 x86_64 分享卡真实渲染由有 GPU 的 Apple runner 在 Rosetta 下执行并通过；真实 Intel 成员机的可见界面仍需人工验收。 |
 | 分发身份 | 通过 | 独立构建、固定 Bundle/Team/update origin、恶意版本、重复发布目录、签名失败原子性、旧发布物保留门禁通过。 |
 | 源码安装与回滚 | 通过 | fail closed、ad-hoc／社群模式、灾难与 staged rollback、显式降级、卸载以及不修改正式 `dist` 通过；本机不支持隔离 legacy file Keychain 的项目明确跳过。 |
 | Windows 跨平台 | 本地与 Windows CI 均通过 | macOS 上 `26 passed, 2 skipped`；两个平台项已在真实 Windows runner 验证，合计 28 项通过。CI 还完成安装、同源升级、preview、status，以及计划任务不存在／存在两种卸载路径；门禁曾暴露并已修正“计划任务不存在时卸载提前终止”的真实生命周期问题。 |
