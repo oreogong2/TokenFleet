@@ -88,9 +88,12 @@ struct PopoverPanelView: View {
                 ShareDailyCardView(
                     mode: mode,
                     day: day,
-                    previousDay: previousDay(before: day)
+                    previousDay: previousDay(before: day),
+                    dailyGoalTokens: appState.settings.dailyGoalTokens,
+                    historyRows: appState.snapshot.daily,
+                    historyDays: appState.settings.historyDays,
+                    appearanceID: appState.appearanceID
                 )
-                .environmentObject(appState)
                 .environment(\.isScreenshotRendering, true)
             )
         } catch {
@@ -109,9 +112,12 @@ struct PopoverPanelView: View {
                 ShareDailyCardView(
                     mode: mode,
                     day: day,
-                    previousDay: previousDay(before: day)
+                    previousDay: previousDay(before: day),
+                    dailyGoalTokens: appState.settings.dailyGoalTokens,
+                    historyRows: appState.snapshot.daily,
+                    historyDays: appState.settings.historyDays,
+                    appearanceID: appState.appearanceID
                 )
-                .environmentObject(appState)
                 .environment(\.isScreenshotRendering, true)
             )
         } catch {

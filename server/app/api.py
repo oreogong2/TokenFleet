@@ -859,8 +859,11 @@ def _create_enrollment_token(
     session: Session,
 ) -> EnrollmentTokenResponse:
     require_admin(admin)
+    now = utcnow()
     target_user = session.scalar(
-        select(User).where(User.id == str(payload.user_id), User.org_id == admin.org_id)
+        select(User)
+        .where(User.id == str(payload.user_id), User.org_id == admin.org_id)
+        .with_for_update()
     )
     if (
         target_user is None
@@ -868,8 +871,22 @@ def _create_enrollment_token(
         or target_user.role != UserRole.MEMBER
     ):
         raise HTTPException(status_code=404, detail="active member not found")
+    # Serialize reissues per member, then expire only credentials that are both
+    # unused and still live. Used rows remain unchanged for auditability. The
+    # member lock also means concurrent reissues leave exactly one live code.
+    session.execute(
+        update(EnrollmentToken)
+        .where(
+            EnrollmentToken.org_id == admin.org_id,
+            EnrollmentToken.user_id == target_user.id,
+            EnrollmentToken.used_at.is_(None),
+            EnrollmentToken.expires_at > now,
+        )
+        .values(expires_at=now)
+        .execution_options(synchronize_session=False)
+    )
     raw_token = generate_enrollment_token()
-    expires_at = utcnow() + timedelta(minutes=payload.expires_in_minutes)
+    expires_at = now + timedelta(minutes=payload.expires_in_minutes)
     session.add(
         EnrollmentToken(
             org_id=admin.org_id,

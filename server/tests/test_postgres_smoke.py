@@ -1237,6 +1237,72 @@ def test_postgres_concurrent_enrollment_token_has_one_winner(
         assert stored_token is not None and stored_token.used_at is not None
 
 
+def test_postgres_concurrent_reissue_leaves_exactly_one_live_token(
+    postgres_runtime: PostgresRuntime,
+) -> None:
+    team = _new_team(postgres_runtime, "reissue")
+    app = _app(postgres_runtime)
+    with TestClient(app) as client:
+        admin_headers = _admin_headers(client, team)
+        lost_token = _issue_enrollment_token(client, team, admin_headers)
+
+    barrier = threading.Barrier(2)
+
+    def attempt() -> tuple[int, str | None]:
+        with TestClient(app) as concurrent_client:
+            headers = _admin_headers(concurrent_client, team)
+            barrier.wait(timeout=10)
+            response = concurrent_client.post(
+                "/api/v1/enrollment-tokens",
+                headers=headers,
+                json={"user_id": team.member_id, "expires_in_minutes": 60},
+            )
+            return response.status_code, response.json().get("enrollment_token")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: attempt(), range(2)))
+    assert [status for status, _ in results] == [201, 201]
+
+    issued_tokens = [token for _, token in results if token is not None]
+    assert len(issued_tokens) == 2
+    now = utcnow()
+    with Session(postgres_runtime.engine) as session:
+        live_rows = list(
+            session.scalars(
+                select(EnrollmentToken).where(
+                    EnrollmentToken.org_id == team.org_id,
+                    EnrollmentToken.user_id == team.member_id,
+                    EnrollmentToken.used_at.is_(None),
+                    EnrollmentToken.expires_at > now,
+                )
+            )
+        )
+        assert len(live_rows) == 1
+        live_hash = live_rows[0].token_hash
+
+    live_tokens = [
+        token for token in issued_tokens if opaque_token_hash(token) == live_hash
+    ]
+    assert len(live_tokens) == 1
+    with TestClient(app) as client:
+        refused_tokens = [lost_token] + [
+            token for token in issued_tokens if token != live_tokens[0]
+        ]
+        for token in refused_tokens:
+            response = client.post(
+                "/api/v1/devices/enroll",
+                json={
+                    "enrollment_token": token,
+                    "device_public_id": str(uuid.uuid4()),
+                    "platform": "postgres-smoke",
+                    "app_version": "1.0.0",
+                    "collector_version": "1.0.0",
+                },
+            )
+            assert response.status_code == 400
+        _enroll(client, live_tokens[0], str(uuid.uuid4()))
+
+
 def test_postgres_stable_device_reenrollment_does_not_duplicate_history(
     postgres_runtime: PostgresRuntime,
 ) -> None:

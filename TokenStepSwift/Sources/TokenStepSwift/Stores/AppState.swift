@@ -87,11 +87,18 @@ final class AppState: ObservableObject {
     }
 
     var activeStreak: UsageStreak {
-        UsageStreakCalculator.current(rows: snapshot.daily)
+        UsageStreakCalculator.current(
+            rows: snapshot.daily,
+            historyDays: settings.historyDays
+        )
     }
 
-    func activeStreakDays(endingOn date: String) -> Int {
-        UsageStreakCalculator.days(endingOn: date, rows: snapshot.daily)
+    func activeStreakMeasurement(endingOn date: String) -> UsageStreakMeasurement {
+        UsageStreakCalculator.measurement(
+            endingOn: date,
+            rows: snapshot.daily,
+            historyDays: settings.historyDays
+        )
     }
 
     func relativePace(for day: DailyUsage) -> UsageRelativePace? {

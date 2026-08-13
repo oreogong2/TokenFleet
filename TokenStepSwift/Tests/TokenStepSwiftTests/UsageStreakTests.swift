@@ -23,6 +23,7 @@ final class UsageStreakTests: XCTestCase {
         XCTAssertEqual(streak.days, 5)
         XCTAssertTrue(streak.isActiveToday)
         XCTAssertEqual(streak.endingDate, "2026-08-13")
+        XCTAssertFalse(streak.isLowerBound)
     }
 
     func testInactiveTodayKeepsYesterdayStreakDiscoverableUntilDayEnds() {
@@ -53,6 +54,33 @@ final class UsageStreakTests: XCTestCase {
 
         XCTAssertEqual(UsageStreakCalculator.days(endingOn: "2026-08-13", rows: rows), 3)
         XCTAssertEqual(UsageStreakCalculator.days(endingOn: "2026-08-09", rows: rows), 1)
+    }
+
+    func testStreakAtRetentionBoundaryIsReportedAsLowerBound() {
+        let rows = [
+            day("2026-08-11", 10),
+            day("2026-08-12", 20),
+            day("2026-08-13", 30)
+        ]
+        let now = date("2026-08-13 19:00")
+
+        let current = UsageStreakCalculator.current(
+            rows: rows,
+            historyDays: 3,
+            now: now,
+            timeZone: timeZone
+        )
+        let historical = UsageStreakCalculator.measurement(
+            endingOn: "2026-08-13",
+            rows: rows,
+            historyDays: 3,
+            now: now,
+            timeZone: timeZone
+        )
+
+        XCTAssertEqual(current.days, 3)
+        XCTAssertTrue(current.isLowerBound)
+        XCTAssertEqual(historical, UsageStreakMeasurement(days: 3, isLowerBound: true))
     }
 
     private func day(_ date: String, _ tokens: Int) -> DailyUsage {

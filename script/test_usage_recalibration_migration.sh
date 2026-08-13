@@ -3,6 +3,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SWIFT_DIR="$ROOT_DIR/TokenStepSwift"
+TEST_ARCHITECTURE="${TOKENFLEET_SWIFT_TEST_ARCHITECTURE:-$(uname -m)}"
+if [[ "$TEST_ARCHITECTURE" != "arm64" && "$TEST_ARCHITECTURE" != "x86_64" ]]; then
+  echo "Unsupported recalibration fixture architecture: $TEST_ARCHITECTURE" >&2
+  exit 1
+fi
 BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/tokenfleet-recalibration-build.XXXXXX")"
 OVERLAY_DIR="$BUILD_DIR/vfs-overlay"
 OVERLAY_FILE="$OVERLAY_DIR/overlay.yaml"
@@ -40,7 +45,7 @@ EOF
 
 swiftc \
   -D TOKENSTEP_TESTING \
-  -target arm64-apple-macos14.0 \
+  -target "$TEST_ARCHITECTURE-apple-macos14.0" \
   -vfsoverlay "$OVERLAY_FILE" \
   -Xcc -ivfsoverlay \
   -Xcc "$OVERLAY_FILE" \

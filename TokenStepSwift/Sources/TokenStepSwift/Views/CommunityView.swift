@@ -90,7 +90,7 @@ struct CommunityView: View {
             CommunityMetricCard(
                 label: L("自动同步"),
                 value: syncStateLabel,
-                detail: "\(LFormat("连续活跃 %d 天", appState.activeStreak.days)) · \(lastSyncLabel)"
+                detail: "\(localizedStreakDescription(days: appState.activeStreak.days, isLowerBound: appState.activeStreak.isLowerBound)) · \(lastSyncLabel)"
             )
         }
     }

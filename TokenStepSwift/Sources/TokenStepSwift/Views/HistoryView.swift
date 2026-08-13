@@ -20,7 +20,12 @@ struct HistoryView: View {
                         }
                         Spacer()
                         HStack(spacing: 8) {
-                            Text(LFormat("连续活跃 %d 天", appState.activeStreak.days))
+                            Text(
+                                localizedStreakDescription(
+                                    days: appState.activeStreak.days,
+                                    isLowerBound: appState.activeStreak.isLowerBound
+                                )
+                            )
                             Text("·")
                             Text(LFormat("%d 个活跃日", appState.snapshot.totals.activeDays))
                         }

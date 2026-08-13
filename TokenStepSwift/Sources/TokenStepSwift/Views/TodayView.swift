@@ -87,7 +87,10 @@ struct TodayView: View {
             CompactMetricCard(label: L("活跃天数"), value: localizedDays(appState.snapshot.totals.activeDays), detail: L("有 AI 使用的日期"))
             CompactMetricCard(
                 label: L("连续活跃"),
-                value: localizedDays(appState.activeStreak.days),
+                value: localizedStreakDays(
+                    days: appState.activeStreak.days,
+                    isLowerBound: appState.activeStreak.isLowerBound
+                ),
                 detail: appState.activeStreak.isActiveToday ? L("今天已续上") : L("等待今天续上")
             )
             CompactMetricCard(label: L("达标天数"), value: localizedDays(appState.goalDays), detail: L("达到每日目标"))

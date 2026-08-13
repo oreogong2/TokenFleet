@@ -3,6 +3,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SWIFT_DIR="$ROOT_DIR/TokenStepSwift"
+TEST_ARCHITECTURE="${TOKENFLEET_SWIFT_TEST_ARCHITECTURE:-$(uname -m)}"
+if [[ "$TEST_ARCHITECTURE" != "arm64" && "$TEST_ARCHITECTURE" != "x86_64" ]]; then
+  echo "Unsupported collector fixture architecture: $TEST_ARCHITECTURE" >&2
+  exit 1
+fi
+SWIFT_TARGET="$TEST_ARCHITECTURE-apple-macos14.0"
 BUILD_DIR="/tmp/tokenstep-codex-cumulative-fixture-$UID-$$"
 OVERLAY_DIR="$BUILD_DIR/vfs-overlay"
 OVERLAY_FILE="$OVERLAY_DIR/overlay.yaml"
@@ -41,7 +47,7 @@ cat > "$OVERLAY_FILE" <<EOF
 EOF
 
 swiftc \
-  -target arm64-apple-macos14.0 \
+  -target "$SWIFT_TARGET" \
   -vfsoverlay "$OVERLAY_FILE" \
   -Xcc -ivfsoverlay \
   -Xcc "$OVERLAY_FILE" \
@@ -62,7 +68,7 @@ swiftc \
 # still type-checks the XCTest coverage that CI runs with a complete toolchain.
 if printf '%s\n' 'import XCTest' | swiftc -typecheck - >/dev/null 2>&1; then
   swiftc \
-    -target arm64-apple-macos14.0 \
+    -target "$SWIFT_TARGET" \
     -vfsoverlay "$OVERLAY_FILE" \
     -Xcc -ivfsoverlay \
     -Xcc "$OVERLAY_FILE" \
@@ -79,7 +85,7 @@ if printf '%s\n' 'import XCTest' | swiftc -typecheck - >/dev/null 2>&1; then
     -emit-module-path "$MODULE_DIR/TokenStepSwift.swiftmodule"
 
   swiftc \
-    -target arm64-apple-macos14.0 \
+    -target "$SWIFT_TARGET" \
     -vfsoverlay "$OVERLAY_FILE" \
     -Xcc -ivfsoverlay \
     -Xcc "$OVERLAY_FILE" \

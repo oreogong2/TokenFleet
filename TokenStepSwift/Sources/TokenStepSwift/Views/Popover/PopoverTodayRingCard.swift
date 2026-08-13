@@ -48,7 +48,13 @@ struct PopoverTodayRingCard: View {
                             Text(TokenStepFormat.pricingCoverage(appState.today.pricingCoverage))
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.secondary)
-                            MetricPill(label: L("连续活跃"), value: localizedDays(appState.activeStreak.days))
+                            MetricPill(
+                                label: L("连续活跃"),
+                                value: localizedStreakDays(
+                                    days: appState.activeStreak.days,
+                                    isLowerBound: appState.activeStreak.isLowerBound
+                                )
+                            )
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -90,24 +96,14 @@ struct PopoverTodayRingCard: View {
         }
     }
 
-    private func localizedDays(_ count: Int) -> String {
-        TokenStepLocalization.language == .en ? "\(count)d" : "\(count) 天"
-    }
-
     private var todaySourceRows: [(name: String, tokens: Int)] {
-        var rows = appState.today.tools
+        let rows = appState.today.tools
             .filter { $0.value > 0 }
             .map { (name: $0.key, tokens: $0.value) }
             .sorted { $0.tokens > $1.tokens }
         guard rows.count > 3 else { return rows }
 
-        var selected = Array(rows.prefix(3))
-        if let workBuddy = rows.first(where: { $0.name == "WorkBuddy" }),
-           !selected.contains(where: { $0.name == "WorkBuddy" }) {
-            selected[2] = workBuddy
-        }
-        rows = selected.sorted { $0.tokens > $1.tokens }
-        return rows
+        return Array(rows.prefix(3))
     }
 }
 

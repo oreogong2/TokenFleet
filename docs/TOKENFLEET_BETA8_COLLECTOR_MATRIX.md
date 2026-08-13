@@ -20,7 +20,7 @@ TokenFleet 只允许读取日期、工具、模型、输入、输出、缓存读
 
 ## 已落地的可验证路径
 
-beta.8 保留 CC Switch SQLite 只读采集，并继续使用严格条件：HTTP 2xx、`data_source` 为空或为 `proxy`、四类 Token 合计大于 0。查询只选择请求时间、`app_type`、模型、四类 Token、来源费用和请求去重 ID；不选择请求体、响应体、prompt、代码或路径字段。
+beta.8 保留 CC Switch SQLite 只读采集，并继续使用严格条件：HTTP 2xx、`data_source = proxy`、四类 Token 合计大于 0。查询只选择请求时间、`app_type`、模型、四类 Token、来源费用和请求去重 ID；不选择请求体、响应体、prompt、代码或路径字段。
 
 Kimi、DeepSeek、Cursor 的 CC Switch 名称明确带有 `experimental`，不会伪装成原生支持；没有真实行时界面不会出现它们。Gemini 的代理来源同样不等于 Gemini CLI 原生日志支持。
 

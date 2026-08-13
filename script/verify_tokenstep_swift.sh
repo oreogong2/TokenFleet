@@ -13,6 +13,7 @@ rg --version >/dev/null 2>&1 || {
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SWIFT_DIR="$ROOT_DIR/TokenStepSwift"
 SDK_PATH="${TOKENFLEET_SWIFT_SDK:-/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk}"
+TEST_ARCHITECTURE="${TOKENFLEET_SWIFT_TEST_ARCHITECTURE:-$(uname -m)}"
 BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/tokenfleet-swift-verify.XXXXXX")"
 MODULE_CACHE="$BUILD_DIR/module-cache"
 MODULE_PATH="$BUILD_DIR/TokenStepSwift.swiftmodule"
@@ -22,6 +23,7 @@ APP_PATH="$BUILD_DIR/TokenStepSwiftApp"
 OFFLINE_FIXTURE_PATH="$BUILD_DIR/team-sync-offline-recovery"
 NETWORK_FIXTURE_PATH="$BUILD_DIR/network-supply-chain"
 KEYCHAIN_FIXTURE_PATH="$BUILD_DIR/team-sync-keychain"
+SHARE_CARD_FIXTURE_PATH="$BUILD_DIR/share-card-export"
 COMPLETED=false
 
 cleanup() {
@@ -36,6 +38,10 @@ trap cleanup EXIT
 
 if [[ ! -d "$SDK_PATH" ]]; then
   echo "Swift SDK not found: $SDK_PATH" >&2
+  exit 1
+fi
+if [[ "$TEST_ARCHITECTURE" != "arm64" && "$TEST_ARCHITECTURE" != "x86_64" ]]; then
+  echo "Unsupported native Swift verification architecture: $TEST_ARCHITECTURE" >&2
   exit 1
 fi
 
@@ -76,7 +82,7 @@ done <"$TEST_SOURCE_LIST"
 }
 
 COMMON_FLAGS=(
-  -target arm64-apple-macosx14.0
+  -target "$TEST_ARCHITECTURE-apple-macosx14.0"
   -sdk "$SDK_PATH"
   -module-cache-path "$MODULE_CACHE"
 )
@@ -177,6 +183,19 @@ swiftc \
   -lTokenStepSwift \
   -Xlinker -rpath \
   -Xlinker "$BUILD_DIR" \
+  "$SWIFT_DIR/Tests/Fixtures/ShareCardExportFixtureCheck.swift" \
+  -o "$SHARE_CARD_FIXTURE_PATH"
+
+"$SHARE_CARD_FIXTURE_PATH"
+
+swiftc \
+  -parse-as-library \
+  "${COMMON_FLAGS[@]}" \
+  -I "$BUILD_DIR" \
+  -L "$BUILD_DIR" \
+  -lTokenStepSwift \
+  -Xlinker -rpath \
+  -Xlinker "$BUILD_DIR" \
   "$ROOT_DIR/script/fixtures/TokenStepLogicHarness.swift" \
   -o "$HARNESS_PATH"
 
@@ -200,16 +219,19 @@ TOKENFLEET_TEST_APP_SUPPORT_ROOT="$BUILD_DIR/offline-app-support" \
 SDKROOT="$SDK_PATH" \
 CLANG_MODULE_CACHE_PATH="$MODULE_CACHE" \
 SWIFT_MODULECACHE_PATH="$MODULE_CACHE" \
+TOKENFLEET_SWIFT_TEST_ARCHITECTURE="$TEST_ARCHITECTURE" \
   bash "$ROOT_DIR/script/test_codex_cumulative_collector.sh"
 
 SDKROOT="$SDK_PATH" \
 CLANG_MODULE_CACHE_PATH="$MODULE_CACHE" \
 SWIFT_MODULECACHE_PATH="$MODULE_CACHE" \
+TOKENFLEET_SWIFT_TEST_ARCHITECTURE="$TEST_ARCHITECTURE" \
   bash "$ROOT_DIR/script/test_ccswitch_proxy_collector.sh"
 
 SDKROOT="$SDK_PATH" \
 CLANG_MODULE_CACHE_PATH="$MODULE_CACHE" \
 SWIFT_MODULECACHE_PATH="$MODULE_CACHE" \
+TOKENFLEET_SWIFT_TEST_ARCHITECTURE="$TEST_ARCHITECTURE" \
   bash "$ROOT_DIR/script/test_usage_recalibration_migration.sh"
 
 python3 "$ROOT_DIR/script/check_localization.py"

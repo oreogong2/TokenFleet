@@ -352,8 +352,9 @@ function peopleTable(items, compact = false) {
     const member = `<td><a class="person-cell" href="#/people/${encodeURIComponent(person.id)}"><span class="avatar">${escapeHTML((person.name || person.email || "?").slice(0, 1))}</span><span><strong>${escapeHTML(person.name || "未命名")}${disabled ? '<i class="member-state">已禁用</i>' : ""}</strong>${compact ? "" : `<small>${escapeHTML(person.email || "")}</small>`}</span></a></td>`;
     const signature = `<td><span class="usage-signature"><strong>${escapeHTML(person.primary_tool || "暂无工具")}</strong><small>${escapeHTML(person.primary_model || "暂无模型")}</small></span></td>`;
     const rank = `<td><span class="rank-number" title="仅按当前范围 Token 排序，不代表绩效">${String(index + 1).padStart(2, "0")}</span></td>`;
+    const enrollmentLabel = Number(person.device_count || 0) > 0 ? "添加新设备" : "补发设备码";
     const quickEnrollment = !compact && state.me?.role === "admin" && publicEligible
-      ? `<button class="text-button small" type="button" data-action="open-enrollment" data-user-id="${escapeHTML(person.id)}" title="为这名既有成员补发一次性设备码；不会新建成员或占用批次名额">补发设备码</button>`
+      ? `<button class="text-button small" type="button" data-action="open-enrollment" data-user-id="${escapeHTML(person.id)}" title="为这名既有成员生成一次性设备码；旧的未使用有效码会立即失效，不会新建成员或占用批次名额">${enrollmentLabel}</button>`
       : "";
     const action = `<td><div class="row-actions">${quickEnrollment}<a class="row-link" href="#/people/${encodeURIComponent(person.id)}" aria-label="查看 ${escapeHTML(person.name || "成员")}">${icon("arrow", 17)}</a></div></td>`;
     if (compact) {
@@ -399,7 +400,7 @@ function memberDialog() {
 }
 
 function enrollmentDialog(people) {
-  return `<form method="dialog" class="dialog-card" data-action="create-enrollment"><div class="dialog-head"><div><span class="panel-kicker">SAFE REISSUE</span><h2>给已有成员补发设备码</h2></div><button class="icon-button" type="button" data-action="close-dialog" aria-label="关闭">×</button></div><p>适合成员领取后漏保存，或需要连接另一台设备。新码 60 分钟有效、只能用一次；原始码不会在后台显示或保存。</p><label>确认成员<select name="user_id" required><option value="">选择已有成员</option>${people.filter((person) => person.status === "active" && person.role === "member").map((person) => `<option value="${escapeHTML(person.id)}">${escapeHTML(person.name)} · ${Number(person.device_count || 0)} 台设备${person.email ? ` · ${escapeHTML(person.email)}` : ""}</option>`).join("")}</select></label><div class="inline-alert">只给所选成员增加一个一次性连接码：不会重复创建成员，不占自助批次名额，也不会让已经使用或尚未过期的旧码重新出现。</div><p class="form-note">请核对昵称和现有设备数量，生成后立即通过私密渠道发送。</p><div class="dialog-actions"><button class="text-button" type="button" data-action="close-dialog">取消</button><button class="primary-button small" type="submit" value="default">确认补发 60 分钟设备码</button></div></form>`;
+  return `<form method="dialog" class="dialog-card" data-action="create-enrollment"><div class="dialog-head"><div><span class="panel-kicker">SAFE REISSUE</span><h2>给已有成员补发设备码</h2></div><button class="icon-button" type="button" data-action="close-dialog" aria-label="关闭">×</button></div><p>适合成员领取后漏保存，或需要连接另一台设备。新码 60 分钟有效、只能用一次；生成后，该成员此前仍未使用且未过期的旧码会立即失效。</p><label>确认成员<select name="user_id" required><option value="">选择已有成员</option>${people.filter((person) => person.status === "active" && person.role === "member").map((person) => `<option value="${escapeHTML(person.id)}">${escapeHTML(person.name)} · ${Number(person.device_count || 0)} 台设备${person.email ? ` · ${escapeHTML(person.email)}` : ""}</option>`).join("")}</select></label><div class="inline-alert">同一成员只保留一个有效未用码；不会重复创建成员，不占自助批次名额，已使用码及其审计记录不会改变。</div><p class="form-note">请核对昵称和现有设备数量，生成后立即通过私密渠道发送；原始码不会在后台显示或保存。</p><div class="dialog-actions"><button class="text-button" type="button" data-action="close-dialog">取消</button><button class="primary-button small" type="submit" value="default">确认补发 60 分钟设备码</button></div></form>`;
 }
 
 function renderPersonDetail() {
@@ -418,7 +419,7 @@ function renderPersonDetail() {
     ? `<button type="button" class="switch-control" role="switch" aria-checked="${person.public_profile_enabled === true}" aria-label="${escapeHTML(person.name || "成员")}参与社群榜" data-action="toggle-public-profile" data-user-id="${escapeHTML(person.id)}" data-enabled="${person.public_profile_enabled !== true}" data-active="${!disabled}" ${disabled ? 'disabled title="请先重新启用成员"' : ""}><span aria-hidden="true"></span><b>${disabled && person.public_profile_enabled ? "已禁用（公开页隐藏）" : person.public_profile_enabled === true ? "公开榜已开启" : "参与社群榜"}</b></button>`
     : "";
   const enrollmentAction = state.me?.role === "admin" && person.role === "member" && !disabled
-    ? `<button class="secondary-button small" type="button" data-action="open-enrollment" data-user-id="${escapeHTML(person.id)}">补发设备码</button>`
+    ? `<button class="secondary-button small" type="button" data-action="open-enrollment" data-user-id="${escapeHTML(person.id)}">${devices.length > 0 ? "添加新设备" : "补发设备码"}</button>`
     : "";
   const costText = formatCostBreakdown(person);
   return `<a class="back-link" href="#/people">← 返回成员列表</a><section class="person-hero"><span class="avatar large">${escapeHTML((person.name || "?").slice(0, 1))}</span><div><h2>${escapeHTML(person.name || "未命名成员")}</h2><p>${person.email ? escapeHTML(person.email) : '<span class="muted-label">无后台登录账号</span>'}</p></div><div class="person-status-actions"><span class="status-badge ${disabled ? "status-disabled" : "status-active"}">${disabled ? "已禁用" : "正常"}</span>${enrollmentAction}${publicAction}${statusAction}</div></section><div class="metric-grid three">${metricCard("Token 合计", { text: formatTokens(total), full: formatTokens(total, { compact: false }) }, "当前查询范围内的设备合计", "ink")}${metricCard("设备", { text: String(devices.length), full: devices.length }, `${devices.filter((item) => item.enabled).length} 台启用`, "green")}${metricCard("API 标准价估算", { text: costText, full: costText }, costEstimateNote(person, "按已识别模型和计价组成分别估算，不等于真实账单"), "blue")}</div><div class="two-column"><article class="panel"><div class="panel-head"><div><span class="panel-kicker">DEVICES</span><h2>名下设备</h2></div></div>${deviceList(devices)}</article><article class="panel"><div class="panel-head"><div><span class="panel-kicker">MODEL LEDGER</span><h2>最近模型</h2></div></div>${distribution(aggregateBy(usage, "model"), "blue")}</article></div><dialog id="enrollment-dialog">${enrollmentDialog([{ ...person, device_count: devices.length }])}</dialog>`;
@@ -827,7 +828,7 @@ document.addEventListener("submit", async (event) => {
       if (!isCurrentNavigation(generation)) return;
       form.closest("dialog")?.close();
       showOneTimeConnection(result, generation);
-      toast("已为原成员生成 60 分钟一次性设备码；成员数和批次名额未变化", "success", generation);
+      toast("新设备码已生成；旧的未使用有效码已失效，成员数和批次名额未变化", "success", generation);
     } catch (error) {
       if (isCurrentNavigation(generation)) toast(error.message, "error", generation);
     }

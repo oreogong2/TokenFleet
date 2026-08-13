@@ -572,6 +572,8 @@ def main():
         enrollment = page.locator("#enrollment-dialog")
         assert "不会重复创建成员" in enrollment.inner_text()
         assert "不占自助批次名额" in enrollment.inner_text()
+        assert "旧码会立即失效" in enrollment.inner_text()
+        assert "已使用码及其审计记录不会改变" in enrollment.inner_text()
         option_values = enrollment.locator('select[name="user_id"] option').evaluate_all(
             "options => options.map(option => option.value).filter(Boolean)"
         )

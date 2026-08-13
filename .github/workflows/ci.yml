@@ -150,7 +150,7 @@ jobs:
           .ci-venv/bin/python script/verify_tokenfleet_live_web.py
 
   desktop:
-    name: Native client and distribution identity
+    name: Apple Silicon client and universal distribution
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -215,6 +215,58 @@ jobs:
             echo "Tracked environment file other than .env.example detected." >&2
             exit 1
           fi
+
+  desktop-intel:
+    name: Intel client, collector, sync, and source lifecycle
+    runs-on: macos-15-intel
+    timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Prove this job is running on Intel hardware
+        run: |
+          [[ "$(uname -m)" == "x86_64" ]]
+          sysctl -n machdep.cpu.brand_string
+
+      - name: Install desktop verification tools
+        run: brew install ripgrep
+
+      - name: Run XCTest natively on Intel
+        run: swift test --package-path TokenStepSwift --parallel
+
+      - name: Run collector, pricing, share, and sync gates natively on Intel
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" bash script/verify_tokenstep_swift.sh
+
+      - name: Build native Intel App and Helper
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" \
+          TOKENFLEET_ARCHITECTURES="x86_64" \
+            bash script/build_swiftui_and_run.sh --no-launch
+          for binary in \
+            TokenStepSwift/dist/TokenFleet.app/Contents/MacOS/TokenFleet \
+            TokenStepSwift/dist/TokenFleet.app/Contents/Helpers/TokenFleetHelper; do
+            [[ "$(lipo -archs "$binary")" == "x86_64" ]]
+          done
+
+      - name: Exercise source install, upgrade, rollback, and uninstall on Intel
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" \
+          TOKENFLEET_ARCHITECTURES="x86_64" \
+            bash script/verify_source_distribution.sh
+
+      - name: Run desktop identity and packaging preflight on Intel
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" \
+          TOKENFLEET_ARCHITECTURES="x86_64" \
+            bash script/verify_tokenfleet_desktop_identity.sh
 
   windows-client:
     name: Windows participant client

@@ -26,11 +26,12 @@
   and file-write failures, and replaced the inherited icon with a TokenFleet
   signal icon.
 - Added a safe existing-member device-code reissue path that keeps the member,
-  invitation-batch count, and old consumed codes unchanged and never stores the
-  one-time plaintext code.
+  invitation-batch count, and consumed-code audit rows unchanged, expires every
+  older live unused code in the same member-locked transaction, and never stores
+  the one-time plaintext code.
 - Built the macOS App and helper as universal arm64 + x86_64 binaries and expanded
-  Windows CI to exercise install, same-origin upgrade, preview, status, DPAPI,
-  scheduled-task, and uninstall paths.
+  CI with a native `macos-15-intel` lifecycle gate; Windows CI exercises install,
+  same-origin upgrade, preview, status, DPAPI, scheduled-task, and uninstall paths.
 - Documented strict feasibility and privacy boundaries for Kimi Code, DeepSeek,
   Cursor, and Gemini CLI; only observed CC Switch proxy rows are labeled as
   experimental support, and no conversation, code, prompt, response, or path is

@@ -40,21 +40,37 @@ enum ScreenshotExportError: LocalizedError {
 }
 
 @MainActor
-enum ScreenshotExporter {
-    static func copy<V: View>(_ view: V) throws {
-        defer { MemoryPressure.relieveAllocatorPressure() }
-        let image = try render(view)
-        let data = try pngData(from: image)
+protocol ScreenshotClipboardWriting {
+    func replacePNG(with data: Data) -> Bool
+}
+
+@MainActor
+struct GeneralScreenshotClipboardWriter: ScreenshotClipboardWriting {
+    func replacePNG(with data: Data) -> Bool {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        guard pasteboard.setData(data, forType: .png) else {
+        return pasteboard.setData(data, forType: .png)
+    }
+}
+
+@MainActor
+enum ScreenshotExporter {
+    static func copy<V: View>(
+        _ view: V,
+        clipboardWriter: ScreenshotClipboardWriting? = nil
+    ) throws {
+        defer { MemoryPressure.relieveAllocatorPressure() }
+        let image = try renderImage(view)
+        let data = try pngData(from: image)
+        let writer = clipboardWriter ?? GeneralScreenshotClipboardWriter()
+        guard writer.replacePNG(with: data) else {
             throw ScreenshotExportError.clipboardWriteFailed
         }
     }
 
     static func save<V: View>(_ view: V, suggestedFileName: String) throws {
         defer { MemoryPressure.relieveAllocatorPressure() }
-        let image = try render(view)
+        let image = try renderImage(view)
         let data = try pngData(from: image)
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
@@ -72,17 +88,23 @@ enum ScreenshotExporter {
     }
 
     @discardableResult
-    static func saveJPGToDownloads<V: View>(_ view: V) throws -> URL {
+    static func saveJPGToDownloads<V: View>(
+        _ view: V,
+        downloadsDirectory: URL? = nil,
+        revealInFinder: Bool = true
+    ) throws -> URL {
         defer { MemoryPressure.relieveAllocatorPressure() }
-        let image = try render(view)
+        let image = try renderImage(view)
         let data = try jpgData(from: image)
-        let url = try uniqueDownloadsURL()
+        let url = try uniqueDownloadsURL(in: downloadsDirectory)
         do {
             try data.write(to: url, options: .atomic)
         } catch {
             throw ScreenshotExportError.fileWriteFailed
         }
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+        if revealInFinder {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
         return url
     }
 
@@ -93,7 +115,7 @@ enum ScreenshotExporter {
         return "TokenFleet-\(prefix)-\(formatter.string(from: Date())).png"
     }
 
-    private static func render<V: View>(_ view: V) throws -> NSImage {
+    static func renderImage<V: View>(_ view: V) throws -> NSImage {
         let renderer = ImageRenderer(content: view)
         renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
         guard let image = renderer.nsImage else {
@@ -136,13 +158,13 @@ enum ScreenshotExporter {
         return NSBitmapImageRep(cgImage: cgImage)
     }
 
-    private static func uniqueDownloadsURL() throws -> URL {
+    private static func uniqueDownloadsURL(in explicitDirectory: URL?) throws -> URL {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyMMdd"
         let baseName = "TokenFleet\(formatter.string(from: Date()))"
 
-        guard let downloads = FileManager.default.urls(
+        guard let downloads = explicitDirectory ?? FileManager.default.urls(
             for: .downloadsDirectory,
             in: .userDomainMask
         ).first else {

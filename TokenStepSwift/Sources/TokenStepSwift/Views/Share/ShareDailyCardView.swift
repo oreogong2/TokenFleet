@@ -27,13 +27,16 @@ enum ShareCardMode: Equatable {
 }
 
 struct ShareDailyCardView: View {
-    @EnvironmentObject private var appState: AppState
     var mode: ShareCardMode
     var day: DailyUsage
     var previousDay: DailyUsage?
+    var dailyGoalTokens: Int
+    var historyRows: [DailyUsage]
+    var historyDays: Int
+    var appearanceID: String
 
     private var lap: TokenStepLapProgress {
-        TokenStepLapProgress(tokens: day.totalTokens, goal: appState.settings.dailyGoalTokens)
+        TokenStepLapProgress(tokens: day.totalTokens, goal: dailyGoalTokens)
     }
 
     var body: some View {
@@ -55,7 +58,7 @@ struct ShareDailyCardView: View {
                     rows: modelRows,
                     compact: true
                 )
-                ShareTrendPanel(day: day, rows: appState.snapshot.daily, goal: appState.settings.dailyGoalTokens)
+                ShareTrendPanel(day: day, rows: historyRows, goal: dailyGoalTokens)
 
                 footer
             }
@@ -63,7 +66,7 @@ struct ShareDailyCardView: View {
         }
         .frame(width: 600, height: 840)
         .fixedSize()
-        .id(appState.appearanceID)
+        .id(appearanceID)
     }
 
     private var header: some View {
@@ -101,7 +104,7 @@ struct ShareDailyCardView: View {
                         .lineLimit(1)
                     ProgressView(value: min(max(lap.rawProgress, 0), 1))
                         .tint(Color.tokenGreenDark)
-                    Text(LFormat("目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
+                    Text(LFormat("目标 %@", TokenStepFormat.tokens(dailyGoalTokens, compact: true)))
                         .font(.headline.weight(.heavy))
                         .foregroundStyle(.secondary)
                 }
@@ -124,7 +127,7 @@ struct ShareDailyCardView: View {
                         Text(LFormat("今日用量 %@", TokenStepFormat.tokens(day.totalTokens, compact: true)))
                             .font(.title3.weight(.heavy))
                             .foregroundStyle(Color.tokenInk.opacity(0.78))
-                        Text(LFormat("每日目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
+                        Text(LFormat("每日目标 %@", TokenStepFormat.tokens(dailyGoalTokens, compact: true)))
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(.secondary)
                         Text(mode == .yesterday ? comparisonText : L("今日 Token"))
@@ -166,8 +169,16 @@ struct ShareDailyCardView: View {
     private var shareContextText: String {
         let cost = TokenStepFormat.estimatedMoney(day.cost, coverage: day.pricingCoverage)
         let coverage = TokenStepFormat.pricingCoverage(day.pricingCoverage)
-        let streak = LFormat("连续活跃 %d 天", appState.activeStreakDays(endingOn: day.date))
-        if let pace = appState.relativePace(for: day) {
+        let measurement = UsageStreakCalculator.measurement(
+            endingOn: day.date,
+            rows: historyRows,
+            historyDays: historyDays
+        )
+        let streak = localizedStreakDescription(
+            days: measurement.days,
+            isLowerBound: measurement.isLowerBound
+        )
+        if let pace = UsageRelativePaceCalculator.comparison(for: day, in: historyRows) {
             return "\(streak) · \(pace.summary) · \(L("费用估算")) \(cost) · \(coverage)"
         }
         return "\(streak) · \(L("相对节奏样本不足")) · \(L("费用估算")) \(cost) · \(coverage)"
