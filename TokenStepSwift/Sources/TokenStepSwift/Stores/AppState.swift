@@ -11,10 +11,6 @@ final class AppState: ObservableObject {
     @Published private(set) var isRefreshingCodexQuota = false
     @Published private(set) var codexQuota: CodexQuotaSnapshot = .unavailable
     @Published private(set) var claudeQuota: CodexQuotaSnapshot = .unavailable
-    @Published private(set) var isRefreshingTokenRank = false
-    @Published private(set) var tokenRank: TokenRankLeaderboard?
-    @Published private(set) var agentWorkRankIdentity: AgentWorkRankIdentity?
-    @Published private(set) var tokenRankError: String?
     @Published private(set) var isDownloadingUpdate = false
     @Published private(set) var updateDownloadProgress = 0.0
     @Published private(set) var updateInstallStatus = L("准备更新")
@@ -26,6 +22,9 @@ final class AppState: ObservableObject {
     @Published private(set) var teamSyncState: TeamSyncPersistentState?
     @Published private(set) var isTeamSyncing = false
     @Published private(set) var teamSyncActionError: String?
+    @Published private(set) var communityRank: TeamSyncCommunityRank?
+    @Published private(set) var isRefreshingCommunityRank = false
+    @Published private(set) var communityRankError: String?
     @Published var lastError: String?
 
     private var timer: Timer?
@@ -35,7 +34,7 @@ final class AppState: ObservableObject {
     private var pendingRefreshAfterCurrent = false
     private var pendingForcedRefresh = false
     private var lastQuotaRefreshAttemptAt: Date?
-    private var lastRankRefreshAttemptAt: Date?
+    private var lastCommunityRankRefreshAttemptAt: Date?
     private var lastAutomaticUsageRefreshAttemptAt: Date?
     private var lastUsageObservedAt: Date?
     private let fixedCommunityServerOrigin: URL?
@@ -63,7 +62,6 @@ final class AppState: ObservableObject {
         configureTimer()
         configureTeamSyncTimer()
         refreshCodexQuota()
-        refreshTokenRank()
         scheduleDeferredUpdateCheck()
     }
 
@@ -177,10 +175,6 @@ final class AppState: ObservableObject {
         "\(settings.theme.id)-\(settings.language.resolved.id)"
     }
 
-    var shouldShowAgentWorkRank: Bool {
-        settings.agentWorkRankVisibility.shouldShow(hasLocalIdentity: agentWorkRankIdentity != nil)
-    }
-
     var communityServerOrigin: URL? {
         fixedCommunityServerOrigin
     }
@@ -227,15 +221,6 @@ final class AppState: ObservableObject {
         if !loadedSettings.showCodexQuota {
             codexQuota = .unavailable
             claudeQuota = .unavailable
-        }
-        if !loadedSettings.agentWorkRankVisibility.readsLocalIdentity {
-            clearTokenRankState()
-        } else {
-            agentWorkRankIdentity = AgentWorkRankService.loadLocalIdentity()
-            if loadedSettings.agentWorkRankVisibility == .automatic,
-               agentWorkRankIdentity == nil {
-                clearTokenRankState()
-            }
         }
         autostartEnabled = AutostartService.isEnabled
     }
@@ -309,7 +294,7 @@ final class AppState: ObservableObject {
             refresh(forceCollection: false)
         }
         refreshCodexQuota(now: now)
-        refreshTokenRank()
+        refreshCommunityRank(now: now)
     }
 
     func setForegroundRefreshSurface(_ identifier: String, visible: Bool) {
@@ -451,6 +436,11 @@ final class AppState: ObservableObject {
         refreshTokenIslandAvailability()
     }
 
+    func setMenuBarTokenCountVisible(_ visible: Bool) {
+        settings.menuBarShowsTokenCount = visible
+        saveSettingsAndReload()
+    }
+
     func setCodexQuotaVisible(_ visible: Bool) {
         settings.showCodexQuota = visible
         saveSettingsAndReload()
@@ -460,16 +450,6 @@ final class AppState: ObservableObject {
             codexQuota = .unavailable
             claudeQuota = .unavailable
             isRefreshingCodexQuota = false
-        }
-    }
-
-    func setAgentWorkRankVisibility(_ visibility: AgentWorkRankVisibility) {
-        settings.agentWorkRankVisibility = visibility
-        saveSettingsAndReload()
-        if shouldShowAgentWorkRank {
-            refreshTokenRank(force: true)
-        } else {
-            clearTokenRankState()
         }
     }
 
@@ -559,6 +539,7 @@ final class AppState: ObservableObject {
             }
             isTeamSyncing = false
             configureTeamSyncTimer()
+            refreshCommunityRank(force: true)
         }
     }
 
@@ -579,6 +560,8 @@ final class AppState: ObservableObject {
                 settings.teamSyncServerURL = ""
                 saveSettingsAndReload()
                 teamSyncState = nil
+                communityRank = nil
+                communityRankError = nil
             } catch {
                 teamSyncActionError = error.localizedDescription
             }
@@ -587,66 +570,45 @@ final class AppState: ObservableObject {
         }
     }
 
-    func refreshTokenRank(force: Bool = false, now: Date = Date()) {
-        guard settings.agentWorkRankVisibility.readsLocalIdentity else {
-            clearTokenRankState()
+    func refreshCommunityRank(force: Bool = false, now: Date = Date()) {
+        guard let fixedCommunityServerOrigin,
+              TeamSyncCredentialStorageAvailability.isAvailable,
+              isCommunitySyncEnrollmentCompatible
+        else {
+            communityRank = nil
+            communityRankError = nil
+            isRefreshingCommunityRank = false
             return
         }
-        agentWorkRankIdentity = AgentWorkRankService.loadLocalIdentity()
-        guard shouldShowAgentWorkRank else {
-            clearTokenRankState()
+        guard !isRefreshingCommunityRank else { return }
+        if !force,
+           EnergyRefreshPolicy.isFresh(
+               lastAttemptAt: lastCommunityRankRefreshAttemptAt,
+               ttl: EnergyRefreshPolicy.rankTTL,
+               now: now
+           ) {
             return
         }
-        guard !isRefreshingTokenRank else { return }
-        if !force {
-            if EnergyRefreshPolicy.isFresh(
-                lastAttemptAt: lastRankRefreshAttemptAt,
-                ttl: EnergyRefreshPolicy.rankTTL,
-                now: now
-            ) {
-                return
-            }
-            if let fetchedAt = tokenRank?.fetchedAt,
-               now.timeIntervalSince(fetchedAt) < AgentWorkRankService.cacheTTL {
-                return
-            }
-        }
-        lastRankRefreshAttemptAt = now
-
-        agentWorkRankIdentity = AgentWorkRankService.loadLocalIdentity()
-        isRefreshingTokenRank = true
+        lastCommunityRankRefreshAttemptAt = now
+        isRefreshingCommunityRank = true
         Task {
-            defer {
-                isRefreshingTokenRank = false
-            }
+            defer { isRefreshingCommunityRank = false }
             do {
-                let leaderboard = try await AgentWorkRankService.fetchLeaderboard()
-                guard shouldShowAgentWorkRank else {
-                    clearTokenRankState()
-                    return
-                }
-                tokenRank = leaderboard
-                tokenRankError = nil
+                let rank = try await TeamSyncService.live.fetchCommunityRank(
+                    serverURL: fixedCommunityServerOrigin.absoluteString,
+                    now: now
+                )
+                guard isCommunitySyncEnrollmentCompatible else { return }
+                communityRank = rank
+                communityRankError = nil
+            } catch let error as TeamSyncProtocolError
+                where error == .operationCancelled {
+                return
             } catch {
-                guard shouldShowAgentWorkRank else {
-                    clearTokenRankState()
-                    return
-                }
-                if tokenRank == nil {
-                    tokenRankError = L("暂时无法读取榜单")
-                } else {
-                    tokenRankError = L("榜单同步失败，显示上次结果")
-                }
+                guard isCommunitySyncEnrollmentCompatible else { return }
+                communityRankError = L("暂时无法读取社群排名")
             }
         }
-    }
-
-    func openTokenRankLeaderboardPage() {
-        NSWorkspace.shared.open(AgentWorkRankService.leaderboardPageURL)
-    }
-
-    func openTokenRankUserPage() {
-        NSWorkspace.shared.open(AgentWorkRankService.myPageURL)
     }
 
     func setAutoUpdateEnabled(_ enabled: Bool) {
@@ -760,13 +722,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func clearTokenRankState() {
-        tokenRank = nil
-        agentWorkRankIdentity = nil
-        tokenRankError = nil
-        isRefreshingTokenRank = false
-    }
-
     private func configureTimer() {
         timer?.invalidate()
         timer = nil
@@ -782,7 +737,7 @@ final class AppState: ObservableObject {
                 guard let self else { return }
                 self.refresh(forceCollection: false)
                 self.refreshCodexQuota()
-                self.refreshTokenRank()
+                self.refreshCommunityRank()
                 self.configureTimer()
             }
         }

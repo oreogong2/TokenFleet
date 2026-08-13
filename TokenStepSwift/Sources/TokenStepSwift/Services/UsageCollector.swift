@@ -72,9 +72,17 @@ enum UsageCollector {
         let hermes = includeExperimentalAgentSources
             ? collectHermesUsage(databaseURL: hermesDatabaseURL)
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let workBuddy = includeExperimentalAgentSources
-            ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        // WorkBuddy project logs can colocate usage with message and tool
+        // content. beta.8 deliberately does not open those paths until a
+        // stable usage-only contract exists.
+        let workBuddy = CollectorResult(
+            records: [],
+            source: SourceInfo(
+                status: "unsupported_privacy_boundary",
+                files: nil,
+                records: 0
+            )
+        )
         if codexOutcome.usedIncrementalStore {
             cache.files = cache.files.filter { $0.value.tool != "Codex" && livePaths.contains($0.key) }
         } else {
@@ -134,10 +142,6 @@ enum UsageCollector {
                 homeURL.appendingPathComponent(".zcode/cli/db/db.sqlite"),
                 homeURL.appendingPathComponent(".hermes/state.db")
             ]))
-            urls.append(contentsOf: [
-                homeURL.appendingPathComponent(".workbuddy/projects", isDirectory: true),
-                homeURL.appendingPathComponent("Library/Application Support/WorkBuddyExtension", isDirectory: true)
-            ].flatMap { jsonlFiles(under: $0, modifiedSince: cutoff) })
         }
 
         let files = Dictionary(grouping: urls, by: \.path)
@@ -419,9 +423,14 @@ enum UsageCollector {
         let hermes = includeExperimentalAgentSources
             ? hermesDatabaseURL.map { collectHermesUsage(databaseURL: $0) } ?? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let workBuddy = includeExperimentalAgentSources
-            ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs ?? [], modifiedSince: nil)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let workBuddy = CollectorResult(
+            records: [],
+            source: SourceInfo(
+                status: "unsupported_privacy_boundary",
+                files: nil,
+                records: 0
+            )
+        )
         let deduped = deduplicateCrossSource(
             nativeRecords: codex.records + claude.records,
             proxyRecords: ccSwitch.records
@@ -2076,122 +2085,6 @@ enum UsageCollector {
         )
     }
 
-    private static func collectWorkBuddyUsage(
-        rootURLs: [URL]? = nil,
-        modifiedSince cutoffDate: Date?
-    ) -> CollectorResult {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let roots = rootURLs ?? [
-            home.appendingPathComponent(".workbuddy/projects", isDirectory: true),
-            home.appendingPathComponent("Library/Application Support/WorkBuddyExtension", isDirectory: true)
-        ]
-        let discoveredRoots = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
-        let files = discoveredRoots.flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
-        var records: [UsageRecord] = []
-
-        for file in files {
-            var lineNumber = 0
-            try? forEachLine(in: file, matchingAny: ["\"usage\"", "\"rawUsage\""]) { line in
-                lineNumber += 1
-                guard let data = line.data(using: .utf8),
-                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let timestamp = object["timestamp"],
-                      let day = dayString(fromEpoch: timestamp),
-                      let usage = workBuddyUsage(from: object),
-                      usage.totalTokens > 0
-                else {
-                    return
-                }
-
-                let providerData = object["providerData"] as? [String: Any]
-                let recordType = object["type"] as? String
-                records.append(UsageRecord(
-                    date: day,
-                    timestamp: isoString(fromEpoch: timestamp),
-                    tool: "WorkBuddy",
-                    model: modelKey(
-                        providerData?["requestModelId"] as? String
-                            ?? providerData?["requestModelName"] as? String
-                            ?? providerData?["model"] as? String
-                    ),
-                    usage: usage,
-                    source: .workbuddy,
-                    requestID: nonEmptyString(providerData?["conversationRequestId"] as? String),
-                    sessionID: nonEmptyString(object["sessionId"] as? String),
-                    sourcePath: file.path,
-                    lineNumber: lineNumber,
-                    modelRequestCount: 1,
-                    toolCallCount: recordType == "function_call" ? 1 : 0
-                ))
-            }
-        }
-
-        let status: String
-        if discoveredRoots.isEmpty {
-            status = "missing"
-        } else if files.isEmpty {
-            status = "discovered_no_usage"
-        } else if records.isEmpty {
-            status = "missing_valid_rows"
-        } else {
-            status = "ok"
-        }
-        return CollectorResult(
-            records: records,
-            source: SourceInfo(
-                status: status,
-                files: files.count,
-                records: records.count
-            )
-        )
-    }
-
-    private static func workBuddyUsage(from object: [String: Any]) -> TokenUsageCounts? {
-        let message = object["message"] as? [String: Any]
-        let providerData = object["providerData"] as? [String: Any]
-        let usage = message?["usage"] as? [String: Any]
-            ?? providerData?["rawUsage"] as? [String: Any]
-            ?? providerData?["usage"] as? [String: Any]
-        guard let usage else { return nil }
-
-        let rawInput = firstIntegerValue(
-            in: usage,
-            keys: ["input_tokens", "inputTokens", "prompt_tokens"]
-        )
-        let output = firstIntegerValue(
-            in: usage,
-            keys: ["output_tokens", "outputTokens", "completion_tokens"]
-        )
-        let cacheRead = firstIntegerValue(
-            in: usage,
-            keys: ["cache_read_input_tokens", "cached_tokens", "prompt_cache_hit_tokens"]
-        )
-        let reasoning = firstIntegerValue(
-            in: usage,
-            keys: ["reasoning_tokens", "completion_thinking_tokens"]
-        )
-        let explicitTotal = firstIntegerValue(
-            in: usage,
-            keys: ["total_tokens", "totalTokens"]
-        )
-        return canonicalUsageCounts(
-            rawInputTokens: rawInput,
-            outputTokens: output,
-            cacheReadInputTokens: cacheRead,
-            reasoningOutputTokens: reasoning,
-            inputIncludesCachedTokens: true,
-            explicitTotalTokens: explicitTotal,
-            explicitTotalIsAuthoritative: true
-        )
-    }
-
-    private static func firstIntegerValue(in object: [String: Any], keys: [String]) -> Int {
-        for key in keys where object.keys.contains(key) {
-            return max(0, integerValue(object[key] as Any))
-        }
-        return 0
-    }
-
     private static func deduplicateCrossSource(
         nativeRecords: [UsageRecord],
         proxyRecords: [UsageRecord]
@@ -2567,7 +2460,7 @@ enum UsageCollector {
 
     private static func isAgentWorkRecord(_ record: UsageRecord) -> Bool {
         switch record.source {
-        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes, .workbuddy:
+        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes:
             return true
         case .unknown:
             return false
@@ -4326,7 +4219,6 @@ private enum UsageRecordSource: String, Codable, Equatable {
     case ccSwitchProxy
     case zcode
     case hermes
-    case workbuddy
     case unknown
 }
 

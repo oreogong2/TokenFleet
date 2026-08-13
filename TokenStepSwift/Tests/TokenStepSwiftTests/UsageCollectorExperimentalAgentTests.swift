@@ -114,14 +114,14 @@ final class UsageCollectorExperimentalAgentTests: XCTestCase {
             includeExperimentalAgentSources: true
         )
 
-        XCTAssertEqual(snapshot.sources["WorkBuddy"]?.status, "discovered_no_usage")
+        XCTAssertEqual(snapshot.sources["WorkBuddy"]?.status, "unsupported_privacy_boundary")
         XCTAssertEqual(snapshot.sources["WorkBuddy"]?.records, 0)
         XCTAssertEqual(snapshot.totals.tokens, 0)
         XCTAssertTrue(snapshot.daily.isEmpty)
         XCTAssertTrue(snapshot.agentWork.isEmpty)
     }
 
-    func testWorkBuddyCollectorReadsUsageWithoutMessageContent() throws {
+    func testWorkBuddyCollectorDoesNotOpenMixedContentLogs() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("TokenStepWorkBuddy-\(UUID().uuidString)", isDirectory: true)
         let project = root.appendingPathComponent("projects/example", isDirectory: true)
@@ -152,22 +152,12 @@ final class UsageCollectorExperimentalAgentTests: XCTestCase {
             includeExperimentalAgentSources: true
         )
 
-        XCTAssertEqual(snapshot.sources["WorkBuddy"]?.status, "ok")
-        XCTAssertEqual(snapshot.sources["WorkBuddy"]?.files, 1)
-        XCTAssertEqual(snapshot.sources["WorkBuddy"]?.records, 2)
-        XCTAssertEqual(snapshot.totals.tokens, 180)
-        XCTAssertEqual(snapshot.daily.first?.tools["WorkBuddy"], 180)
-        XCTAssertEqual(snapshot.daily.first?.models["hy3"], 120)
-        XCTAssertEqual(snapshot.daily.first?.models["kimi-k3-1"], 60)
-
-        let work = try XCTUnwrap(snapshot.agentWork.first)
-        XCTAssertEqual(work.totalTokens, 180)
-        XCTAssertEqual(work.inputTokens, 150)
-        XCTAssertEqual(work.cachedInputTokens, 120)
-        XCTAssertEqual(work.outputTokens, 30)
-        XCTAssertEqual(work.modelRequestCount, 2)
-        XCTAssertEqual(work.toolCallCount, 1)
-        XCTAssertEqual(work.sources.first?.source, "WorkBuddy")
+        XCTAssertEqual(snapshot.sources["WorkBuddy"]?.status, "unsupported_privacy_boundary")
+        XCTAssertNil(snapshot.sources["WorkBuddy"]?.files)
+        XCTAssertEqual(snapshot.sources["WorkBuddy"]?.records, 0)
+        XCTAssertEqual(snapshot.totals.tokens, 0)
+        XCTAssertTrue(snapshot.daily.isEmpty)
+        XCTAssertTrue(snapshot.agentWork.isEmpty)
     }
 
     private func makeZCodeDatabase(rowsSQL: String) throws -> URL {

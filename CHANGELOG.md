@@ -4,16 +4,24 @@
 
 ### Desktop identity, accuracy, and recovery
 
-- Replaced the step-style progress ring with TokenFleet signal bars and a
-  horizontal daily-goal scale while keeping “100M a day”, familiar navigation,
-  full tool/model detail, quota views, and all three share-card workflows.
+- Replaced the inherited multi-lap fitness ring with a single segmented
+  TokenFleet signal dial while keeping “100M a day”, uncapped goal percentages,
+  familiar navigation, full tool/model detail, quota views, and all three
+  share-card workflows.
 - Added relative pace, current streak, contextual community rank, a discoverable
   community action, and nine accessible themes with stable tool identity colors.
+- Replaced the unrelated external rank card with TokenFleet's device-authenticated
+  community rank context; private profiles remain unranked and no schema migration
+  is required.
 - Kept the single-screen menu-bar entry compact and right-aligned by default;
-  notch-adjacent Token Island placement now requires an explicit choice.
+  notch-adjacent Token Island placement now requires an explicit choice. Users
+  with enough menu-bar space may opt into the signal plus today's Token count.
 - Added a versioned public API price catalog with model- and component-specific
   rates, source-cost priority, pricing coverage, and explicit unpriced handling.
   Ambiguous Anthropic cache-write TTLs no longer erase the known cost components.
+- Kept WorkBuddy unsupported because its observed project logs colocate usage with
+  conversation/tool content; beta.8 does not open those files. Kimi and DeepSeek
+  remain explicitly experimental only when real CC Switch proxy rows exist.
 - Reworked image export around explicit render, PNG/JPEG encoding, clipboard,
   and file-write failures, and replaced the inherited icon with a TokenFleet
   signal icon.

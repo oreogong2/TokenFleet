@@ -36,7 +36,8 @@ struct TokenStepApp: App {
                     lap: appState.todayLap,
                     refreshing: appState.isRefreshing,
                     theme: appState.settings.theme,
-                    language: appState.settings.language
+                    language: appState.settings.language,
+                    showsTokenCount: appState.settings.menuBarShowsTokenCount
                 )
             }
             .id(appState.appearanceID)

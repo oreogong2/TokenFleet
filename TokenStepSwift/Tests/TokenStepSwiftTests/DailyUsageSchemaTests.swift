@@ -89,5 +89,18 @@ final class DailyUsageSchemaTests: XCTestCase {
 
         XCTAssertFalse(settings.teamSyncEnabled)
         XCTAssertEqual(settings.teamSyncServerURL, "")
+        XCTAssertFalse(settings.menuBarShowsTokenCount)
+    }
+
+    func testMenuBarTokenCountPreferenceRoundTrips() throws {
+        var settings = TokenStepSettings.defaults
+        settings.menuBarShowsTokenCount = true
+
+        let decoded = try JSONDecoder().decode(
+            TokenStepSettings.self,
+            from: JSONEncoder().encode(settings)
+        )
+
+        XCTAssertTrue(decoded.menuBarShowsTokenCount)
     }
 }

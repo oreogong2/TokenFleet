@@ -11,7 +11,6 @@ struct CCSwitchProxyFixtureCheck {
         try runAmbiguousFuzzyDedupeCheck()
         try runShanghaiHistoryWindowCheck()
         try runExperimentalAgentChecks()
-        try runAgentWorkRankChecks()
         try runLegacyAgentWorkDecodeCheck()
         print("Usage collector fixture checks passed")
     }
@@ -365,7 +364,7 @@ struct CCSwitchProxyFixtureCheck {
         )
         try assertEqual(disabled.sources["ZCode"]?.status, "disabled", "zcode disabled status")
         try assertEqual(disabled.sources["Hermes Agent"]?.status, "disabled", "hermes disabled status")
-        try assertEqual(disabled.sources["WorkBuddy"]?.status, "disabled", "workbuddy disabled status")
+        try assertEqual(disabled.sources["WorkBuddy"]?.status, "unsupported_privacy_boundary", "workbuddy privacy status")
         try assertEqual(disabled.totals.tokens, 0, "experimental disabled total")
         try assertEqual(disabled.agentWork.count, 0, "experimental disabled agent work")
 
@@ -379,19 +378,19 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(snapshot.sources["ZCode"]?.records, 1, "zcode source records")
         try assertEqual(snapshot.sources["Hermes Agent"]?.status, "ok", "hermes source status")
         try assertEqual(snapshot.sources["Hermes Agent"]?.records, 1, "hermes source records")
-        try assertEqual(snapshot.sources["WorkBuddy"]?.status, "ok", "workbuddy source status")
-        try assertEqual(snapshot.sources["WorkBuddy"]?.records, 1, "workbuddy records")
-        try assertEqual(snapshot.totals.tokens, 192, "experimental total tokens")
+        try assertEqual(snapshot.sources["WorkBuddy"]?.status, "unsupported_privacy_boundary", "workbuddy privacy status")
+        try assertEqual(snapshot.sources["WorkBuddy"]?.records, 0, "workbuddy records")
+        try assertEqual(snapshot.totals.tokens, 72, "experimental total tokens")
         try assertEqual(snapshot.daily.first?.tools["ZCode"], 40, "zcode tool tokens")
         try assertEqual(snapshot.daily.first?.tools["Hermes Agent"], 32, "hermes tool tokens")
-        try assertEqual(snapshot.daily.first?.tools["WorkBuddy"], 120, "workbuddy tool tokens")
+        try assertEqual(snapshot.daily.first?.tools["WorkBuddy"], nil, "workbuddy must not enter totals")
         try assertEqual(snapshot.totals.cost, 0.42, "hermes actual cost")
 
         let work = try unwrap(snapshot.agentWork.first, "experimental agent work")
-        try assertEqual(work.totalTokens, 192, "experimental agent work tokens")
-        try assertEqual(work.modelRequestCount, 4, "experimental model requests")
-        try assertEqual(work.toolCallCount, 11, "experimental tool calls")
-        try assertEqual(work.sources.count, 3, "experimental source count")
+        try assertEqual(work.totalTokens, 72, "experimental agent work tokens")
+        try assertEqual(work.modelRequestCount, 3, "experimental model requests")
+        try assertEqual(work.toolCallCount, 10, "experimental tool calls")
+        try assertEqual(work.sources.count, 2, "experimental source count")
         try assertEqual(work.hourlyBuckets.count, 24, "agent work always exposes 24 hourly buckets")
         try assertEqual(
             work.hourlyBuckets.map(\.totalTokens).reduce(0, +) + work.unbucketedTokens,
@@ -400,7 +399,7 @@ struct CCSwitchProxyFixtureCheck {
         )
         try assertEqual(work.unbucketedTokens, 0, "timestamped agent rows are fully bucketed")
         try assertEqual(work.cacheCoverageComplete, true, "experimental cache coverage is complete")
-        try assertApprox(work.cacheHitRate, 87.0 / 147.0, "daily cache hit uses canonical input denominator")
+        try assertApprox(work.cacheHitRate, 7.0 / 47.0, "daily cache hit uses canonical input denominator")
     }
 
     private static func runLegacyAgentWorkDecodeCheck() throws {
@@ -419,100 +418,6 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(work.hourlyBuckets.map(\.totalTokens).reduce(0, +), 0, "legacy buckets are empty")
         try assertEqual(work.unbucketedTokens, 123, "legacy total is preserved as unbucketed")
         try assertNil(work.cacheHitRate, "legacy cache hit is unavailable")
-    }
-
-    private static func runAgentWorkRankChecks() throws {
-        let fetchedAt = Date(timeIntervalSince1970: 1_720_000_000)
-        let leaderboardData = Data("""
-        {
-          "success": true,
-          "data": {
-            "range": "today",
-            "client": "all",
-            "usage_mode": "all",
-            "total_tokens": 999,
-            "total_ranked_users": 1,
-            "top_limit": 100,
-            "rows": [{
-              "user": {
-                "id": 4,
-                "name": "Agent User",
-                "email": "ignored@example.com",
-                "avatar_url": "https://example.com/avatar.png"
-              },
-              "total_tokens": 180,
-              "call_count": 2,
-              "session_count": 1,
-              "clients": {"workbuddy": 120, "codex": 60},
-              "models": {"hy3": 120, "gpt-test": 60},
-              "rank": 7
-            }]
-          }
-        }
-        """.utf8)
-        let leaderboard = try AgentWorkRankService.decodeLeaderboard(
-            data: leaderboardData,
-            fetchedAt: fetchedAt
-        )
-        try assertEqual(leaderboard.fetchedAt, fetchedAt, "rank fetch date")
-        try assertEqual(leaderboard.totalRankedUsers, 1, "ranked users")
-        let entry = try unwrap(leaderboard.entry(matching: 4), "rank entry")
-        try assertEqual(entry.rank, 7, "rank position")
-        try assertEqual(entry.totalTokens, 180, "rank tokens")
-        try assertEqual(entry.clients["workbuddy"], 120, "rank workbuddy tokens")
-
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TokenStepRankIdentityFixture-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let stateURL = directory.appendingPathComponent("client-state.json")
-        try """
-        {
-          "device_token": "must-not-leave-this-file",
-          "source_id": "private-source",
-          "last_successful_sync_at": "2026-08-06T08:00:00.661715+00:00",
-          "user": {
-            "id": 4,
-            "name": "Agent User",
-            "email": "ignored@example.com",
-            "avatar_url": "https://example.com/avatar.png"
-          }
-        }
-        """.write(to: stateURL, atomically: true, encoding: .utf8)
-        let identity = try unwrap(
-            AgentWorkRankService.loadLocalIdentity(clientStateURL: stateURL),
-            "local rank identity"
-        )
-        try assertEqual(identity.id, 4, "local rank identity id")
-        try assertEqual(identity.name, "Agent User", "local rank identity name")
-        try assertEqual(identity.lastSyncedAt == nil, false, "local rank sync date")
-
-        let legacySettings = try JSONDecoder().decode(
-            TokenStepSettings.self,
-            from: Data("""
-            {"show_token_rank":true,"token_rank_user_id":"168066"}
-            """.utf8)
-        )
-        try assertEqual(legacySettings.agentWorkRankVisibility, .automatic, "legacy rank uses automatic detection")
-
-        let hiddenSettings = try JSONDecoder().decode(
-            TokenStepSettings.self,
-            from: Data("""
-            {"agent_work_rank_visibility":"hidden","show_agent_work_rank":true}
-            """.utf8)
-        )
-        try assertEqual(hiddenSettings.agentWorkRankVisibility, .hidden, "explicit hidden rank state")
-        try assertEqual(AgentWorkRankVisibility.automatic.readsLocalIdentity, true, "automatic reads identity")
-        try assertEqual(AgentWorkRankVisibility.automatic.shouldShow(hasLocalIdentity: false), false, "automatic hides without identity")
-        try assertEqual(AgentWorkRankVisibility.automatic.shouldShow(hasLocalIdentity: true), true, "automatic shows with identity")
-        try assertEqual(AgentWorkRankVisibility.hidden.readsLocalIdentity, false, "hidden skips identity")
-        try assertEqual(AgentWorkRankVisibility.hidden.shouldShow(hasLocalIdentity: true), false, "hidden stays hidden")
-
-        let encodedHidden = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(hiddenSettings)
-        ) as? [String: Any]
-        try assertEqual(encodedHidden?["agent_work_rank_visibility"] as? String, "hidden", "new rank visibility encoding")
-        try assertEqual(encodedHidden?["show_agent_work_rank"] == nil, true, "legacy rank key is not encoded")
     }
 
     private static func runCodexArchivedSessionChecks() throws {

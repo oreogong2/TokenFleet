@@ -13,47 +13,29 @@ struct TodayView: View {
     }
 
     private var hero: some View {
-        let progress = min(max(appState.progress, 0), 1)
         let percent = TokenStepFormat.percent(appState.progress * 100)
         return TokenCard {
             HStack(alignment: .center, spacing: 34) {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 10) {
-                        TokenFleetSignalMark(size: 42)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L("今天已记录"))
-                                .font(.callout.weight(.heavy))
-                                .foregroundStyle(.secondary)
-                            Text(L("AI 使用航行日志"))
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(Color.tokenGreenDark)
-                        }
-                    }
-                    Text(TokenStepFormat.tokens(appState.today.totalTokens))
-                        .font(.system(size: 52, weight: .heavy, design: .rounded))
-                        .foregroundStyle(Color.tokenInk)
-                        .minimumScaleFactor(0.42)
-                        .lineLimit(1)
-                }
-                .frame(width: 270, alignment: .leading)
+                TokenFleetGoalDial(
+                    tokens: appState.today.totalTokens,
+                    goal: appState.settings.dailyGoalTokens,
+                    size: 184
+                )
+                .frame(width: 222)
 
                 VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(alignment: .firstTextBaseline) {
+                    HStack(alignment: .center, spacing: 12) {
+                        TokenFleetSignalMark(size: 42)
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(L("今日目标进度"))
                                 .font(.title3.weight(.heavy))
                                 .foregroundStyle(Color.tokenInk)
-                            Spacer()
-                            Text(percent)
-                                .font(.system(size: 32, weight: .heavy, design: .rounded))
+                            Text("\(L("今天已记录")) · \(percent)")
+                                .font(.callout.weight(.bold))
                                 .foregroundStyle(Color.tokenGreenDark)
                                 .monospacedDigit()
                         }
                     }
-
-                    ProgressView(value: progress)
-                        .tint(Color.tokenGreenDark)
-                        .frame(maxWidth: 360)
 
                     HStack(spacing: 10) {
                         MetricPill(label: L("每日目标"), value: TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true))

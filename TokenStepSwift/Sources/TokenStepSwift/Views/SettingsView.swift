@@ -62,10 +62,7 @@ struct SettingsView: View {
                 SettingsDisplayCard()
                 SettingsRefreshCard()
             }
-            HStack(alignment: .top, spacing: 18) {
-                SettingsTokenRankCard()
-                SettingsExperimentalAgentSourcesCard()
-            }
+            SettingsExperimentalAgentSourcesCard()
             HStack(alignment: .top, spacing: 18) {
                 SettingsUpdateCard()
                 SettingsAutostartCard()
@@ -169,7 +166,6 @@ struct SettingsView: View {
                 appState.setRequireVerifiedUpdates(TokenStepSettings.defaults.requireVerifiedUpdates)
                 appState.setTokenIslandPlacement(TokenStepSettings.defaults.tokenIslandPlacement)
                 appState.setCodexQuotaVisible(TokenStepSettings.defaults.showCodexQuota)
-                appState.setAgentWorkRankVisibility(TokenStepSettings.defaults.agentWorkRankVisibility)
                 appState.setExperimentalAgentSourcesVisible(TokenStepSettings.defaults.showExperimentalAgentSources)
                 appState.setAutostart(true)
             } label: {

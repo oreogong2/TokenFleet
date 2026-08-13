@@ -4,7 +4,6 @@ struct PopoverTodayRingCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        let progress = min(max(appState.progress, 0), 1)
         let percent = TokenStepFormat.percent(appState.progress * 100)
         return TokenCard {
             VStack(alignment: .leading, spacing: 16) {
@@ -19,33 +18,24 @@ struct PopoverTodayRingCard: View {
                 }
 
                 HStack(spacing: 20) {
-                    VStack(alignment: .leading, spacing: 9) {
-                        TokenFleetSignalMark(size: 40)
-                        Text(TokenStepFormat.tokens(appState.today.totalTokens))
-                            .font(.system(size: 34, weight: .heavy, design: .rounded))
-                            .foregroundStyle(Color.tokenInk)
-                            .minimumScaleFactor(0.52)
-                            .lineLimit(1)
-                        Text(L("今天已记录"))
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(width: 138, alignment: .leading)
+                    TokenFleetGoalDial(
+                        tokens: appState.today.totalTokens,
+                        goal: appState.settings.dailyGoalTokens,
+                        size: 132
+                    )
+                    .frame(width: 146)
 
                     VStack(alignment: .leading, spacing: 11) {
                         Text(L("今日目标进度"))
                             .font(.headline.weight(.heavy))
                             .foregroundStyle(Color.tokenInk)
-                        Text(percent)
-                            .font(.system(size: 36, weight: .heavy, design: .rounded))
+                        Text("\(L("今天已记录")) · \(percent)")
+                            .font(.system(size: 20, weight: .heavy, design: .rounded))
                             .foregroundStyle(Color.tokenGreenDark)
                             .monospacedDigit()
                         Text(LFormat("每日目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
                             .font(.headline.weight(.bold))
                             .foregroundStyle(.secondary)
-
-                        ProgressView(value: progress)
-                            .tint(Color.tokenGreenDark)
 
                         VStack(alignment: .leading, spacing: 8) {
                             MetricPill(

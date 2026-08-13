@@ -6,6 +6,7 @@ enum TeamSyncProtocolConfiguration {
     static let collectorVersion = "0.2.0"
     static let enrollmentPath = "/api/v1/devices/enroll"
     static let dailyUsagePath = "/api/v1/usage/daily"
+    static let communityRankPath = "/api/v1/devices/me/community-rank"
     static let publicLeaderboardPath = "/rank"
     static let maxBucketsPerRequest = 2_000
     static let maximumHTTPResponseBytes = 1 * 1_024 * 1_024
@@ -236,6 +237,65 @@ struct TeamSyncEnrollmentResponse: Decodable, Equatable {
     }
 }
 
+struct TeamSyncCommunityRank: Decodable, Equatable {
+    var publicID: String
+    var nickname: String?
+    var publicProfileEnabled: Bool
+    var period: String
+    var metric: String
+    var rank: Int?
+    var totalEntries: Int
+    var metricValue: String?
+
+    enum CodingKeys: String, CodingKey {
+        case publicID = "public_id"
+        case nickname
+        case publicProfileEnabled = "public_profile_enabled"
+        case period
+        case metric
+        case rank
+        case totalEntries = "total_entries"
+        case metricValue = "metric_value"
+    }
+
+    var isValid: Bool {
+        guard UUID(uuidString: publicID) != nil,
+              period == "today",
+              metric == "tokens",
+              totalEntries >= 0,
+              nickname.map({ !$0.isEmpty && $0.count <= 128 }) ?? true,
+              metricValue.map(Self.isCanonicalNonNegativeInteger) ?? true
+        else {
+            return false
+        }
+        if publicProfileEnabled {
+            guard nickname != nil else { return false }
+        } else if nickname != nil || rank != nil || metricValue != nil {
+            return false
+        }
+        if let rank {
+            return rank > 0 && rank <= totalEntries && metricValue != nil
+        }
+        return metricValue == nil
+    }
+
+    var exceededPercentage: Int? {
+        guard let rank, totalEntries > 0 else { return nil }
+        return max(0, min(100, Int(
+            (Double(totalEntries - rank) / Double(totalEntries) * 100).rounded()
+        )))
+    }
+
+    private static func isCanonicalNonNegativeInteger(_ value: String) -> Bool {
+        guard !value.isEmpty, value.count <= 128,
+              value.unicodeScalars.allSatisfy({ (48...57).contains($0.value) })
+        else {
+            return false
+        }
+        return value == "0" || value.first != "0"
+    }
+}
+
 struct TeamSyncDailyBucket: Codable, Equatable {
     var date: String
     var timezone: String
@@ -389,6 +449,7 @@ enum TeamSyncProtocolError: LocalizedError, Equatable {
     case enrollmentTokenRequired
     case invalidEnrollmentResponse
     case invalidIngestResponse
+    case invalidCommunityRankResponse
     case invalidBucket
     case duplicateBucket
     case notEnrolled
@@ -415,6 +476,8 @@ enum TeamSyncProtocolError: LocalizedError, Equatable {
             return L("社群榜服务器返回了无效的注册信息。")
         case .invalidIngestResponse:
             return L("社群榜服务器未确认完整接收本次日汇总，已停止自动重试。")
+        case .invalidCommunityRankResponse:
+            return L("社群榜服务器返回了无效的排名信息。")
         case .invalidBucket, .duplicateBucket:
             return L("本地日汇总未通过同步校验。")
         case .notEnrolled:
@@ -561,6 +624,36 @@ enum TeamSyncProtocol {
         request.setValue(headers.nonce, forHTTPHeaderField: "X-Nonce")
         request.setValue(headers.signature, forHTTPHeaderField: "X-Signature")
         request.httpBody = body
+        return request
+    }
+
+    static func communityRankURLRequest(
+        serverURL rawServerURL: String,
+        deviceID: String,
+        deviceSecret: String,
+        timestamp: Int,
+        nonce: String
+    ) throws -> URLRequest {
+        let serverURL = try normalizedServerURL(rawServerURL)
+        let endpoint = try endpointURL(
+            serverURL: serverURL,
+            path: TeamSyncProtocolConfiguration.communityRankPath
+        )
+        let headers = signedHeaders(
+            deviceID: deviceID,
+            deviceSecret: deviceSecret,
+            timestamp: timestamp,
+            nonce: nonce,
+            method: "GET",
+            path: TeamSyncProtocolConfiguration.communityRankPath,
+            body: Data()
+        )
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "GET"
+        request.setValue(headers.deviceID, forHTTPHeaderField: "X-Device-ID")
+        request.setValue(headers.timestamp, forHTTPHeaderField: "X-Timestamp")
+        request.setValue(headers.nonce, forHTTPHeaderField: "X-Nonce")
+        request.setValue(headers.signature, forHTTPHeaderField: "X-Signature")
         return request
     }
 

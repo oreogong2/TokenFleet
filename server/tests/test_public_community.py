@@ -490,6 +490,92 @@ def test_public_projection_exact_only_norm_cost_and_privacy_contract(harness) ->
     assert public_price["public_estimate"] is True
 
 
+def test_authenticated_device_reads_only_its_public_rank_context(harness) -> None:
+    _enable_alpha_public_board(harness)
+    first = _create_participant(harness, display_name="领航员")
+    first_device = _enroll_participant(harness, first)
+    first_upload = harness.signed_post(
+        first_device,
+        harness.usage_payload(
+            buckets=[
+                _bucket(
+                    harness,
+                    model="community-rank",
+                    input_tokens=600,
+                    output_tokens=400,
+                    cache_read_tokens=0,
+                    cache_write_tokens=0,
+                )
+            ]
+        ),
+    )
+    assert first_upload.status_code == 200
+
+    second = _create_participant(harness, display_name="奥哥")
+    second_device = _enroll_participant(harness, second)
+    second_upload = harness.signed_post(
+        second_device,
+        harness.usage_payload(
+            buckets=[
+                _bucket(
+                    harness,
+                    model="community-rank",
+                    input_tokens=200,
+                    output_tokens=100,
+                    cache_read_tokens=0,
+                    cache_write_tokens=0,
+                )
+            ]
+        ),
+    )
+    assert second_upload.status_code == 200
+
+    response = harness.signed_get(
+        second_device,
+        "/api/v1/devices/me/community-rank",
+    )
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {
+        "public_id": second["participant"]["public_id"],
+        "nickname": "奥哥",
+        "public_profile_enabled": True,
+        "period": "today",
+        "metric": "tokens",
+        "rank": 2,
+        "total_entries": 2,
+        "metric_value": "300",
+    }
+    assert harness.client.get(
+        "/api/v1/devices/me/community-rank"
+    ).status_code == 401
+
+
+def test_device_rank_context_does_not_rank_private_profile(harness) -> None:
+    _enable_alpha_public_board(harness)
+    private = _create_participant(
+        harness,
+        display_name="不公开昵称",
+        public_profile_enabled=False,
+    )
+    device = _enroll_participant(harness, private)
+    response = harness.signed_get(
+        device,
+        "/api/v1/devices/me/community-rank",
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "public_id": private["participant"]["public_id"],
+        "nickname": None,
+        "public_profile_enabled": False,
+        "period": "today",
+        "metric": "tokens",
+        "rank": None,
+        "total_entries": 0,
+        "metric_value": None,
+    }
+
+
 def test_public_periods_filters_and_daily_trend(harness) -> None:
     _enable_alpha_public_board(harness)
     created = _create_participant(harness, public_profile_enabled=True)

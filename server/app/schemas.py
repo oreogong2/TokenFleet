@@ -274,6 +274,17 @@ class DeviceResponse(StrictModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
+class DeviceCommunityRankResponse(StrictModel):
+    public_id: str
+    nickname: Annotated[str | None, Field(min_length=1, max_length=128)]
+    public_profile_enabled: bool
+    period: Literal["today"] = "today"
+    metric: Literal["tokens"] = "tokens"
+    rank: Annotated[int, Field(ge=1)] | None
+    total_entries: Annotated[int, Field(ge=0)]
+    metric_value: NonNegativeIntegerString | None
+
+
 class DeviceStatusUpdate(StrictModel):
     is_active: Annotated[bool, Field(strict=True)]
 

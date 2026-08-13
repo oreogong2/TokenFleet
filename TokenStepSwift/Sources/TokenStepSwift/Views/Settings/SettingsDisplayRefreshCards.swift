@@ -4,7 +4,7 @@ struct SettingsDisplayCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        SettingsCard(title: L("显示入口"), symbol: "macwindow.badge.plus", height: 268) {
+        SettingsCard(title: L("显示入口"), symbol: "macwindow.badge.plus", height: 338) {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text(L("显示位置"))
@@ -33,6 +33,18 @@ struct SettingsDisplayCard: View {
                     value: appState.tokenIslandStatusDetail,
                     tint: appState.shouldShowTokenIsland ? .tokenGreen : .gray
                 )
+
+                SettingsToggleRow(
+                    title: L("菜单栏显示今日 Token"),
+                    isOn: Binding(
+                        get: { appState.settings.menuBarShowsTokenCount },
+                        set: { appState.setMenuBarTokenCountVisible($0) }
+                    )
+                )
+
+                Text(L("默认关闭，更适合单屏或菜单栏拥挤的 Mac。"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
 
                 SettingsToggleRow(
                     title: L("Agent 额度显示"),
@@ -89,128 +101,6 @@ struct SettingsRefreshCard: View {
     }
 }
 
-struct SettingsTokenRankCard: View {
-    @EnvironmentObject private var appState: AppState
-
-    var body: some View {
-        SettingsCard(title: L("Agent 消耗榜"), symbol: "list.number", height: 282) {
-            VStack(alignment: .leading, spacing: 13) {
-                Picker("", selection: Binding(
-                    get: { appState.settings.agentWorkRankVisibility },
-                    set: { appState.setAgentWorkRankVisibility($0) }
-                )) {
-                    Text(L("自动")).tag(AgentWorkRankVisibility.automatic)
-                    Text(L("显示")).tag(AgentWorkRankVisibility.visible)
-                    Text(L("隐藏")).tag(AgentWorkRankVisibility.hidden)
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-
-                StatusLine(
-                    symbol: statusSymbol,
-                    title: statusTitle,
-                    value: statusValue,
-                    tint: statusTint
-                )
-
-                if appState.shouldShowAgentWorkRank {
-                    StatusLine(
-                        symbol: "arrow.triangle.2.circlepath",
-                        title: L("数据同步"),
-                        value: syncText,
-                        tint: .tokenGreen
-                    )
-
-                    HStack(spacing: 8) {
-                        Button {
-                            appState.openTokenRankUserPage()
-                        } label: {
-                            Label(L("我的消耗"), systemImage: "person.crop.circle")
-                                .font(.caption.weight(.heavy))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 32)
-                        }
-                        .buttonStyle(SettingsSecondaryButtonStyle())
-
-                        Button {
-                            appState.openTokenRankLeaderboardPage()
-                        } label: {
-                            Label(L("打开榜单"), systemImage: "list.number")
-                                .font(.caption.weight(.heavy))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 32)
-                        }
-                        .buttonStyle(SettingsSecondaryButtonStyle())
-                    }
-                }
-
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    private var statusSymbol: String {
-        switch appState.settings.agentWorkRankVisibility {
-        case .automatic:
-            return appState.agentWorkRankIdentity == nil ? "magnifyingglass" : "checkmark.circle.fill"
-        case .visible:
-            return "eye.fill"
-        case .hidden:
-            return "eye.slash.fill"
-        }
-    }
-
-    private var statusTitle: String {
-        switch appState.settings.agentWorkRankVisibility {
-        case .automatic:
-            return appState.agentWorkRankIdentity == nil ? L("自动检测") : L("已自动显示")
-        case .visible:
-            return L("已显示")
-        case .hidden:
-            return L("已手动隐藏")
-        }
-    }
-
-    private var statusValue: String {
-        if let identity = appState.agentWorkRankIdentity {
-            return identity.name
-        }
-        switch appState.settings.agentWorkRankVisibility {
-        case .automatic:
-            return L("未检测到 Token Rank")
-        case .visible:
-            return L("等待关联")
-        case .hidden:
-            return L("不读取身份与榜单")
-        }
-    }
-
-    private var statusTint: Color {
-        switch appState.settings.agentWorkRankVisibility {
-        case .automatic:
-            return appState.agentWorkRankIdentity == nil ? .orange : .tokenGreen
-        case .visible:
-            return .tokenGreen
-        case .hidden:
-            return .gray
-        }
-    }
-
-    private var syncText: String {
-        guard let date = appState.agentWorkRankIdentity?.lastSyncedAt else {
-            return L("等待同步")
-        }
-        return relativeTime(date)
-    }
-
-    private func relativeTime(_ date: Date) -> String {
-        let minutes = max(0, Int(Date().timeIntervalSince(date) / 60))
-        if minutes < 1 { return L("刚刚") }
-        if minutes < 60 { return LFormat("%d 分钟前", minutes) }
-        return LFormat("%d 小时前", minutes / 60)
-    }
-}
-
 struct SettingsExperimentalAgentSourcesCard: View {
     @EnvironmentObject private var appState: AppState
 
@@ -218,7 +108,7 @@ struct SettingsExperimentalAgentSourcesCard: View {
         SettingsCard(title: L("实验 Agent 来源"), symbol: "point.3.connected.trianglepath.dotted", height: 282) {
             VStack(alignment: .leading, spacing: 13) {
                 SettingsToggleRow(
-                    title: L("启用 ZCode / Hermes / WorkBuddy"),
+                    title: L("启用 ZCode / Hermes"),
                     isOn: Binding(
                         get: { appState.settings.showExperimentalAgentSources },
                         set: { appState.setExperimentalAgentSourcesVisible($0) }
@@ -233,7 +123,6 @@ struct SettingsExperimentalAgentSourcesCard: View {
                 VStack(spacing: 8) {
                     experimentalSourceLine(name: "ZCode", sourceKey: "ZCode")
                     experimentalSourceLine(name: "Hermes Agent", sourceKey: "Hermes Agent")
-                    experimentalSourceLine(name: "WorkBuddy", sourceKey: "WorkBuddy")
                 }
 
                 Spacer(minLength: 0)

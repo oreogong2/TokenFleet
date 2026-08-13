@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from .models import DailyUsage, Organization, PriceVersion, User, UserRole, utcnow
 from .schemas import (
+    DeviceCommunityRankResponse,
     PublicDailyTrendItem,
     PublicDistributionItem,
     PublicLeaderboardEntry,
@@ -683,6 +684,46 @@ def build_public_leaderboard(
         available_models=available_models,
         total_entries=len(ordered),
         entries=entries,
+    )
+
+
+def build_device_community_rank(
+    session: Session,
+    *,
+    organization: Organization,
+    user: User,
+    max_scan_rows: int,
+) -> DeviceCommunityRankResponse:
+    """Return only an authenticated member's public ranking context."""
+    start_date, end_date = period_bounds(organization, "today")
+    query = _base_public_usage_query(
+        organization=organization,
+        start_date=start_date,
+        end_date=end_date,
+        tool=None,
+        model=None,
+    )
+    _enforce_scan_limit(session, query, max_scan_rows)
+    members = _member_aggregates(session, query)
+    ordered = _ordered_members(members.values(), "tokens")
+    nickname = (
+        _safe_nickname(user.display_name)
+        if user.public_profile_enabled
+        else None
+    )
+    target = members.get(user.public_id) if nickname is not None else None
+    metric_value = target.usage.total_tokens if target is not None else None
+    return DeviceCommunityRankResponse(
+        public_id=user.public_id,
+        nickname=nickname,
+        public_profile_enabled=nickname is not None,
+        rank=(
+            _member_rank(ordered, "tokens", user.public_id)
+            if target is not None
+            else None
+        ),
+        total_entries=len(ordered),
+        metric_value=str(metric_value) if metric_value is not None else None,
     )
 
 

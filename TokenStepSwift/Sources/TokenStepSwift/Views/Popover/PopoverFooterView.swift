@@ -30,7 +30,14 @@ struct PopoverFooterView: View {
             } label: {
                 HStack(spacing: 9) {
                     Image(systemName: "person.3.sequence.fill")
-                    Text(communityButtonTitle)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(communityButtonTitle)
+                        if let detail = communityRankDetail {
+                            Text(detail)
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(Color.tokenInk.opacity(0.56))
+                        }
+                    }
                     Spacer()
                     Image(systemName: appState.isCommunitySyncEnrollmentCompatible ? "arrow.up.right" : "link")
                 }
@@ -38,7 +45,7 @@ struct PopoverFooterView: View {
                 .foregroundStyle(Color.tokenGreenDark)
                 .padding(.horizontal, 15)
                 .frame(maxWidth: .infinity)
-                .frame(height: 42)
+                .frame(height: 50)
                 .background(Color.tokenMint.opacity(0.24), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -81,7 +88,31 @@ struct PopoverFooterView: View {
     }
 
     private var communityButtonTitle: String {
-        appState.isCommunitySyncEnrollmentCompatible ? L("社群排行") : L("连接社群")
+        return appState.isCommunitySyncEnrollmentCompatible ? L("社群排行") : L("连接社群")
+    }
+
+    private var communityRankDetail: String? {
+        guard appState.isCommunitySyncEnrollmentCompatible else {
+            return L("连接后显示本人真实名次")
+        }
+        guard let context = appState.communityRank else {
+            return appState.isRefreshingCommunityRank ? L("读取中") : L("等待读取")
+        }
+        guard context.publicProfileEnabled else {
+            return L("未参与公开排名")
+        }
+        guard let rank = context.rank else {
+            return L("今日暂无名次")
+        }
+        if let percentage = context.exceededPercentage {
+            return LFormat(
+                "今日第 %d / %d 名 · 超过 %d%%",
+                rank,
+                context.totalEntries,
+                percentage
+            )
+        }
+        return LFormat("今日第 %d / %d 名", rank, context.totalEntries)
     }
 }
 

@@ -16,6 +16,7 @@ TokenFleet 只允许读取日期、工具、模型、输入、输出、缓存读
 | DeepSeek | 当前测试机未安装；未确认统一的官方桌面/CLI 本地 usage 账本 | DeepSeek 是模型/服务名，第三方 CLI 的落盘格式不构成统一产品合同 | 原生采集不启用 | 不按模型名猜来源，不读取第三方客户端会话正文。只有 CC Switch 的真实代理 usage 行会显示为 `DeepSeek via CC Switch (experimental)`。 |
 | Cursor | 当前测试机未安装，未发现可复核样本 | 未确认 Cursor 提供独立、稳定、无正文的本地 Token 明细文件 | 原生采集不启用 | 不读取编辑器会话库、项目索引或认证存储，也不调用需要提取账号令牌的非公开接口。CC Switch 真实代理行只能作为 `Cursor via CC Switch (experimental)` 独立来源。 |
 | Gemini CLI | 当前测试机没有 Gemini CLI；仅有另一款工具的 `.gemini` 目录，不能混认 | 官方 OpenTelemetry 指标 `gemini_cli.token.usage`，维度含 `model` 与 `type=input/output/thought/cache/tool` | 候选，beta.8 不默认计入 | 官方遥测默认关闭；只有用户自行启用本地 outfile、关闭 prompt 记录并关闭 traces，且取得真实无正文样本后才可开发原生解析器。现有 CC Switch 成功代理行仍可作为 `Gemini via CC Switch` 独立来源。 |
+| WorkBuddy | 本机发现的项目 JSONL 将 usage 与 message、工具参数／结果等事件放在同类文件 | 没有发现独立、稳定的 usage-only 数据库、文件或公开导出合同 | 不支持；发现目录也不打开 | 解析整行后再丢弃正文仍然违反隐私边界。需要产品侧提供 usage-only 数据源，或经过明确配置且不含正文的本地导出后再开发。 |
 
 ## 已落地的可验证路径
 

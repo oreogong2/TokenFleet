@@ -11,6 +11,11 @@ struct CommunityView: View {
             statusGrid
             privacyCard
         }
+        .onAppear {
+            if !isScreenshotRendering {
+                appState.refreshCommunityRank()
+            }
+        }
     }
 
     private var hero: some View {
@@ -26,7 +31,7 @@ struct CommunityView: View {
                 .frame(width: 112, height: 112)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(L("Token 消耗排行榜"))
+                    Text(L("TokenFleet 社群排行"))
                         .font(.system(size: 34, weight: .heavy, design: .rounded))
                         .foregroundStyle(Color.tokenInk)
                     Text(L("和一群人一起，看见进步的速度。"))
@@ -35,6 +40,11 @@ struct CommunityView: View {
                     Label(connectionLabel, systemImage: connectionSymbol)
                         .font(.callout.weight(.heavy))
                         .foregroundStyle(connectionTint)
+                    if let context = connectedRankContext {
+                        Label(context, systemImage: "chart.line.uptrend.xyaxis")
+                            .font(.callout.weight(.heavy))
+                            .foregroundStyle(Color.tokenGreenDark)
+                    }
                 }
 
                 Spacer(minLength: 20)
@@ -43,7 +53,7 @@ struct CommunityView: View {
                     Button {
                         appState.openCommunityLeaderboard(isScreenshotRendering: isScreenshotRendering)
                     } label: {
-                        Label(L("打开排行榜"), systemImage: "arrow.up.right")
+                        Label(L("打开完整榜单"), systemImage: "arrow.up.right")
                             .font(.headline.weight(.heavy))
                             .frame(width: 142, height: 44)
                     }
@@ -74,8 +84,8 @@ struct CommunityView: View {
             )
             CommunityMetricCard(
                 label: L("今日排名"),
-                value: appState.isCommunitySyncEnrollmentCompatible ? L("打开榜单查看") : L("尚未连接"),
-                detail: L("不在本地猜测或缓存名次")
+                value: rankValue,
+                detail: rankDetail
             )
             CommunityMetricCard(
                 label: L("自动同步"),
@@ -110,6 +120,53 @@ struct CommunityView: View {
 
     private var connectionTint: Color {
         appState.isCommunitySyncEnrollmentCompatible ? .tokenGreenDark : .secondary
+    }
+
+    private var connectedRankContext: String? {
+        guard appState.isCommunitySyncEnrollmentCompatible,
+              let rank = appState.communityRank?.rank,
+              let total = appState.communityRank?.totalEntries
+        else {
+            return nil
+        }
+        if let percentage = appState.communityRank?.exceededPercentage {
+            return LFormat("今日第 %d / %d 名 · 超过 %d%%", rank, total, percentage)
+        }
+        return LFormat("今日第 %d / %d 名", rank, total)
+    }
+
+    private var rankValue: String {
+        guard appState.isCommunitySyncEnrollmentCompatible else {
+            return L("尚未连接")
+        }
+        if let context = appState.communityRank {
+            guard context.publicProfileEnabled else {
+                return L("未参与公开排名")
+            }
+            if let rank = context.rank {
+                return LFormat("第 %d / %d 名", rank, context.totalEntries)
+            }
+            return L("今日暂无名次")
+        }
+        if appState.isRefreshingCommunityRank { return L("读取中") }
+        if appState.communityRankError != nil { return L("暂时不可用") }
+        return L("等待读取")
+    }
+
+    private var rankDetail: String {
+        guard appState.isCommunitySyncEnrollmentCompatible else {
+            return L("连接后显示本人真实名次")
+        }
+        if let context = appState.communityRank {
+            guard context.publicProfileEnabled else {
+                return L("公开资料关闭，不参与社群排名")
+            }
+            if let percentage = context.exceededPercentage {
+                return LFormat("超过 %d%% 的成员", percentage)
+            }
+            return L("今天同步用量后出现名次")
+        }
+        return appState.communityRankError ?? L("从社群榜安全读取")
     }
 
     private var syncStateLabel: String {

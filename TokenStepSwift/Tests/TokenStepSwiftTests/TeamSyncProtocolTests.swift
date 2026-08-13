@@ -132,6 +132,44 @@ final class TeamSyncProtocolTests: XCTestCase {
         XCTAssertEqual(object["collector_version"] as? String, "0.2.0")
     }
 
+    func testCommunityRankRequestIsCredentialedGETWithoutQueryOrBody() throws {
+        let request = try TeamSyncProtocol.communityRankURLRequest(
+            serverURL: "https://team.example.com/",
+            deviceID: "server-device-id",
+            deviceSecret: "test-device-secret-00000000000000000000",
+            timestamp: 1_786_240_000,
+            nonce: "123e4567-e89b-12d3-a456-426614174000"
+        )
+
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.path, "/api/v1/devices/me/community-rank")
+        XCTAssertNil(request.url?.query)
+        XCTAssertNil(request.httpBody)
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertEqual(
+            request.value(forHTTPHeaderField: "X-Device-ID"),
+            "server-device-id"
+        )
+        XCTAssertNotNil(request.value(forHTTPHeaderField: "X-Signature"))
+    }
+
+    func testCommunityRankResponseValidatesIdentityAndRankBounds() throws {
+        let data = Data(#"{"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"奥哥","public_profile_enabled":true,"period":"today","metric":"tokens","rank":2,"total_entries":10,"metric_value":"704000000"}"#.utf8)
+        let rank = try JSONDecoder().decode(TeamSyncCommunityRank.self, from: data)
+        XCTAssertTrue(rank.isValid)
+        XCTAssertEqual(rank.exceededPercentage, 80)
+
+        var invalid = rank
+        invalid.rank = 11
+        XCTAssertFalse(invalid.isValid)
+        invalid = rank
+        invalid.publicProfileEnabled = false
+        XCTAssertFalse(invalid.isValid)
+        invalid = rank
+        invalid.rank = nil
+        XCTAssertFalse(invalid.isValid)
+    }
+
     func testCrossPlatformGoldenHMACVector() {
         let body = Data(#"{"schema_version":1,"collector_version":"0.2.0","generated_at":"2026-08-09T01:30:00Z","buckets":[{"date":"2026-08-09","timezone":"Asia/Shanghai","tool":"Codex","model":"gpt-5","source":"local","input_tokens":120,"output_tokens":80,"cache_read_tokens":1000,"cache_write_tokens":50,"completeness":"exact"}]}"#.utf8)
         let bodyHash = Data(SHA256.hash(data: body)).map { String(format: "%02x", $0) }.joined()

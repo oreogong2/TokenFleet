@@ -89,6 +89,45 @@ final class TeamSyncServiceTests: XCTestCase {
         XCTAssertEqual(request.url?.path, "/api/v1/devices/enroll")
     }
 
+    func testCommunityRankUsesStoredDeviceCredentialAndValidatesResponse() async throws {
+        let origin = "https://team.example.com"
+        let deviceID = "server-device-42"
+        let http = RecordingTeamSyncHTTPClient(
+            responses: [
+                TeamSyncHTTPResponse(
+                    data: Data(#"{"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"奥哥","public_profile_enabled":true,"period":"today","metric":"tokens","rank":2,"total_entries":10,"metric_value":"704000000"}"#.utf8),
+                    statusCode: 200
+                )
+            ]
+        )
+        let service = TeamSyncService(
+            httpClient: http,
+            credentialStore: MemoryTeamSyncCredentialStore(
+                values: [deviceID: "test-device-secret-0123456789"]
+            ),
+            stateStore: MemoryTeamSyncStateStore(
+                state: TeamSyncPersistentState(
+                    serverURL: origin,
+                    devicePublicID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                    deviceID: deviceID
+                )
+            )
+        )
+
+        let rank = try await service.fetchCommunityRank(
+            serverURL: origin,
+            now: Date(timeIntervalSince1970: 1_786_240_000)
+        )
+
+        XCTAssertEqual(rank.rank, 2)
+        let requests = await http.requests
+        let request = try XCTUnwrap(requests.first)
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.path, "/api/v1/devices/me/community-rank")
+        XCTAssertNil(request.httpBody)
+        XCTAssertNotNil(request.value(forHTTPHeaderField: "X-Signature"))
+    }
+
     func testEnrollmentRejectsUnexpectedSigningKeyDerivationBeforeStoringSecret() async {
         let stablePublicID = "123e4567-e89b-12d3-a456-426614174000"
         let http = RecordingTeamSyncHTTPClient(

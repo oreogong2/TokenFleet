@@ -157,7 +157,6 @@ struct AgentWorkCardRender {
             tokenIslandEnabled: false,
             tokenIslandPlacement: .menuBar,
             showCodexQuota: false,
-            agentWorkRankVisibility: .hidden,
             showExperimentalAgentSources: true,
             language: .zhHans,
             skippedUpdateVersion: nil

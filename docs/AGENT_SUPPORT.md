@@ -84,7 +84,7 @@ TokenFleet 采用：
 | CodeBuddy | 中 | 本机看到 VS Code secret buffer 和产品缓存，但不是明文 usage；需要官方 usage 文件或可验证字段。 |
 | Cursor / Windsurf / Trae | 中 | 需要确认是否本地暴露 token usage，不应只按聊天字数估算。 |
 | Hermes Agent | 待确认 | 本机日志存在 `tokens=~` 估算和压缩/错误记录，暂不进入正式总量。需要真实 API usage 或统一事件。 |
-| WorkBuddy | 待确认 | 本机未找到稳定 token usage 日志；需要产品侧提供本地统计文件或事件。 |
+| WorkBuddy | 暂不支持 | 本机项目日志把 usage 与对话／工具内容放在同类文件，TokenFleet 不打开；需要产品侧提供独立 usage-only 数据源。 |
 
 ## 接入规则
 

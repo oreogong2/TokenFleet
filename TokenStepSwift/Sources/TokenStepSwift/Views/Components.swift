@@ -7,27 +7,37 @@ struct StatusBarLabelView: View {
     var refreshing: Bool
     var theme: TokenStepTheme
     var language: TokenStepLanguage
+    var showsTokenCount: Bool
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 2) {
-            ForEach(
-                Array([CGFloat(7), CGFloat(12), CGFloat(17)].enumerated()),
-                id: \.offset
-            ) { index, height in
-                Capsule()
-                    .fill(Color.primary.opacity(refreshing && index == 1 ? 0.42 : 0.88))
-                    .frame(width: 3.5, height: height)
+        HStack(alignment: .center, spacing: showsTokenCount ? 6 : 0) {
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(
+                    Array([CGFloat(7), CGFloat(12), CGFloat(17)].enumerated()),
+                    id: \.offset
+                ) { index, height in
+                    Capsule()
+                        .fill(Color.primary.opacity(refreshing && index == 1 ? 0.42 : 0.88))
+                        .frame(width: 3.5, height: height)
+                }
+            }
+            .frame(width: 18, height: 18, alignment: .bottom)
+
+            if showsTokenCount {
+                Text(TokenStepFormat.tokens(tokens, compact: true, language: language))
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
             }
         }
-        .frame(width: 18, height: 18, alignment: .bottom)
-        .padding(.horizontal, 1)
+        .padding(.horizontal, showsTokenCount ? 2 : 1)
         .frame(height: 22)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             "TokenFleet · \(TokenStepFormat.tokens(tokens, compact: true, language: language)) · "
                 + "\(L("今日目标进度")) \(TokenStepFormat.percent(lap.rawProgress * 100))"
         )
-        .id("\(theme.id)-\(language.resolved.id)")
+        .id("\(theme.id)-\(language.resolved.id)-\(showsTokenCount)")
     }
 }
 
@@ -76,6 +86,84 @@ struct TokenFleetSignalMark: View {
         Capsule()
             .fill(Color.tokenGreenDark.opacity(opacity))
             .frame(width: size * 0.12, height: size * height)
+    }
+}
+
+/// TokenFleet's daily-goal visualization: a segmented signal dial instead of
+/// the inherited multi-lap fitness ring. The dial fills once, while the center
+/// keeps showing the uncapped percentage when usage exceeds the daily goal.
+struct TokenFleetGoalDial: View {
+    var tokens: Int
+    var goal: Int
+    var size: CGFloat = 168
+
+    private let segmentCount = 36
+
+    private var rawProgress: Double {
+        Double(max(tokens, 0)) / Double(max(goal, 1))
+    }
+
+    private var completedSegments: Int {
+        min(segmentCount, max(0, Int(ceil(min(rawProgress, 1) * Double(segmentCount)))))
+    }
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<segmentCount, id: \.self) { index in
+                Capsule()
+                    .fill(segmentColor(index))
+                    .frame(width: max(3, size * 0.026), height: max(8, size * 0.075))
+                    .offset(y: -(size / 2 - size * 0.064))
+                    .rotationEffect(.degrees(Double(index) / Double(segmentCount) * 360))
+            }
+
+            Circle()
+                .fill(Color.tokenSurface.opacity(0.92))
+                .frame(width: size * 0.73, height: size * 0.73)
+                .overlay(Circle().stroke(Color.tokenGreen.opacity(0.09), lineWidth: 1))
+
+            VStack(spacing: max(3, size * 0.025)) {
+                HStack(alignment: .bottom, spacing: max(2, size * 0.014)) {
+                    signalBar(height: size * 0.075, opacity: 0.48)
+                    signalBar(height: size * 0.11, opacity: 0.72)
+                    signalBar(height: size * 0.15, opacity: 1)
+                }
+
+                Text(TokenStepFormat.tokens(tokens, compact: true))
+                    .font(.system(size: size * 0.15, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.tokenInk)
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.58)
+                    .lineLimit(1)
+                    .frame(maxWidth: size * 0.62)
+
+                Text(LFormat("目标 %@", TokenStepFormat.percent(rawProgress * 100)))
+                    .font(.system(size: max(9, size * 0.065), weight: .bold, design: .rounded))
+                    .foregroundStyle(rawProgress >= 1 ? Color.tokenGreenDark : .secondary)
+                    .monospacedDigit()
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(L("今日 Token 消耗")) \(TokenStepFormat.tokens(tokens)) · "
+                + "\(L("今日目标进度")) \(TokenStepFormat.percent(rawProgress * 100))"
+        )
+    }
+
+    private func signalBar(height: CGFloat, opacity: Double) -> some View {
+        Capsule()
+            .fill(Color.tokenGreenDark.opacity(opacity))
+            .frame(width: max(3, size * 0.024), height: height)
+    }
+
+    private func segmentColor(_ index: Int) -> Color {
+        if index < completedSegments {
+            return rawProgress >= 1 && index >= segmentCount - 3
+                ? Color.orange.opacity(0.92)
+                : Color.tokenGreenDark.opacity(0.92)
+        }
+        return Color.tokenTrack.opacity(0.78)
     }
 }
 

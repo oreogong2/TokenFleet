@@ -35,6 +35,7 @@ from .middleware import trusted_client_ip
 from .schemas import (
     DailyUsageIngestResponse,
     DailyUsageReport,
+    DeviceCommunityRankResponse,
     DeviceEnrollRequest,
     DeviceEnrollResponse,
     DeviceResponse,
@@ -70,6 +71,7 @@ from .schemas import (
     validate_public_nickname,
 )
 from .public_projection import (
+    build_device_community_rank,
     build_public_leaderboard,
     build_public_member_detail,
     period_bounds,
@@ -1011,6 +1013,28 @@ def list_devices(
     if user.role == UserRole.MEMBER:
         query = query.where(Device.user_id == user.id)
     return list(session.scalars(query.order_by(Device.created_at, Device.id)))
+
+
+@router.get(
+    "/api/v1/devices/me/community-rank",
+    response_model=DeviceCommunityRankResponse,
+)
+def device_community_rank(
+    response: Response,
+    principal: DevicePrincipal = Depends(get_device_principal),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> DeviceCommunityRankResponse:
+    organization = resolve_public_organization(session, settings.public_org_slug)
+    if principal.user.org_id != organization.id:
+        raise HTTPException(status_code=404, detail="public leaderboard not found")
+    response.headers["Cache-Control"] = "no-store"
+    return build_device_community_rank(
+        session,
+        organization=organization,
+        user=principal.user,
+        max_scan_rows=settings.public_max_scan_rows,
+    )
 
 
 def _set_device_status(

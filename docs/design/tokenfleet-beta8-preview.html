@@ -169,7 +169,7 @@
     }
     .sync-pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
     .hero {
-      display: grid; grid-template-columns: 1.55fr .85fr; gap: 22px;
+      display: grid; grid-template-columns: 180px 1.35fr .78fr; gap: 22px; align-items:center;
       padding: 25px 27px;
       background: #fff;
       border: 1px solid var(--line);
@@ -186,6 +186,18 @@
       background: var(--green-deep); box-shadow: 0 0 0 3px #fff;
     }
     .hero-caption { margin: 9px 0 0; color: var(--muted); font-size: 11px; }
+    .goal-dial {
+      position:relative; width:156px; height:156px; border-radius:50%;
+      background:repeating-conic-gradient(from -5deg,var(--green-deep) 0 7deg,transparent 7deg 10deg);
+    }
+    .goal-dial::before { content:""; position:absolute; inset:17px; border-radius:50%; background:#fff; box-shadow:inset 0 0 0 1px rgba(20,104,58,.08); }
+    .goal-dial::after { content:""; position:absolute; width:8px; height:8px; right:15px; top:24px; border-radius:50%; background:var(--amber); box-shadow:0 0 0 4px #fff; }
+    .goal-dial-copy { position:absolute; z-index:1; inset:0; display:grid; place-content:center; justify-items:center; }
+    .goal-dial-copy .mini-signal { display:flex; align-items:end; gap:3px; height:20px; margin-bottom:5px; }
+    .goal-dial-copy .mini-signal i { width:4px; border-radius:3px; background:var(--green-deep); }
+    .goal-dial-copy .mini-signal i:nth-child(1){height:8px;opacity:.45}.goal-dial-copy .mini-signal i:nth-child(2){height:13px;opacity:.7}.goal-dial-copy .mini-signal i:nth-child(3){height:19px}
+    .goal-dial-copy strong { font-size:24px; letter-spacing:-.05em; }
+    .goal-dial-copy small { margin-top:3px; color:var(--green-deep); font-size:10px; font-weight:850; }
     .signal-card {
       position: relative; overflow: hidden; padding: 18px 20px;
       color: #ecfff3; background: var(--green-deep); border-radius: 17px;
@@ -309,6 +321,11 @@
     .pop-tag { color: var(--muted); font-size: 11px; }
     .pop-status { margin-left: auto; color: var(--green-deep); font-size: 11px; }
     .pop-value { margin: 17px 0 10px; font-size: 38px; font-weight: 900; letter-spacing: -.05em; }
+    .pop-summary { display:grid; grid-template-columns:120px 1fr; gap:17px; align-items:center; margin:14px 0; }
+    .pop-summary .goal-dial { width:112px; height:112px; }
+    .pop-summary .goal-dial::before { inset:13px; }
+    .pop-summary .goal-dial::after { right:10px; top:17px; width:6px; height:6px; }
+    .pop-summary .goal-dial-copy strong { font-size:19px; }
     .pop-goal { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
     .pop-tools { margin: 17px 0; padding: 11px 13px; background: #f0f3ef; border-radius: 13px; }
     .pop-tools .bar-row { grid-template-columns: 78px 1fr 55px; margin: 9px 0; }
@@ -381,7 +398,7 @@
       <div>
         <p class="eyebrow">TokenFleet / beta.8 design checkpoint</p>
         <h1>熟悉的 TokenFleet，一次把入口和信息理顺</h1>
-        <p class="board-note">保留“每天一个亿”与原有结构；去掉圆环依赖，改用流量刻度。点击右侧查看各场景。</p>
+        <p class="board-note">保留“每天一个亿”与原有结构；用 TokenFleet 分段信号环保留一眼可读的目标进度，不再计算第几圈。点击右侧查看各场景。</p>
       </div>
       <nav class="switcher" aria-label="预览场景">
         <button class="active" data-canvas="desktop">主窗口</button>
@@ -419,12 +436,12 @@
             <div class="page active" id="today">
               <header class="page-head"><div><h2>今日消耗</h2><p>今天的 Token 使用节奏</p></div><span class="sync-pill"><i></i> 已同步 · 19:08</span></header>
               <article class="hero">
+                <div class="goal-dial"><div class="goal-dial-copy"><span class="mini-signal"><i></i><i></i><i></i></span><strong>7.04 亿</strong><small>目标 704%</small></div></div>
                 <div>
                   <div class="hero-label">今天已记录</div>
-                  <div class="token-value">7.04 亿</div>
+                  <div class="token-value" style="font-size:32px;margin-bottom:12px">每天一个亿</div>
                   <div class="goal-meta"><span>每日目标 1 亿</span><span>704%</span></div>
-                  <div class="track"><span style="width:100%"></span></div>
-                  <p class="hero-caption">超过目标后保留真实倍数，不再显示“第 8 圈”。</p>
+                  <p class="hero-caption">信号环只填满一次；超过目标后保留真实倍数，不再显示“第 8 圈”。</p>
                   <div class="insight-strip"><span class="insight-pill">相对节奏　<b>比近 7 个活跃日高 42%</b></span><span class="insight-pill">价格覆盖　<b>96%</b></span><span class="insight-pill">数据更新　<b>2 分钟前</b></span></div>
                 </div>
                 <aside class="signal-card"><small>连续活跃</small><div class="streak">8 <b>天</b></div><small>今天已续上</small><div class="signal-row"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></aside>
@@ -461,7 +478,7 @@
 
             <div class="page" id="settings-page">
               <header class="page-head"><div><h2>设置</h2><p>显示、采集、社群与可信更新</p></div></header>
-              <div class="settings-layout"><nav class="settings-nav"><button class="active">显示</button><button>统计与采集</button><button>社群</button><button>系统与更新</button></nav><div><article class="setting-group"><h3>菜单栏与窗口</h3><div class="setting-line"><div><b>默认入口</b><small>单屏使用系统右侧紧凑图标</small></div><div class="segmented"><i class="on">紧凑</i><i>刘海旁</i></div></div><div class="setting-line"><div><b>在 Dock 中显示</b><small>菜单栏拥挤时仍可找到主窗口</small></div><span class="toggle"></span></div></article><article class="setting-group"><h3>九套主题</h3><small style="color:var(--muted)">主题控制界面；工具颜色保持固定，避免图表含义变化。</small><div class="theme-grid"><i class="theme-chip on" style="--swatch:#20a85a">青绿</i><i class="theme-chip" style="--swatch:#0ea5e9">海蓝</i><i class="theme-chip" style="--swatch:#10a3a3">信号青</i><i class="theme-chip" style="--swatch:#4258d0">靛蓝</i><i class="theme-chip" style="--swatch:#8b5cf6">紫藤</i><i class="theme-chip" style="--swatch:#db4f86">玫瑰</i><i class="theme-chip" style="--swatch:#e26f55">珊瑚</i><i class="theme-chip" style="--swatch:#f59e0b">琥珀</i><i class="theme-chip" style="--swatch:#52525b">石墨</i></div><div class="setting-line"><div><b>语言</b></div><div class="segmented"><i class="on">简体中文</i><i>English</i><i>繁體</i></div></div></article></div></div>
+              <div class="settings-layout"><nav class="settings-nav"><button class="active">显示</button><button>统计与采集</button><button>社群</button><button>系统与更新</button></nav><div><article class="setting-group"><h3>菜单栏与窗口</h3><div class="setting-line"><div><b>默认入口</b><small>单屏使用系统右侧紧凑图标</small></div><div class="segmented"><i class="on">紧凑</i><i>刘海旁</i></div></div><div class="setting-line"><div><b>主窗口找回</b><small>从应用程序或 Spotlight 再次打开</small></div><b>随时可用</b></div></article><article class="setting-group"><h3>九套主题</h3><small style="color:var(--muted)">主题控制界面；工具颜色保持固定，避免图表含义变化。</small><div class="theme-grid"><i class="theme-chip on" style="--swatch:#20a85a">青绿</i><i class="theme-chip" style="--swatch:#0ea5e9">海蓝</i><i class="theme-chip" style="--swatch:#10a3a3">信号青</i><i class="theme-chip" style="--swatch:#4258d0">靛蓝</i><i class="theme-chip" style="--swatch:#8b5cf6">紫藤</i><i class="theme-chip" style="--swatch:#db4f86">玫瑰</i><i class="theme-chip" style="--swatch:#e26f55">珊瑚</i><i class="theme-chip" style="--swatch:#f59e0b">琥珀</i><i class="theme-chip" style="--swatch:#52525b">石墨</i></div><div class="setting-line"><div><b>语言</b></div><div class="segmented"><i class="on">简体中文</i><i>English</i><i>繁體</i></div></div></article></div></div>
             </div>
           </section>
         </div>
@@ -474,8 +491,7 @@
         <div class="wallpaper"></div>
         <div class="popover">
           <div class="pop-head"><span class="mark"><i></i><i></i><i></i></span><div><div class="pop-title">TokenFleet</div><div class="pop-tag">每天一个亿</div></div><div class="pop-status">● 已同步</div></div>
-          <div class="pop-value">7.04 亿</div>
-          <div class="pop-goal"><span>每日目标 1 亿</span><b>704%</b></div><div class="track"><span style="width:100%"></span></div>
+          <div class="pop-summary"><div class="goal-dial"><div class="goal-dial-copy"><span class="mini-signal"><i></i><i></i><i></i></span><strong>7.04 亿</strong><small>目标 704%</small></div></div><div><div class="pop-value" style="margin:0 0 8px;font-size:22px">今天已记录</div><div class="pop-goal"><span>每日目标</span><b>1 亿</b></div><p class="hero-caption">分段信号环只填满一次</p></div></div>
           <div class="pop-tools"><div class="bar-row"><b>Codex</b><div class="mini-track"><i style="width:100%"></i></div><em>7.04亿</em></div><div class="bar-row"><b>Claude</b><div class="mini-track"><i style="width:0"></i></div><em>0</em></div></div>
           <div class="pop-insights"><div><span>相对节奏</span><b>比近 7 个活跃日高 42%</b></div><div><span>Agent 额度</span><b>5 小时剩余 73%</b></div></div>
           <button class="community-button">社群排行　↗</button>
@@ -490,7 +506,7 @@
         <div class="titlebar"><div class="traffic"><i></i><i></i><i></i></div><div class="window-title">TokenFleet 设置</div><div></div></div>
         <div class="content" style="height:calc(100% - 46px)">
           <header class="page-head"><div><h2>设置</h2><p>保持能力不变，改成四组，窄窗口自动单列</p></div><span class="sync-pill"><i></i> 本地统计 + 社群日汇总</span></header>
-          <div class="settings-layout"><nav class="settings-nav"><button class="active">显示</button><button>统计与采集</button><button>社群</button><button>系统与更新</button></nav><div><article class="setting-group"><h3>显示</h3><div class="setting-line"><div><b>菜单栏入口</b><small>紧凑图标是单屏默认；刘海旁由用户主动选择</small></div><div class="segmented"><i class="on">紧凑</i><i>刘海旁</i></div></div><div class="setting-line"><div><b>在 Dock 中显示</b><small>再次打开 App 必须唤出主窗口</small></div><span class="toggle"></span></div><div class="theme-grid"><i class="theme-chip on" style="--swatch:#20a85a">青绿</i><i class="theme-chip" style="--swatch:#0ea5e9">海蓝</i><i class="theme-chip" style="--swatch:#10a3a3">信号青</i><i class="theme-chip" style="--swatch:#4258d0">靛蓝</i><i class="theme-chip" style="--swatch:#8b5cf6">紫藤</i><i class="theme-chip" style="--swatch:#db4f86">玫瑰</i><i class="theme-chip" style="--swatch:#e26f55">珊瑚</i><i class="theme-chip" style="--swatch:#f59e0b">琥珀</i><i class="theme-chip" style="--swatch:#52525b">石墨</i></div></article><article class="setting-group"><h3>每日目标</h3><div class="setting-line"><div><b>每天一个亿</b><small>目标仍保留；超过后显示真实百分比，不计算圈数</small></div><b>1 亿 Token</b></div></article><article class="setting-group"><h3>可信更新</h3><div class="setting-line"><div><b>beta 更新通道</b><small>只接收同 Bundle ID、同 Team ID、已公证的 DMG</small></div><span class="toggle"></span></div><div class="setting-line"><div><b>当前状态</b><small>Developer ID 与更新源尚待 beta.8 发布链完成</small></div><b style="color:var(--amber)">待配置</b></div></article></div></div>
+          <div class="settings-layout"><nav class="settings-nav"><button class="active">显示</button><button>统计与采集</button><button>社群</button><button>系统与更新</button></nav><div><article class="setting-group"><h3>显示</h3><div class="setting-line"><div><b>菜单栏入口</b><small>紧凑图标是单屏默认；刘海旁由用户主动选择</small></div><div class="segmented"><i class="on">紧凑</i><i>刘海旁</i></div></div><div class="setting-line"><div><b>菜单栏显示今日 Token</b><small>菜单栏空间充足时可开启</small></div><span class="toggle" style="background:#cbd4cc"></span></div><div class="setting-line"><div><b>主窗口找回</b><small>从应用程序或 Spotlight 再次打开</small></div><b>随时可用</b></div><div class="theme-grid"><i class="theme-chip on" style="--swatch:#20a85a">青绿</i><i class="theme-chip" style="--swatch:#0ea5e9">海蓝</i><i class="theme-chip" style="--swatch:#10a3a3">信号青</i><i class="theme-chip" style="--swatch:#4258d0">靛蓝</i><i class="theme-chip" style="--swatch:#8b5cf6">紫藤</i><i class="theme-chip" style="--swatch:#db4f86">玫瑰</i><i class="theme-chip" style="--swatch:#e26f55">珊瑚</i><i class="theme-chip" style="--swatch:#f59e0b">琥珀</i><i class="theme-chip" style="--swatch:#52525b">石墨</i></div></article><article class="setting-group"><h3>每日目标</h3><div class="setting-line"><div><b>每天一个亿</b><small>目标仍保留；超过后显示真实百分比，不计算圈数</small></div><b>1 亿 Token</b></div></article><article class="setting-group"><h3>可信更新</h3><div class="setting-line"><div><b>beta 更新通道</b><small>只接收同 Bundle ID、同 Team ID、已公证的 DMG</small></div><span class="toggle"></span></div><div class="setting-line"><div><b>当前状态</b><small>Developer ID 与更新源尚待 beta.8 发布链完成</small></div><b style="color:var(--amber)">待配置</b></div></article></div></div>
         </div>
       </div>
     </section>
@@ -498,7 +514,7 @@
     <section class="canvas" id="share">
       <div class="poster-stage">
         <article class="poster"><div class="poster-brand"><span class="mark"><i></i><i></i><i></i></span><div><b>TokenFleet</b><div class="brand-tag">每天一个亿</div></div></div><h2>今天已记录</h2><div class="poster-value">7.04 亿</div><div class="poster-track"><i></i></div><div class="poster-meta"><span>每日目标 1 亿</span><b>704%</b></div><div class="poster-grid"><div><span>连续活跃</span><strong>8 天</strong></div><div><span>API 标准价估算</span><strong>$1,790.00</strong></div><div><span>相对节奏</span><strong>较近 7 个活跃日 +42%</strong></div><div><span>今天社群排名</span><strong>#8 / 126</strong></div></div><footer class="poster-foot"><span>价格覆盖 96% · 只统计用量，不读取内容</span><b>TokenFleet</b></footer></article>
-        <aside class="notes"><p class="eyebrow">SHARE CARD</p><h3>分享图也做中度改版</h3><ul><li><b>能力保全：</b>今日成绩、昨日成绩、昨日节奏三种分享全部保留。</li><li><b>保留熟悉感：</b>浅色、绿色、“每天一个亿”和 Token 大数字全部保留。</li><li><b>去掉残留：</b>不再出现圆环或 `tokenstep.app`，只使用 TokenFleet 标识。</li><li><b>口径清楚：</b>费用明确是 API 标准价估算，并同时显示覆盖率，不冒充真实账单。</li><li><b>错误可诊断：</b>渲染、编码、复制、保存四个阶段分别报错。</li></ul></aside>
+        <aside class="notes"><p class="eyebrow">SHARE CARD</p><h3>分享图也做中度改版</h3><ul><li><b>能力保全：</b>今日成绩、昨日成绩、昨日节奏三种分享全部保留。</li><li><b>保留熟悉感：</b>浅色、绿色、“每天一个亿”和 Token 大数字全部保留。</li><li><b>去掉残留：</b>不再出现多圈健身环或 `tokenstep.app`，只使用 TokenFleet 标识。</li><li><b>口径清楚：</b>费用明确是 API 标准价估算，并同时显示覆盖率，不冒充真实账单。</li><li><b>错误可诊断：</b>渲染、编码、复制、保存四个阶段分别报错。</li></ul></aside>
       </div>
     </section>
 
