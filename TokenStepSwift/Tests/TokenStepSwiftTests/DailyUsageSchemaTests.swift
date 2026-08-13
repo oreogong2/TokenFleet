@@ -17,6 +17,8 @@ final class DailyUsageSchemaTests: XCTestCase {
         let row = try JSONDecoder().decode(DailyUsage.self, from: data)
 
         XCTAssertNil(row.atomicUsage)
+        XCTAssertNil(row.pricingCoverage)
+        XCTAssertNil(row.pricingVersion)
         XCTAssertEqual(row.tools["Claude Code"], 70)
         XCTAssertEqual(row.models["gpt-5"], 40)
     }
@@ -38,7 +40,10 @@ final class DailyUsageSchemaTests: XCTestCase {
                 )
             ],
             totalTokens: 1_250,
-            cost: 0.42
+            cost: 0.42,
+            pricedTokens: 1_000,
+            unpricedTokens: 250,
+            pricingVersion: "public-usd-2026-08-13"
         )
 
         let data = try JSONEncoder().encode(original)
@@ -47,6 +52,8 @@ final class DailyUsageSchemaTests: XCTestCase {
         XCTAssertEqual(decoded.atomicUsage, original.atomicUsage)
         XCTAssertEqual(decoded.atomicUsage?.first?.breakdownComplete, true)
         XCTAssertEqual(decoded.totalTokens, original.totalTokens)
+        XCTAssertEqual(try XCTUnwrap(decoded.pricingCoverage), 0.8, accuracy: 0.000_001)
+        XCTAssertEqual(decoded.pricingVersion, "public-usd-2026-08-13")
         XCTAssertNotNil(decoded.atomicUsage)
     }
 

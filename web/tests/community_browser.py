@@ -568,14 +568,18 @@ def main():
             f"{base}/?demo=1&scenario=slow-enrollment#/people",
             wait_until="networkidle",
         )
-        page.get_by_role("button", name="为已有成员创建设备码").click()
+        page.get_by_role("button", name="给已有成员补发设备码").click()
         enrollment = page.locator("#enrollment-dialog")
+        assert "不会重复创建成员" in enrollment.inner_text()
+        assert "不占自助批次名额" in enrollment.inner_text()
         option_values = enrollment.locator('select[name="user_id"] option').evaluate_all(
             "options => options.map(option => option.value).filter(Boolean)"
         )
         assert "u-demo-admin" not in option_values
         enrollment.locator('select[name="user_id"]').select_option(index=1)
-        enrollment.get_by_role("button", name="生成一次性连接码").click()
+        enrollment.get_by_role(
+            "button", name="确认补发 60 分钟设备码"
+        ).click()
         page.wait_for_timeout(50)
         page.evaluate("location.hash = '#/rank'")
         page.locator(".community-board").wait_for()

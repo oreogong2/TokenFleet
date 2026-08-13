@@ -53,33 +53,31 @@ struct SettingsView: View {
 
     private var cardGrid: some View {
         VStack(spacing: 18) {
+            SettingsThemeCard()
             HStack(alignment: .top, spacing: 18) {
                 SettingsGoalCard()
-                SettingsThemeCard()
+                SettingsLanguageCard()
             }
             HStack(alignment: .top, spacing: 18) {
-                SettingsLanguageCard()
                 SettingsDisplayCard()
+                SettingsRefreshCard()
             }
             HStack(alignment: .top, spacing: 18) {
                 SettingsTokenRankCard()
-                SettingsRefreshCard()
+                SettingsExperimentalAgentSourcesCard()
             }
             HStack(alignment: .top, spacing: 18) {
                 SettingsUpdateCard()
                 SettingsAutostartCard()
             }
             SettingsTeamSyncCard()
-            HStack(alignment: .top, spacing: 18) {
-                SettingsExperimentalAgentSourcesCard()
-                SettingsPrivacyCard()
-            }
+            SettingsPrivacyCard()
         }
     }
 
     private var header: some View {
         HStack(spacing: 14) {
-            TokenStepMark(size: 54)
+            TokenFleetSignalMark(size: 54)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(L("设置"))

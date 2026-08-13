@@ -4,16 +4,19 @@ struct SettingsGoalCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        SettingsCard(title: L("每日目标"), symbol: "figure.walk.circle.fill") {
+        SettingsCard(title: L("每日目标"), symbol: "scope") {
             HStack(alignment: .center, spacing: 18) {
                 HStack(alignment: .center, spacing: 14) {
-                    ZStack {
-                        ProgressRingView(progress: min(appState.progress, 1), lineWidth: 8)
-                            .frame(width: 68, height: 68)
+                    VStack(spacing: 7) {
+                        TokenFleetSignalMark(size: 54)
                         Text(TokenStepFormat.percent(min(appState.progress * 100, 999)))
                             .font(.system(size: 16, weight: .heavy, design: .rounded))
-                            .foregroundStyle(Color.tokenInk)
+                            .foregroundStyle(Color.tokenGreenDark)
                             .monospacedDigit()
+
+                        ProgressView(value: min(max(appState.progress, 0), 1))
+                            .tint(Color.tokenGreenDark)
+                            .frame(width: 68)
                     }
 
                     VStack(alignment: .leading, spacing: 8) {

@@ -150,18 +150,25 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     page.get_by_role("link", name="← 返回成员列表", exact=True).click()
     wait_for_heading(page, "成员")
 
-    page.get_by_role("button", name="为已有成员创建设备码").click()
+    page.locator("tbody tr", has_text=new_member_name).get_by_role(
+        "button", name="补发设备码", exact=True
+    ).click()
     enrollment_dialog = page.locator("#enrollment-dialog")
     enrollment_dialog.wait_for(state="visible")
+    assert "不会重复创建成员" in enrollment_dialog.inner_text()
+    assert "不占自助批次名额" in enrollment_dialog.inner_text()
+    assert "原始码不会在后台显示或保存" in enrollment_dialog.inner_text()
     member_options = enrollment_dialog.locator(
         'select[name="user_id"] option',
         has_text=new_member_name,
     )
     assert member_options.count() == 1
-    enrollment_dialog.locator('select[name="user_id"]').select_option(
+    assert enrollment_dialog.locator('select[name="user_id"]').input_value() == (
         member_options.first.get_attribute("value")
     )
-    enrollment_dialog.get_by_role("button", name="生成一次性连接码").click()
+    enrollment_dialog.get_by_role(
+        "button", name="确认补发 60 分钟设备码"
+    ).click()
     token_dialog = page.locator("dialog.token-dialog")
     token_dialog.wait_for(state="visible")
     assert "••••" in token_dialog.locator("code").inner_text()
@@ -212,7 +219,7 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     page.get_by_role("link", name="设置与隐私", exact=True).click()
     wait_for_heading(page, "设置与隐私")
     settings_text = page.locator(".page-body").inner_text()
-    assert "生财排行榜" in settings_text
+    assert "第三方服务边界" in settings_text
     assert "不接收" in settings_text and "不保存" in settings_text and "也不转发" in settings_text
     assert page.locator(
         'input[name*="webhook" i], input[name*="token" i], input[name*="secret" i]'

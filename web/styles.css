@@ -419,6 +419,7 @@ td > small { display: block; color: var(--ink-muted); font-size: 9px; }
 .avatar.large { width: 58px; height: 58px; font-family: var(--font-display); font-size: 24px; }
 .row-link { display: grid; width: 28px; height: 28px; border-radius: 8px; color: var(--forest-bright); text-decoration: none; place-items: center; }
 .row-link:hover { background: rgba(21,94,174,.09); }
+.row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; white-space: nowrap; }
 
 .device-list { display: grid; gap: 8px; }
 .device-row { display: grid; grid-template-columns: 37px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 5px; border-bottom: 1px solid rgba(20,62,108,.075); }

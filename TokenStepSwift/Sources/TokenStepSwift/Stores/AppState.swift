@@ -84,6 +84,22 @@ final class AppState: ObservableObject {
         return agentWork(for: key)
     }
 
+    var todayRelativePace: UsageRelativePace? {
+        relativePace(for: today)
+    }
+
+    var activeStreak: UsageStreak {
+        UsageStreakCalculator.current(rows: snapshot.daily)
+    }
+
+    func activeStreakDays(endingOn date: String) -> Int {
+        UsageStreakCalculator.days(endingOn: date, rows: snapshot.daily)
+    }
+
+    func relativePace(for day: DailyUsage) -> UsageRelativePace? {
+        UsageRelativePaceCalculator.comparison(for: day, in: snapshot.daily)
+    }
+
     var sevenDayAgentAverage: Int {
         sevenDayAgentAverage(endingAt: DateFormatter.tokenStepDay.string(from: Date()))
     }
@@ -120,8 +136,15 @@ final class AppState: ObservableObject {
     }
 
     var shouldShowTokenIsland: Bool {
-        settings.tokenIslandPlacement != .menuBar
-            && TokenIslandDisplayDetector.isAvailable(for: settings.tokenIslandPlacement, size: TokenIslandWindowPresenter.collapsedSize)
+        switch settings.tokenIslandPlacement {
+        case .notchLeft, .notchRight:
+            return TokenIslandDisplayDetector.isAvailable(
+                for: settings.tokenIslandPlacement,
+                size: TokenIslandWindowPresenter.collapsedSize
+            )
+        case .automatic, .menuBar:
+            return false
+        }
     }
 
     var tokenIslandStatus: String {
@@ -129,7 +152,7 @@ final class AppState: ObservableObject {
         case .menuBar:
             return L("菜单栏模式")
         case .automatic:
-            return shouldShowTokenIsland ? L("自动：刘海旁") : L("自动：菜单栏")
+            return L("自动：菜单栏")
         case .notchLeft:
             return shouldShowTokenIsland ? L("刘海左侧") : L("菜单栏模式")
         case .notchRight:
@@ -143,6 +166,9 @@ final class AppState: ObservableObject {
         }
         if settings.tokenIslandPlacement == .menuBar {
             return L("仅使用右上角菜单栏入口")
+        }
+        if settings.tokenIslandPlacement == .automatic {
+            return L("自动模式保留紧凑菜单栏入口")
         }
         return TokenIslandDisplayDetector.fallbackReason
     }

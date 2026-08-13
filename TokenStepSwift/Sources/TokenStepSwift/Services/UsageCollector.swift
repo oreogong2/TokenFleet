@@ -1835,7 +1835,7 @@ enum UsageCollector {
                 tool: ccSwitchToolName(appType: appType),
                 model: modelKey(row["display_model"] as? String),
                 usage: usage,
-                costUSD: doubleValue(row["total_cost_usd"] as Any),
+                costUSD: positiveDoubleValue(row["total_cost_usd"] as Any),
                 source: .ccSwitchProxy,
                 requestID: nonEmptyString(row["request_id"] as? String),
                 sessionID: nonEmptyString(row["session_id"] as? String),
@@ -2475,8 +2475,9 @@ enum UsageCollector {
         var models = [ModelKey: UsageAccumulator]()
 
         for record in records {
-            let cost = record.costUSD ?? estimateCost(usage: record.usage, tool: record.tool, model: record.model)
-            daily[record.date, default: DailyAccumulator(date: record.date)].add(record: record, cost: cost)
+            let resolvedCost = resolveCost(for: record)
+            daily[record.date, default: DailyAccumulator(date: record.date)]
+                .add(record: record, resolvedCost: resolvedCost)
             let recordHour = record.timestampEpoch.map(hour(fromEpoch:))
                 ?? hour(fromISO: record.timestamp)
             if let hour = recordHour {
@@ -2487,12 +2488,15 @@ enum UsageCollector {
                 agentWork[record.date, default: AgentWorkAccumulator(date: record.date)]
                     .add(record: record, hour: recordHour)
             }
-            tools[record.tool, default: UsageAccumulator()].add(record.usage, cost: cost)
-            models[ModelKey(tool: record.tool, model: record.model), default: UsageAccumulator()].add(record.usage, cost: cost)
+            tools[record.tool, default: UsageAccumulator()].add(record.usage, cost: resolvedCost.costUSD)
+            models[ModelKey(tool: record.tool, model: record.model), default: UsageAccumulator()]
+                .add(record.usage, cost: resolvedCost.costUSD)
         }
 
         let totalTokens = tools.values.map(\.usage.totalTokens).reduce(0, +)
         let totalCost = tools.values.map(\.cost).reduce(0, +)
+        let totalPricedTokens = daily.values.map(\.pricedTokens).reduce(0, +)
+        let totalUnpricedTokens = daily.values.map(\.unpricedTokens).reduce(0, +)
 
         let dailyRows = daily.values
             .sorted { $0.date < $1.date }
@@ -2503,7 +2507,10 @@ enum UsageCollector {
                     models: item.models,
                     atomicUsage: item.atomicUsage,
                     totalTokens: item.totalTokens,
-                    cost: rounded(item.cost, digits: 4)
+                    cost: rounded(item.cost, digits: 4),
+                    pricedTokens: item.pricedTokens,
+                    unpricedTokens: item.unpricedTokens,
+                    pricingVersion: TokenPricingCatalog.version
                 )
             }
 
@@ -2544,7 +2551,10 @@ enum UsageCollector {
             totals: UsageTotals(
                 tokens: totalTokens,
                 cost: rounded(totalCost, digits: 2),
-                activeDays: dailyRows.filter { $0.totalTokens > 0 }.count
+                activeDays: dailyRows.filter { $0.totalTokens > 0 }.count,
+                pricedTokens: totalTokens > 0 ? totalPricedTokens : nil,
+                unpricedTokens: totalTokens > 0 ? totalUnpricedTokens : nil,
+                pricingVersion: TokenPricingCatalog.version
             ),
             daily: dailyRows,
             rhythms: rhythmRows,
@@ -3043,6 +3053,11 @@ enum UsageCollector {
         return 0
     }
 
+    private static func positiveDoubleValue(_ value: Any) -> Double? {
+        let number = doubleValue(value)
+        return number.isFinite && number > 0 ? number : nil
+    }
+
     private static func nonEmptyString(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3162,6 +3177,12 @@ enum UsageCollector {
             return "Codex via CC Switch"
         case "gemini":
             return "Gemini via CC Switch"
+        case "kimi", "kimi-cli", "kimi-code":
+            return "Kimi via CC Switch (experimental)"
+        case "deepseek":
+            return "DeepSeek via CC Switch (experimental)"
+        case "cursor":
+            return "Cursor via CC Switch (experimental)"
         default:
             return "\(value.isEmpty ? "unknown" : value) via CC Switch (experimental)"
         }
@@ -3232,62 +3253,48 @@ enum UsageCollector {
         return try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
     }
 
-    private static func estimateCost(usage: TokenUsageCounts, tool: String, model: String) -> Double {
-        let lower = model.lowercased()
-        if tool == "Codex", lower.contains("gpt-5.5") {
-            return openAICostByParts(usage: usage, input: 5, cachedInput: 0.5, output: 30)
+    private static func resolveCost(for record: UsageRecord) -> ResolvedRecordCost {
+        if let sourceCost = record.costUSD,
+           sourceCost.isFinite,
+           sourceCost > 0 {
+            return ResolvedRecordCost(
+                costUSD: sourceCost,
+                pricedTokens: record.usage.totalTokens,
+                unpricedTokens: 0
+            )
         }
-        if tool == "Codex", lower.contains("gpt-5.4") {
-            return openAICostByParts(usage: usage, input: 2.5, cachedInput: 0.25, output: 15)
-        }
-        if lower.contains("opus") {
-            return costByParts(usage: usage, input: 5, output: 25, cacheCreation: 6.25, cacheRead: 0.5)
-        }
-        if lower.contains("sonnet") {
-            return costByParts(usage: usage, input: 3, output: 15, cacheCreation: 3.75, cacheRead: 0.3)
-        }
-        if tool == "Claude Code" {
-            return Double(usage.totalTokens) / 1_000_000 * 3
-        }
-        return Double(usage.totalTokens) / 1_000_000
-    }
 
-    private static func openAICostByParts(
-        usage: TokenUsageCounts,
-        input: Double,
-        cachedInput: Double,
-        output: Double
-    ) -> Double {
-        let cached = max(0, usage.cacheReadInputTokens)
-        let cacheCreation = max(0, usage.cacheCreationInputTokens)
-        let uncachedInput = max(0, usage.inputTokens - cached - cacheCreation)
-        if uncachedInput == 0,
-           cached == 0,
-           cacheCreation == 0,
-           usage.outputTokens == 0,
-           usage.totalTokens > 0 {
-            return Double(usage.totalTokens) / 1_000_000 * input
-        }
-        return Double(uncachedInput + cacheCreation) / 1_000_000 * input
-            + Double(cached) / 1_000_000 * cachedInput
-            + Double(usage.outputTokens) / 1_000_000 * output
-    }
-
-    private static func costByParts(
-        usage: TokenUsageCounts,
-        input: Double,
-        output: Double,
-        cacheCreation: Double,
-        cacheRead: Double
-    ) -> Double {
-        let uncachedInput = max(
-            0,
-            usage.inputTokens - usage.cacheCreationInputTokens - usage.cacheReadInputTokens
+        let usage = record.usage
+        let normalizedUsage = TokenPricingUsage(
+            inputTokens: max(
+                0,
+                usage.inputTokens
+                    - usage.cacheCreationInputTokens
+                    - usage.cacheReadInputTokens
+            ),
+            outputTokens: usage.outputTokens,
+            cacheReadTokens: usage.cacheReadInputTokens,
+            cacheWriteTokens: usage.cacheCreationInputTokens,
+            totalTokens: usage.totalTokens,
+            breakdownComplete: usage.cacheCoverageComplete
         )
-        return Double(uncachedInput) / 1_000_000 * input
-            + Double(usage.outputTokens) / 1_000_000 * output
-            + Double(usage.cacheCreationInputTokens) / 1_000_000 * cacheCreation
-            + Double(usage.cacheReadInputTokens) / 1_000_000 * cacheRead
+        guard let estimate = TokenPricingCatalog.estimate(
+            tool: record.tool,
+            model: record.model,
+            usage: normalizedUsage,
+            date: record.date
+        ) else {
+            return ResolvedRecordCost(
+                costUSD: 0,
+                pricedTokens: 0,
+                unpricedTokens: record.usage.totalTokens
+            )
+        }
+        return ResolvedRecordCost(
+            costUSD: estimate.costUSD,
+            pricedTokens: estimate.pricedTokens,
+            unpricedTokens: estimate.unpricedTokens
+        )
     }
 
     private static func percent(_ value: Int, of total: Int) -> Double {
@@ -4432,6 +4439,12 @@ private struct UsageAccumulator {
     }
 }
 
+private struct ResolvedRecordCost {
+    var costUSD: Double
+    var pricedTokens: Int
+    var unpricedTokens: Int
+}
+
 private struct DailyAccumulator {
     var date: String
     var tools: [String: Int] = [:]
@@ -4439,14 +4452,18 @@ private struct DailyAccumulator {
     var atomic: [ModelKey: DailyAtomicAccumulator] = [:]
     var totalTokens = 0
     var cost = 0.0
+    var pricedTokens = 0
+    var unpricedTokens = 0
 
-    mutating func add(record: UsageRecord, cost: Double) {
+    mutating func add(record: UsageRecord, resolvedCost: ResolvedRecordCost) {
         tools[record.tool, default: 0] += record.usage.totalTokens
         models[record.model, default: 0] += record.usage.totalTokens
         atomic[ModelKey(tool: record.tool, model: record.model), default: DailyAtomicAccumulator()]
             .add(record.usage)
         totalTokens += record.usage.totalTokens
-        self.cost += cost
+        cost += resolvedCost.costUSD
+        pricedTokens += resolvedCost.pricedTokens
+        unpricedTokens += resolvedCost.unpricedTokens
     }
 
     var atomicUsage: [DailyAtomicUsage] {

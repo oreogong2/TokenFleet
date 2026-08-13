@@ -17,34 +17,37 @@ struct PopoverFooterView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if appState.communityLeaderboardURL(
-                isScreenshotRendering: isScreenshotRendering
-            ) != nil {
-                Button {
+            Button {
+                if appState.communityLeaderboardURL(
+                    isScreenshotRendering: isScreenshotRendering
+                ) != nil {
                     appState.openCommunityLeaderboard(
                         isScreenshotRendering: isScreenshotRendering
                     )
-                } label: {
-                    HStack(spacing: 9) {
-                        Image(systemName: "person.3.sequence.fill")
-                        Text(L("打开社群榜"))
-                        Spacer()
-                        Image(systemName: "arrow.up.right")
-                    }
-                    .font(.callout.weight(.heavy))
-                    .foregroundStyle(Color.tokenGreenDark)
-                    .padding(.horizontal, 15)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 42)
-                    .background(Color.tokenMint.opacity(0.24), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.tokenGreen.opacity(0.18))
-                    )
+                } else {
+                    SettingsWindowPresenter.shared.show(appState: appState)
                 }
-                .buttonStyle(.plain)
-                .help(L("打开社群榜"))
+            } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: "person.3.sequence.fill")
+                    Text(communityButtonTitle)
+                    Spacer()
+                    Image(systemName: appState.isCommunitySyncEnrollmentCompatible ? "arrow.up.right" : "link")
+                }
+                .font(.callout.weight(.heavy))
+                .foregroundStyle(Color.tokenGreenDark)
+                .padding(.horizontal, 15)
+                .frame(maxWidth: .infinity)
+                .frame(height: 42)
+                .background(Color.tokenMint.opacity(0.24), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.tokenGreen.opacity(0.18))
+                )
             }
+            .buttonStyle(.plain)
+            .help(communityButtonTitle)
+            .disabled(isScreenshotRendering)
 
             HStack(spacing: 10) {
                 Button {
@@ -75,6 +78,10 @@ struct PopoverFooterView: View {
                 }
             }
         }
+    }
+
+    private var communityButtonTitle: String {
+        appState.isCommunitySyncEnrollmentCompatible ? L("社群排行") : L("连接社群")
     }
 }
 

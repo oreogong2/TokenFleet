@@ -128,7 +128,7 @@ test("login, member, enrollment and device status use the server contract", asyn
     role: "member",
   });
   await client.setUserEnabled("user-id", false);
-  await client.createEnrollment({ user_id: "user-id", expires_in_hours: 24, label: "not-sent" });
+  await client.createEnrollment({ user_id: "user-id", expires_in_minutes: 60, label: "not-sent" });
   await client.setDeviceEnabled("device-id", false);
   await client.updatePricing({
     tool: "Codex",
@@ -154,7 +154,7 @@ test("login, member, enrollment and device status use the server contract", asyn
   assert.equal(requests[1].url, "https://team.example/api/v1/users");
   assert.deepEqual(requests[2].body, { is_active: false });
   assert.equal(requests[2].url, "https://team.example/api/v1/users/user-id");
-  assert.deepEqual(requests[3].body, { user_id: "user-id", expires_in_minutes: 1440 });
+  assert.deepEqual(requests[3].body, { user_id: "user-id", expires_in_minutes: 60 });
   assert.deepEqual(requests[4].body, { is_active: false });
   assert.equal(requests[5].url, "https://team.example/api/v1/pricing");
   assert.equal(requests[5].options.method, "POST");

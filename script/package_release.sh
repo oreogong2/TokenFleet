@@ -160,6 +160,31 @@ verify_bundle_contract() {
   assert_plist_value "$plist" TokenFleetDeveloperTeamID "$TEAM_ID"
 }
 
+verify_universal_executable() {
+  local executable="$1"
+  [[ -f "$executable" ]] || {
+    echo "Universal release executable is missing: $executable" >&2
+    exit 1
+  }
+  local architectures
+  architectures="$(/usr/bin/lipo -archs "$executable")" || {
+    echo "Could not inspect release architectures: $executable" >&2
+    exit 1
+  }
+  for required in arm64 x86_64; do
+    if [[ " $architectures " != *" $required "* ]]; then
+      echo "Release executable is missing $required: $executable ($architectures)" >&2
+      exit 1
+    fi
+  done
+}
+
+verify_bundle_architectures() {
+  local bundle="$1"
+  verify_universal_executable "$bundle/Contents/MacOS/$PRODUCT_NAME"
+  verify_universal_executable "$bundle/Contents/Helpers/$HELPER_NAME"
+}
+
 mkdir -p "$RELEASE_DIR"
 VERSION_RELEASE_DIR="$RELEASE_DIR/$APP_NAME-$VERSION"
 ZIP_PATH="$VERSION_RELEASE_DIR/$APP_NAME-$VERSION.zip"
@@ -199,9 +224,11 @@ TOKENFLEET_APP_OUTPUT_ROOT="$BUILD_OUTPUT_ROOT" \
   "$ROOT_DIR/script/build_swiftui_and_run.sh" --no-launch
 
 verify_bundle_contract "$BUILT_APP_BUNDLE"
+verify_bundle_architectures "$BUILT_APP_BUNDLE"
 APP_BUNDLE="$PACKAGE_WORK_DIR/$APP_NAME.app"
 ditto "$BUILT_APP_BUNDLE" "$APP_BUNDLE"
 verify_bundle_contract "$APP_BUNDLE"
+verify_bundle_architectures "$APP_BUNDLE"
 
 clean_bundle_metadata() {
   find "$APP_BUNDLE" \( -name ".DS_Store" -o -name "*.nssyncsc" \) -delete
@@ -308,6 +335,7 @@ mkdir -p "$ZIP_VALIDATE_DIR"
 ditto -x -k "$STAGED_ZIP_PATH" "$ZIP_VALIDATE_DIR"
 xcrun stapler validate "$ZIP_VALIDATE_DIR/$APP_NAME.app"
 verify_bundle_contract "$ZIP_VALIDATE_DIR/$APP_NAME.app"
+verify_bundle_architectures "$ZIP_VALIDATE_DIR/$APP_NAME.app"
 
 (
   cd "$ARTIFACT_STAGING"

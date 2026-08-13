@@ -39,6 +39,18 @@ enum TokenStepFormat {
         return formatter.string(from: NSNumber(value: value)) ?? "$0.00"
     }
 
+    static func estimatedMoney(_ value: Double, coverage: Double?) -> String {
+        if coverage == 0, value == 0 {
+            return L("未计价")
+        }
+        return money(value)
+    }
+
+    static func pricingCoverage(_ value: Double?) -> String {
+        guard let value else { return L("计价覆盖暂无") }
+        return LFormat("计价覆盖 %@", percent(min(max(value, 0), 1) * 100))
+    }
+
     static func percent(_ value: Double) -> String {
         if value >= 100 { return "\(Int(value.rounded()))%" }
         if value >= 10 { return String(format: "%.1f%%", value) }

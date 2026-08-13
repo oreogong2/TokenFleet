@@ -117,11 +117,15 @@ def verify_desktop(page: Page) -> dict[str, int]:
     assert "demo_once_" not in page.content()
     token_dialog.get_by_role("button", name="关闭").click()
 
-    page.get_by_role("button", name="为已有成员创建设备码").click()
+    page.get_by_role("button", name="给已有成员补发设备码").click()
     dialog = page.locator("#enrollment-dialog")
     assert dialog.is_visible()
+    dialog_text = dialog.inner_text()
+    assert "不会重复创建成员" in dialog_text
+    assert "不占自助批次名额" in dialog_text
+    assert "原始码不会在后台显示或保存" in dialog_text
     dialog.locator('select[name="user_id"]').select_option(index=1)
-    dialog.get_by_role("button", name="生成一次性连接码").click()
+    dialog.get_by_role("button", name="确认补发 60 分钟设备码").click()
     token_dialog = page.locator("dialog.token-dialog")
     token_dialog.wait_for(state="visible")
     assert token_dialog.locator("code").inner_text() == "••••••••••••"
@@ -341,6 +345,7 @@ def verify_mock_states(page: Page) -> dict[str, object]:
     scenario = {"mode": "empty"}
     seen_paths: list[str] = []
     mutation_counts = {"enrollment": 0}
+    enrollment_payloads: list[dict[str, object]] = []
 
     def handle_api(route) -> None:
         mode = scenario["mode"]
@@ -348,6 +353,7 @@ def verify_mock_states(page: Page) -> dict[str, object]:
         seen_paths.append(path)
         if route.request.method == "POST" and path == "/api/v1/enrollment-tokens":
             mutation_counts["enrollment"] += 1
+            enrollment_payloads.append(json.loads(route.request.post_data or "{}"))
             route.fulfill(
                 status=201,
                 content_type="application/json",
@@ -426,15 +432,25 @@ def verify_mock_states(page: Page) -> dict[str, object]:
     page.goto(f"{BASE_URL}/#/people")
     wait_for_page(page, "成员")
     assert "/api/v1/admin/invitation-batches" in seen_paths, seen_paths
-    page.get_by_role("button", name="为已有成员创建设备码").click()
+    page.locator("tbody tr", has_text="边界参赛者").get_by_role(
+        "button", name="补发设备码", exact=True
+    ).click()
     enrollment_dialog = page.locator("#enrollment-dialog")
     enrollment_select = enrollment_dialog.locator('select[name="user_id"]')
     assert enrollment_select.locator('option[value="edge-user"]').count() == 0
-    enrollment_select.select_option("edge-participant")
-    enrollment_submit = enrollment_dialog.get_by_role("button", name="生成一次性连接码")
+    assert enrollment_select.input_value() == "edge-participant"
+    assert "不会重复创建成员" in enrollment_dialog.inner_text()
+    assert "不占自助批次名额" in enrollment_dialog.inner_text()
+    enrollment_submit = enrollment_dialog.get_by_role(
+        "button", name="确认补发 60 分钟设备码"
+    )
     enrollment_submit.evaluate("button => { button.click(); button.click(); }")
     page.locator("dialog.token-dialog").wait_for(state="visible")
     assert mutation_counts["enrollment"] == 1, mutation_counts
+    assert enrollment_payloads == [
+        {"user_id": "edge-participant", "expires_in_minutes": 60}
+    ], enrollment_payloads
+    assert "edge_once_only" not in page.content()
     page.locator("dialog.token-dialog").get_by_role("button", name="关闭").click()
 
     scenario["mode"] = "long"

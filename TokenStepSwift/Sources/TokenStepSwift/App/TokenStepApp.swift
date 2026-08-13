@@ -31,19 +31,13 @@ struct TokenStepApp: App {
                 .environmentObject(appState)
         } label: {
             Group {
-                if appState.shouldShowTokenIsland {
-                    Color.clear
-                        .frame(width: 1, height: 1)
-                        .accessibilityHidden(true)
-                } else {
-                    StatusBarLabelView(
-                        tokens: appState.today.totalTokens,
-                        lap: appState.todayLap,
-                        refreshing: appState.isRefreshing,
-                        theme: appState.settings.theme,
-                        language: appState.settings.language
-                    )
-                }
+                StatusBarLabelView(
+                    tokens: appState.today.totalTokens,
+                    lap: appState.todayLap,
+                    refreshing: appState.isRefreshing,
+                    theme: appState.settings.theme,
+                    language: appState.settings.language
+                )
             }
             .id(appState.appearanceID)
             .onAppear {

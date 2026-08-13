@@ -83,11 +83,54 @@ struct UsageTotals: Codable {
     var tokens: Int
     var cost: Double
     var activeDays: Int
+    /// Token coverage for the displayed cost. Nil means the snapshot predates
+    /// coverage metadata and must not be presented as 0% coverage.
+    var pricedTokens: Int?
+    var unpricedTokens: Int?
+    var pricingVersion: String?
+
+    var pricingCoverage: Double? {
+        guard let pricedTokens, let unpricedTokens else { return nil }
+        guard pricedTokens >= 0, unpricedTokens >= 0 else { return nil }
+        let (coveredTotal, overflow) = pricedTokens.addingReportingOverflow(unpricedTokens)
+        guard !overflow else { return nil }
+        guard coveredTotal > 0 else { return 1 }
+        return Double(pricedTokens) / Double(coveredTotal)
+    }
 
     enum CodingKeys: String, CodingKey {
         case tokens
         case cost
         case activeDays = "active_days"
+        case pricedTokens = "priced_tokens"
+        case unpricedTokens = "unpriced_tokens"
+        case pricingVersion = "pricing_version"
+    }
+
+    init(
+        tokens: Int,
+        cost: Double,
+        activeDays: Int,
+        pricedTokens: Int? = nil,
+        unpricedTokens: Int? = nil,
+        pricingVersion: String? = nil
+    ) {
+        self.tokens = tokens
+        self.cost = cost
+        self.activeDays = activeDays
+        self.pricedTokens = pricedTokens
+        self.unpricedTokens = unpricedTokens
+        self.pricingVersion = pricingVersion
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tokens = try container.decode(Int.self, forKey: .tokens)
+        cost = try container.decode(Double.self, forKey: .cost)
+        activeDays = try container.decode(Int.self, forKey: .activeDays)
+        pricedTokens = try container.decodeIfPresent(Int.self, forKey: .pricedTokens)
+        unpricedTokens = try container.decodeIfPresent(Int.self, forKey: .unpricedTokens)
+        pricingVersion = try container.decodeIfPresent(String.self, forKey: .pricingVersion)
     }
 }
 
@@ -193,6 +236,18 @@ struct DailyUsage: Codable, Identifiable {
     var atomicUsage: [DailyAtomicUsage]?
     var totalTokens: Int
     var cost: Double
+    var pricedTokens: Int?
+    var unpricedTokens: Int?
+    var pricingVersion: String?
+
+    var pricingCoverage: Double? {
+        guard let pricedTokens, let unpricedTokens else { return nil }
+        guard pricedTokens >= 0, unpricedTokens >= 0 else { return nil }
+        let (coveredTotal, overflow) = pricedTokens.addingReportingOverflow(unpricedTokens)
+        guard !overflow else { return nil }
+        guard coveredTotal > 0 else { return 1 }
+        return Double(pricedTokens) / Double(coveredTotal)
+    }
 
     enum CodingKeys: String, CodingKey {
         case date
@@ -201,6 +256,9 @@ struct DailyUsage: Codable, Identifiable {
         case atomicUsage = "atomic_usage"
         case totalTokens = "total_tokens"
         case cost
+        case pricedTokens = "priced_tokens"
+        case unpricedTokens = "unpriced_tokens"
+        case pricingVersion = "pricing_version"
     }
 
     init(
@@ -209,7 +267,10 @@ struct DailyUsage: Codable, Identifiable {
         models: [String: Int] = [:],
         atomicUsage: [DailyAtomicUsage]? = nil,
         totalTokens: Int,
-        cost: Double
+        cost: Double,
+        pricedTokens: Int? = nil,
+        unpricedTokens: Int? = nil,
+        pricingVersion: String? = nil
     ) {
         self.date = date
         self.tools = tools
@@ -217,6 +278,9 @@ struct DailyUsage: Codable, Identifiable {
         self.atomicUsage = atomicUsage
         self.totalTokens = totalTokens
         self.cost = cost
+        self.pricedTokens = pricedTokens
+        self.unpricedTokens = unpricedTokens
+        self.pricingVersion = pricingVersion
     }
 
     init(from decoder: Decoder) throws {
@@ -227,6 +291,9 @@ struct DailyUsage: Codable, Identifiable {
         atomicUsage = try container.decodeIfPresent([DailyAtomicUsage].self, forKey: .atomicUsage)
         totalTokens = try container.decode(Int.self, forKey: .totalTokens)
         cost = try container.decode(Double.self, forKey: .cost)
+        pricedTokens = try container.decodeIfPresent(Int.self, forKey: .pricedTokens)
+        unpricedTokens = try container.decodeIfPresent(Int.self, forKey: .unpricedTokens)
+        pricingVersion = try container.decodeIfPresent(String.self, forKey: .pricingVersion)
     }
 }
 

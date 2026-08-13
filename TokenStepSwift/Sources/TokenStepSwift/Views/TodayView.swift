@@ -17,31 +17,38 @@ struct TodayView: View {
         let percent = TokenStepFormat.percent(appState.progress * 100)
         return TokenCard {
             HStack(alignment: .center, spacing: 34) {
-                ZStack {
-                    ProgressRingView(progress: progress, lineWidth: 20, color: .tokenGreenDark)
-                    VStack(spacing: 6) {
-                        Text(TokenStepFormat.tokens(appState.today.totalTokens))
-                            .font(.system(size: 42, weight: .heavy, design: .rounded))
-                            .foregroundStyle(Color.tokenInk)
-                            .minimumScaleFactor(0.42)
-                            .lineLimit(1)
-                        Text(LFormat("目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
-                            .font(.headline.weight(.bold))
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        TokenFleetSignalMark(size: 42)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L("今天已记录"))
+                                .font(.callout.weight(.heavy))
+                                .foregroundStyle(.secondary)
+                            Text(L("AI 使用航行日志"))
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(Color.tokenGreenDark)
+                        }
                     }
-                    .frame(width: 160)
+                    Text(TokenStepFormat.tokens(appState.today.totalTokens))
+                        .font(.system(size: 52, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.tokenInk)
+                        .minimumScaleFactor(0.42)
+                        .lineLimit(1)
                 }
-                .frame(width: 204, height: 204)
+                .frame(width: 270, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(L("今日目标进度"))
-                            .font(.title3.weight(.heavy))
-                            .foregroundStyle(Color.tokenInk)
-                        Text(percent)
-                            .font(.system(size: 44, weight: .heavy, design: .rounded))
-                            .foregroundStyle(Color.tokenGreenDark)
-                            .monospacedDigit()
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(L("今日目标进度"))
+                                .font(.title3.weight(.heavy))
+                                .foregroundStyle(Color.tokenInk)
+                            Spacer()
+                            Text(percent)
+                                .font(.system(size: 32, weight: .heavy, design: .rounded))
+                                .foregroundStyle(Color.tokenGreenDark)
+                                .monospacedDigit()
+                        }
                     }
 
                     ProgressView(value: progress)
@@ -50,8 +57,40 @@ struct TodayView: View {
 
                     HStack(spacing: 10) {
                         MetricPill(label: L("每日目标"), value: TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true))
-                        MetricPill(label: L("消耗金额"), value: TokenStepFormat.money(appState.today.cost))
+                        MetricPill(
+                            label: L("API 标准价估算"),
+                            value: TokenStepFormat.estimatedMoney(
+                                appState.today.cost,
+                                coverage: appState.today.pricingCoverage
+                            )
+                        )
                         MetricPill(label: L("本月均值"), value: TokenStepFormat.tokens(appState.monthAverage, compact: true))
+                    }
+
+                    HStack(spacing: 12) {
+                        if let pace = appState.todayRelativePace {
+                            Label(pace.summary, systemImage: "waveform.path.ecg")
+                                .foregroundStyle(Color.tokenGreenDark)
+                        }
+                        Text(TokenStepFormat.pricingCoverage(appState.today.pricingCoverage))
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption.weight(.semibold))
+
+                    if let priced = appState.today.pricedTokens,
+                       let unpriced = appState.today.unpricedTokens,
+                       let version = appState.today.pricingVersion {
+                        Text(
+                            LFormat(
+                                "已计价 %@ · 未计价 %@ · %@",
+                                TokenStepFormat.tokens(priced, compact: true),
+                                TokenStepFormat.tokens(unpriced, compact: true),
+                                version
+                            )
+                        )
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                     }
                 }
 
@@ -64,6 +103,11 @@ struct TodayView: View {
         HStack(spacing: 18) {
             CompactMetricCard(label: L("累计 Token 消耗"), value: TokenStepFormat.tokens(appState.snapshot.totals.tokens), detail: L("所有本机记录"))
             CompactMetricCard(label: L("活跃天数"), value: localizedDays(appState.snapshot.totals.activeDays), detail: L("有 AI 使用的日期"))
+            CompactMetricCard(
+                label: L("连续活跃"),
+                value: localizedDays(appState.activeStreak.days),
+                detail: appState.activeStreak.isActiveToday ? L("今天已续上") : L("等待今天续上")
+            )
             CompactMetricCard(label: L("达标天数"), value: localizedDays(appState.goalDays), detail: L("达到每日目标"))
         }
     }

@@ -25,7 +25,7 @@
                ▼                      ▼
           Admin dashboard       Single community rank
 
-独立链路：官方 OpenToken ──> 生财排行榜
+独立链路：成员个人凭据 ──> 第三方排行榜或社区服务
 ```
 
 ## 2. 设备注册

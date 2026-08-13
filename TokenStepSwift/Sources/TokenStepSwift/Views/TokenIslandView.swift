@@ -21,7 +21,7 @@ struct TokenIslandWindowView: View {
     var onTap: () -> Void
 
     var body: some View {
-        TokenIslandRingView(
+        TokenIslandCompactView(
             tokens: appState.today.totalTokens,
             lap: appState.todayLap,
             refreshing: appState.isRefreshing,
@@ -62,7 +62,7 @@ struct TokenIslandPopoverWindowView: View {
     }
 }
 
-struct TokenIslandRingView: View {
+struct TokenIslandCompactView: View {
     var tokens: Int
     var lap: TokenStepLapProgress
     var refreshing: Bool
@@ -71,18 +71,14 @@ struct TokenIslandRingView: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(nsImage: StatusBarIconRenderer.progressRing(
-                progress: min(max(lap.rawProgress, 0), 1),
-                lap: 1,
-                refreshing: refreshing,
-                size: 16,
-                radius: 6.2,
-                lineWidth: 2.15,
-                showsCenterDot: false
-            ))
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 15, height: 15)
+            HStack(alignment: .bottom, spacing: 1.5) {
+                ForEach(Array([CGFloat(5), CGFloat(9), CGFloat(13)].enumerated()), id: \.offset) { index, height in
+                    Capsule()
+                        .fill(Color.white.opacity(refreshing && index == 1 ? 0.45 : 0.92))
+                        .frame(width: 2.5, height: height)
+                }
+            }
+                .frame(width: 13, height: 15, alignment: .bottom)
                 .accessibilityLabel("\(L("今日目标进度")) \(TokenStepFormat.percent(lap.rawProgress * 100))")
                 .id("\(theme.id)-\(language.resolved.id)")
 
@@ -112,7 +108,7 @@ private struct TokenIslandExpandedView: View {
             header
 
             HStack(alignment: .center, spacing: 16) {
-                ring
+                signalSummary
                 VStack(alignment: .leading, spacing: 7) {
                     Text(L("今日目标进度"))
                         .font(.system(size: 20, weight: .heavy, design: .rounded))
@@ -157,7 +153,7 @@ private struct TokenIslandExpandedView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            TokenStepMark(size: 28)
+            TokenFleetSignalMark(size: 28)
             VStack(alignment: .leading, spacing: 1) {
                 Text("TokenFleet")
                     .font(.caption.weight(.heavy))
@@ -182,22 +178,18 @@ private struct TokenIslandExpandedView: View {
         }
     }
 
-    private var ring: some View {
-        ZStack {
-            ProgressRingView(progress: min(max(lap.rawProgress, 0), 1), lineWidth: 9, color: .tokenGreenDark)
-            VStack(spacing: 2) {
-                Text(TokenStepFormat.tokens(appState.today.totalTokens, compact: true))
-                    .font(.system(size: 17, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.tokenInk)
-                    .minimumScaleFactor(0.62)
-                    .lineLimit(1)
-                Text(TokenStepFormat.percent(lap.rawProgress * 100))
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(Color.tokenInk.opacity(0.48))
-            }
-            .frame(width: 66)
+    private var signalSummary: some View {
+        VStack(spacing: 8) {
+            TokenFleetSignalMark(size: 58)
+            Text(TokenStepFormat.percent(lap.rawProgress * 100))
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(Color.tokenGreenDark)
+                .monospacedDigit()
+            ProgressView(value: min(max(lap.rawProgress, 0), 1))
+                .tint(Color.tokenGreenDark)
+                .frame(width: 76)
         }
-        .frame(width: 86, height: 86)
+        .frame(width: 86)
     }
 }
 

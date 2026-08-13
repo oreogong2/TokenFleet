@@ -7,7 +7,7 @@
 - TokenFleet 的社群身份是“管理员授权的批次 + 唯一昵称参赛者 + 一次性设备接入码”，不是会员账号，也不是 Codex/Claude 账号。
 - 每位成员建议使用自己独立的 Codex、Claude 账号；不建议多人共用一个 AI 供应商账号，否则费用归属和权限撤销都会变得不清楚。TokenFleet 不上传这些供应商账号身份。
 - 同一参赛者可以登记多台 Mac 或 Windows 设备。每台设备使用各自的接入码登记，后台按设备分别保存，再对该参赛者求和；v1 不做跨设备去重。
-- 生财 OpenToken 是另一条独立链路。需要上生财榜的成员必须使用自己的个人接入，不能共用，也不要把 OpenToken URL 或 secret 填进 TokenFleet 团队连接。
+- 其他第三方排行榜或社区服务是独立链路。成员必须使用自己的个人接入，不能共用，也不要把第三方 URL、访问令牌或 secret 填进 TokenFleet 团队连接。
 
 ## 2. macOS：安装前向管理员拿三项公开信息
 
@@ -21,7 +21,7 @@
 
 ## 3. macOS：固定 commit 源码安装
 
-要求 macOS 14+、Apple Silicon 和 Xcode Command Line Tools。不要使用 `curl | sh`，也不要从聊天附件运行散装脚本。
+要求 macOS 14+、Apple Silicon 或 Intel Mac，以及 Xcode Command Line Tools。不要使用 `curl | sh`，也不要从聊天附件运行散装脚本。
 
 ```bash
 git clone <official-repo-url> TokenFleet
@@ -120,14 +120,14 @@ TokenFleet 使用独立的：
 
 它不会读取或写入 `~/Library/Application Support/TokenStep`，也不会退出、覆盖或自动更新 TokenStep。因此灰度期两者可以同时运行；代价是两套菜单栏和重复的本地只读采集，会多占少量资源。
 
-灰度期间保留原 TokenStep 只是为了对照旧个人本地看板和榜单展示；真正向生财上传数据的是独立常驻的官方 OpenToken，不能因为卸载 TokenStep 而停掉。TokenFleet 负责社群账本与榜单，三者凭据不要互相复制。
+灰度期间保留原 TokenStep 只是为了对照旧个人本地看板；其他第三方服务仍由各自独立的客户端负责，不能因为卸载 TokenStep 而停掉。TokenFleet 负责社群账本与榜单，各服务凭据不要互相复制。
 
 ## 7. 何时卸载 TokenStep，以及如何回滚
 
 满足以下条件后再卸载原 TokenStep：
 
 - TokenFleet 源码安装、稳定本机签名、升级回滚和社群登记均已在本机通过；
-- 每人自己的官方 OpenToken 常驻服务仍在运行，并已实测当天正常上生财榜；
+- 成员仍需使用的第三方服务保持独立运行，并已实测当天状态正常；
 - 多设备明细与费用连续试运行通过；
 - 管理员明确结束灰度。
 

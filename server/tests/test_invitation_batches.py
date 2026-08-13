@@ -65,6 +65,106 @@ def _recursive_keys(value) -> set[str]:
     return set()
 
 
+def test_admin_reissues_existing_member_without_duplicate_or_batch_slot(harness) -> None:
+    created = _create_batch(harness, capacity=2)
+    claimed = _claim(harness, created["invitation_token"], "漏存设备码成员")
+    assert claimed.status_code == 201, claimed.text
+    original_token = claimed.json()["enrollment_token"]
+
+    enrolled = harness.client.post(
+        "/api/v1/devices/enroll",
+        json={
+            "enrollment_token": original_token,
+            "device_public_id": str(uuid4()),
+            "platform": "macos",
+            "app_version": "0.1.0-beta.8",
+            "collector_version": "0.1.0-beta.8",
+        },
+    )
+    assert enrolled.status_code == 201, enrolled.text
+
+    with harness.session_factory() as session:
+        member = session.scalar(
+            select(User).where(
+                User.org_id == harness.users["a_admin"].org_id,
+                User.display_name == "漏存设备码成员",
+            )
+        )
+        assert member is not None
+        before_user_count = session.scalar(select(func.count()).select_from(User))
+        before_token_count = session.scalar(
+            select(func.count()).select_from(EnrollmentToken)
+        )
+        batch = session.get(InvitationBatch, created["batch"]["id"])
+        assert batch is not None and batch.claimed_count == 1
+        original_row = session.scalar(
+            select(EnrollmentToken).where(
+                EnrollmentToken.token_hash == opaque_token_hash(original_token)
+            )
+        )
+        assert original_row is not None and original_row.used_at is not None
+        original_used_at = original_row.used_at
+        member_id = member.id
+
+    reissued = harness.client.post(
+        "/api/v1/enrollment-tokens",
+        headers=harness.auth("a_admin"),
+        json={"user_id": member_id, "expires_in_minutes": 60},
+    )
+    assert reissued.status_code == 201, reissued.text
+    assert reissued.headers["Cache-Control"] == "no-store"
+    assert set(reissued.json()) == {"enrollment_token", "expires_at"}
+    reissued_token = reissued.json()["enrollment_token"]
+    assert reissued_token != original_token
+
+    with harness.session_factory() as session:
+        batch = session.get(InvitationBatch, created["batch"]["id"])
+        assert batch is not None and batch.claimed_count == 1
+        assert session.scalar(select(func.count()).select_from(User)) == before_user_count
+        assert (
+            session.scalar(select(func.count()).select_from(EnrollmentToken))
+            == before_token_count + 1
+        )
+        original_row = session.scalar(
+            select(EnrollmentToken).where(
+                EnrollmentToken.token_hash == opaque_token_hash(original_token)
+            )
+        )
+        reissued_row = session.scalar(
+            select(EnrollmentToken).where(
+                EnrollmentToken.token_hash == opaque_token_hash(reissued_token)
+            )
+        )
+        assert original_row is not None and original_row.used_at == original_used_at
+        assert reissued_row is not None and reissued_row.used_at is None
+        assert reissued_row.user_id == member_id
+        assert reissued_token not in repr(reissued_row.__dict__)
+
+    second_device = harness.client.post(
+        "/api/v1/devices/enroll",
+        json={
+            "enrollment_token": reissued_token,
+            "device_public_id": str(uuid4()),
+            "platform": "macos",
+            "app_version": "0.1.0-beta.8",
+            "collector_version": "0.1.0-beta.8",
+        },
+    )
+    assert second_device.status_code == 201, second_device.text
+
+    reused = harness.client.post(
+        "/api/v1/devices/enroll",
+        json={
+            "enrollment_token": reissued_token,
+            "device_public_id": str(uuid4()),
+            "platform": "macos",
+            "app_version": "0.1.0-beta.8",
+            "collector_version": "0.1.0-beta.8",
+        },
+    )
+    assert reused.status_code == 400
+
+
 def test_admin_batch_rbac_lifecycle_and_raw_token_is_returned_once(harness) -> None:
     unauthenticated = harness.client.post(
         "/api/v1/admin/invitation-batches",

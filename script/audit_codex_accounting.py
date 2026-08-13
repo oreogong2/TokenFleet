@@ -5,7 +5,7 @@ Safety contract:
 - The source tree is opened read-only.
 - Every generated file, Swift module cache, harness, and report stays under /tmp.
 - The frozen copy preserves relative session paths and verbatim relevant JSONL lines.
-- TokenStep's production cache/App Support and installed/running app are never touched.
+- TokenFleet's production cache/App Support and installed/running app are never touched.
 
 The Python implementation intentionally mirrors the current UsageCollector.swift
 accounting revision. By default the script also compiles a temporary Swift harness from
@@ -435,9 +435,9 @@ def freeze_accounting_copy(source_root: Path, output_root: Path) -> dict[str, An
         "created_at": utc_now(),
         "copy_kind": "semantic-complete accounting-only Codex JSONL prefix snapshot",
         "semantic_contract": (
-            "All valid JSON objects consumed by TokenStep's current Codex accounting are copied verbatim and in source order: "
+            "All valid JSON objects consumed by TokenFleet's current Codex accounting are copied verbatim and in source order: "
             "session_meta, turn_context, event_msg/token_count. event_msg/context_compacted is additionally retained for audit classification. "
-            "Other event types are intentionally omitted. Lines over TokenStep's 1 MiB collector limit are omitted and counted."
+            "Other event types are intentionally omitted. Lines over TokenFleet's 1 MiB collector limit are omitted and counted."
         ),
         "snapshot_contract": (
             "The file list and byte size of every source file are captured before copying. Each copy is bounded to that enumerated prefix, "
@@ -1036,6 +1036,7 @@ def compile_and_run_swift(repo_root: Path, output_root: Path, frozen_home: Path)
         swift_dir / "Sources/TokenStepSwift/Support/AppPaths.swift",
         swift_dir / "Sources/TokenStepSwift/Support/Localization.swift",
         swift_dir / "Sources/TokenStepSwift/Support/Theme.swift",
+        swift_dir / "Sources/TokenStepSwift/Support/TokenPricing.swift",
         swift_dir / "Sources/TokenStepSwift/Models/UsageModels.swift",
         swift_dir / "Sources/TokenStepSwift/Services/UsageCollector.swift",
     ]
@@ -1183,7 +1184,7 @@ def markdown_report(report: dict[str, Any]) -> str:
     subagent = compare["subagent_cohort"]
     control = compare["strict_normal_no_repeat_control"]
     lines = [
-        "# TokenStep Codex 历史 Token 记账审计",
+        "# TokenFleet Codex 历史 Token 记账审计",
         "",
         f"生成时间：`{report['generated_at']}`",
         "",

@@ -9,21 +9,24 @@ struct StatusBarLabelView: View {
     var language: TokenStepLanguage
 
     var body: some View {
-        HStack(spacing: 7) {
-            Image(nsImage: StatusBarIconRenderer.progressRing(progress: min(max(lap.rawProgress, 0), 1), lap: 1, refreshing: refreshing))
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 22, height: 22)
-                .accessibilityLabel("\(L("今日目标进度")) \(TokenStepFormat.percent(lap.rawProgress * 100))")
-                .id("\(theme.id)-\(language.resolved.id)")
-
-            Text(TokenStepFormat.tokens(tokens, compact: true, language: language))
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(Color.primary)
+        HStack(alignment: .bottom, spacing: 2) {
+            ForEach(
+                Array([CGFloat(7), CGFloat(12), CGFloat(17)].enumerated()),
+                id: \.offset
+            ) { index, height in
+                Capsule()
+                    .fill(Color.primary.opacity(refreshing && index == 1 ? 0.42 : 0.88))
+                    .frame(width: 3.5, height: height)
+            }
         }
-        .padding(.horizontal, 2)
-        .frame(height: 24)
+        .frame(width: 18, height: 18, alignment: .bottom)
+        .padding(.horizontal, 1)
+        .frame(height: 22)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "TokenFleet · \(TokenStepFormat.tokens(tokens, compact: true, language: language)) · "
+                + "\(L("今日目标进度")) \(TokenStepFormat.percent(lap.rawProgress * 100))"
+        )
         .id("\(theme.id)-\(language.resolved.id)")
     }
 }
@@ -46,97 +49,33 @@ struct TokenStepBackdrop: View {
     }
 }
 
-struct TokenStepMark: View {
+struct TokenFleetSignalMark: View {
     var size: CGFloat = 48
 
     var body: some View {
-        if let icon = TokenStepAppIconImage.image {
-            Image(nsImage: icon)
-                .resizable()
-                .interpolation(.high)
-                .aspectRatio(1, contentMode: .fit)
-                .frame(width: size, height: size)
-        } else {
-            TokenStepVectorMark(size: size)
-        }
-    }
-}
-
-private enum TokenStepAppIconImage {
-    static var image: NSImage? {
-        if let url = Bundle.main.url(forResource: "TokenFleetIcon", withExtension: "icns"),
-           let image = NSImage(contentsOf: url) {
-            return image
-        }
-
-        if let image = NSImage(named: "TokenFleetIcon") {
-            return image
-        }
-
-        if let fallback = NSApp.applicationIconImage, fallback.isValid {
-            return fallback
-        }
-        return nil
-    }
-}
-
-private struct TokenStepVectorMark: View {
-    var size: CGFloat
-
-    var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+            RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
                 .fill(Color.tokenSurface)
                 .overlay(
-                    RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-                        .stroke(Color.black.opacity(0.05), lineWidth: max(0.8, size * 0.015))
+                    RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
+                        .stroke(Color.tokenGreen.opacity(0.18), lineWidth: max(1, size * 0.018))
                 )
 
-            SelectedAppIconArcShape()
-                .stroke(
-                    Color(red: 64 / 255, green: 196 / 255, blue: 99 / 255),
-                    style: StrokeStyle(lineWidth: size * 0.074, lineCap: .round, lineJoin: .round)
-                )
-                .frame(width: size, height: size)
-
-            Circle()
-                .fill(Color(red: 64 / 255, green: 196 / 255, blue: 99 / 255))
-                .frame(width: size * 0.105, height: size * 0.105)
-                .position(x: size * 0.707, y: size * 0.311)
-
-            stepBlock(x: 0.285, y: 0.625, width: 0.074, height: 0.076, color: Color(red: 155 / 255, green: 233 / 255, blue: 168 / 255))
-            stepBlock(x: 0.393, y: 0.533, width: 0.074, height: 0.168, color: Color(red: 64 / 255, green: 196 / 255, blue: 99 / 255))
-            stepBlock(x: 0.500, y: 0.445, width: 0.074, height: 0.256, color: Color(red: 48 / 255, green: 161 / 255, blue: 78 / 255))
-            stepBlock(x: 0.607, y: 0.348, width: 0.074, height: 0.354, color: Color(red: 33 / 255, green: 110 / 255, blue: 57 / 255))
+            HStack(alignment: .bottom, spacing: size * 0.07) {
+                signalBar(height: 0.31, opacity: 0.48)
+                signalBar(height: 0.53, opacity: 0.72)
+                signalBar(height: 0.74, opacity: 1)
+            }
+            .frame(height: size * 0.62, alignment: .bottom)
         }
         .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 
-    private func stepBlock(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, color: Color) -> some View {
-        RoundedRectangle(cornerRadius: size * 0.022, style: .continuous)
-            .fill(color)
-            .frame(width: size * width, height: size * height)
-            .position(x: size * (x + width / 2), y: size * (y + height / 2))
-    }
-}
-
-private struct SelectedAppIconArcShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        let unit = min(rect.width, rect.height)
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX + unit * 0.211, y: rect.minY + unit * 0.645))
-        path.addCurve(
-            to: CGPoint(x: rect.minX + unit * 0.683, y: rect.minY + unit * 0.284),
-            control1: CGPoint(x: rect.minX + unit * 0.215, y: rect.minY + unit * 0.365),
-            control2: CGPoint(x: rect.minX + unit * 0.475, y: rect.minY + unit * 0.176)
-        )
-        path.move(to: CGPoint(x: rect.minX + unit * 0.746, y: rect.minY + unit * 0.358))
-        path.addCurve(
-            to: CGPoint(x: rect.minX + unit * 0.655, y: rect.minY + unit * 0.804),
-            control1: CGPoint(x: rect.minX + unit * 0.858, y: rect.minY + unit * 0.475),
-            control2: CGPoint(x: rect.minX + unit * 0.812, y: rect.minY + unit * 0.690)
-        )
-        return path
+    private func signalBar(height: CGFloat, opacity: Double) -> some View {
+        Capsule()
+            .fill(Color.tokenGreenDark.opacity(opacity))
+            .frame(width: size * 0.12, height: size * height)
     }
 }
 
@@ -192,25 +131,6 @@ struct UsageRecalibrationNotice: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color.tokenGreen.opacity(0.18))
         )
-    }
-}
-
-struct ProgressRingView: View {
-    var progress: Double
-    var lineWidth: CGFloat = 18
-    var color: Color = .tokenGreen
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.tokenTrack, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-            Circle()
-                .trim(from: 0, to: min(max(progress, 0), 1))
-                .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .shadow(color: color.opacity(0.10), radius: 5, x: 0, y: 3)
-        }
-        .aspectRatio(1, contentMode: .fit)
     }
 }
 

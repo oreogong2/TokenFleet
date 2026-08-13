@@ -23,7 +23,7 @@ struct UpdateWindowView: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 16) {
-            TokenStepMark(size: 60)
+            TokenFleetSignalMark(size: 60)
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(LFormat("TokenFleet %@ 可用", update.version))

@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.1.0-beta.8 - Unreleased
+
+### Desktop identity, accuracy, and recovery
+
+- Replaced the step-style progress ring with TokenFleet signal bars and a
+  horizontal daily-goal scale while keeping “100M a day”, familiar navigation,
+  full tool/model detail, quota views, and all three share-card workflows.
+- Added relative pace, current streak, contextual community rank, a discoverable
+  community action, and nine accessible themes with stable tool identity colors.
+- Kept the single-screen menu-bar entry compact and right-aligned by default;
+  notch-adjacent Token Island placement now requires an explicit choice.
+- Added a versioned public API price catalog with model- and component-specific
+  rates, source-cost priority, pricing coverage, and explicit unpriced handling.
+  Ambiguous Anthropic cache-write TTLs no longer erase the known cost components.
+- Reworked image export around explicit render, PNG/JPEG encoding, clipboard,
+  and file-write failures, and replaced the inherited icon with a TokenFleet
+  signal icon.
+- Added a safe existing-member device-code reissue path that keeps the member,
+  invitation-batch count, and old consumed codes unchanged and never stores the
+  one-time plaintext code.
+- Built the macOS App and helper as universal arm64 + x86_64 binaries and expanded
+  Windows CI to exercise install, same-origin upgrade, preview, status, DPAPI,
+  scheduled-task, and uninstall paths.
+- Documented strict feasibility and privacy boundaries for Kimi Code, DeepSeek,
+  Cursor, and Gemini CLI; only observed CC Switch proxy rows are labeled as
+  experimental support, and no conversation, code, prompt, response, or path is
+  parsed.
+- Added prerelease-channel rules and an explicit beta.7 migration plan. beta.7
+  source installs still require one manual transition to a Developer ID signed,
+  notarized universal build with a pinned HTTPS update feed and Team ID; beta.8
+  is not yet an automatically deliverable release.
+
 ## 0.1.0-beta.7 - 2026-08-11
 
 ### Community experience refinement

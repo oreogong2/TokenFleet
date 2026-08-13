@@ -46,7 +46,7 @@ struct PopoverPanelView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            TokenStepMark(size: 40)
+            TokenFleetSignalMark(size: 40)
             VStack(alignment: .leading, spacing: 0) {
                 Text("TokenFleet")
                     .font(.system(size: 24, weight: .heavy, design: .rounded))

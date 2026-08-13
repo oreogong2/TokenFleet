@@ -14,7 +14,7 @@ TEST_MODE="${TOKENFLEET_SOURCE_TEST_MODE:-0}"
 TEST_STABLE_FIXTURE="${TOKENFLEET_SOURCE_TEST_STABLE_FIXTURE:-0}"
 TEST_STABLE_SHA1="${TOKENFLEET_SOURCE_TEST_STABLE_SHA1:-}"
 TEST_FAIL_STATE_COMMIT="${TOKENFLEET_SOURCE_TEST_FAIL_STATE_COMMIT:-}"
-VERSION="${TOKENFLEET_VERSION:-0.1.0-beta.7}"
+VERSION="${TOKENFLEET_VERSION:-0.1.0-beta.8}"
 BUILD_ROOT=""
 INSTALL_STAGE_ROOT=""
 STATE_TRANSACTION_ROOT=""
@@ -25,7 +25,7 @@ TARGET_APP=""
 
 usage() {
   cat <<'USAGE'
-TokenFleet source installer (macOS 14+, Apple Silicon)
+TokenFleet source installer (macOS 14+, Apple Silicon or Intel)
 
 Local-only, ad-hoc signed (default; community sync is disabled):
   ./script/install_from_source.sh
@@ -112,10 +112,18 @@ else
   }
 fi
 
-if [[ "$(/usr/bin/uname -s)" != "Darwin" || "$(/usr/bin/uname -m)" != "arm64" ]]; then
-  tokenfleet_source_error "source installation currently requires an Apple Silicon Mac"
+SOURCE_ARCHITECTURE="$(/usr/bin/uname -m)"
+if [[ "$(/usr/bin/uname -s)" != "Darwin" ]]; then
+  tokenfleet_source_error "source installation requires macOS"
   exit 2
 fi
+case "$SOURCE_ARCHITECTURE" in
+  arm64|x86_64) ;;
+  *)
+    tokenfleet_source_error "unsupported Mac architecture"
+    exit 2
+    ;;
+esac
 
 for command_path in \
   /usr/bin/codesign \
@@ -350,6 +358,7 @@ if [[ "$MODE" == "community" ]]; then
   TOKENFLEET_TEAM_ID="" \
   TOKENFLEET_CREDENTIAL_BACKEND="$TOKENFLEET_SOURCE_BACKEND_ENABLED" \
   TOKENFLEET_EXTERNAL_SIGNING_STAGE="1" \
+  TOKENFLEET_ARCHITECTURES="$SOURCE_ARCHITECTURE" \
   TOKENFLEET_APP_OUTPUT_ROOT="$BUILD_ROOT" \
     "$ROOT_DIR/script/build_swiftui_and_run.sh" --no-launch
 else
@@ -359,6 +368,7 @@ else
   TOKENFLEET_COMMUNITY_SERVER_URL="" \
   TOKENFLEET_TEAM_ID="" \
   TOKENFLEET_CREDENTIAL_BACKEND="$TOKENFLEET_SOURCE_BACKEND_DISABLED" \
+  TOKENFLEET_ARCHITECTURES="$SOURCE_ARCHITECTURE" \
   TOKENFLEET_APP_OUTPUT_ROOT="$BUILD_ROOT" \
     "$ROOT_DIR/script/build_swiftui_and_run.sh" --no-launch
 fi

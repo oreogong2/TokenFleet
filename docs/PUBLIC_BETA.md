@@ -47,7 +47,7 @@ test "$(git rev-parse HEAD)" = "<reviewed-commit-sha>"
 
 ## 管理员发放步骤
 
-1. 先确认成员正在使用 Apple Silicon Mac，系统为 macOS 14 或更高版本，并已安装
+1. 先确认成员正在使用 Apple Silicon 或 Intel Mac，系统为 macOS 14 或更高版本，并已安装
    Xcode Command Line Tools；
 2. 在后台创建容量 50、有效期 24 小时的批次链接，只通过目标社群渠道发送；
 3. 成员自行填写同意公开的唯一昵称，系统原子生成参赛者和 60 分钟个人设备码；

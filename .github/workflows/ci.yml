@@ -170,6 +170,20 @@ jobs:
           SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
           TOKENFLEET_SWIFT_SDK="$SDK_PATH" bash script/verify_tokenstep_swift.sh
 
+      - name: Build and verify Intel + Apple Silicon app slices
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" \
+          TOKENFLEET_ARCHITECTURES="arm64 x86_64" \
+            bash script/build_swiftui_and_run.sh --no-launch
+          for binary in \
+            TokenStepSwift/dist/TokenFleet.app/Contents/MacOS/TokenFleet \
+            TokenStepSwift/dist/TokenFleet.app/Contents/Helpers/TokenFleetHelper; do
+            architectures="$(lipo -archs "$binary")"
+            [[ " $architectures " == *" arm64 "* ]]
+            [[ " $architectures " == *" x86_64 "* ]]
+          done
+
       - name: Verify free source installation safety in an isolated Keychain
         run: |
           SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
@@ -226,3 +240,17 @@ jobs:
       - name: Validate the PowerShell source installer without installing
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -ValidateOnly
+
+      - name: Exercise Windows install, upgrade, preview, and uninstall
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -NoPathUpdate
+          $launcher = Join-Path $env:LOCALAPPDATA "TokenFleet\bin\tokenfleet.cmd"
+          & $launcher preview --json
+          if ($LASTEXITCODE -ne 0) { throw "TokenFleet preview failed" }
+          & $launcher status --json
+          if ($LASTEXITCODE -ne 0) { throw "TokenFleet status failed" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -NoPathUpdate
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\uninstall.ps1 -Yes
+          if (Test-Path (Join-Path $env:LOCALAPPDATA "TokenFleet")) { throw "TokenFleet uninstall left the install root behind" }

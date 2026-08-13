@@ -22,7 +22,7 @@ struct DashboardScreenshotView: View {
 
     private var captureHeader: some View {
         HStack(alignment: .center, spacing: 16) {
-            TokenStepMark(size: 44)
+            TokenFleetSignalMark(size: 44)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text("TokenFleet")

@@ -33,7 +33,7 @@ enum AppSection: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .today: "figure.walk.circle.fill"
+        case .today: "waveform.path.ecg.rectangle.fill"
         case .history: "square.grid.3x3.fill"
         case .community: "person.3.fill"
         }
@@ -88,7 +88,7 @@ struct MainWindowView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 14) {
-                TokenStepMark(size: 54)
+                TokenFleetSignalMark(size: 54)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("TokenFleet")
                         .font(.system(size: 25, weight: .heavy, design: .rounded))

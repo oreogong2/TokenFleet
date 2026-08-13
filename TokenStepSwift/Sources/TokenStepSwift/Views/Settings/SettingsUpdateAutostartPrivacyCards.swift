@@ -11,7 +11,7 @@ struct SettingsAutostartCard: View {
                         Text(L("登录后自动启动 TokenFleet"))
                             .font(.headline.weight(.heavy))
                             .foregroundStyle(Color.tokenInk)
-                        Text(L("像步数一样默默记录，避免漏掉每天的 Token 消耗。"))
+                        Text(L("在后台安静记录，避免漏掉每天的 Token 消耗。"))
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -49,7 +49,9 @@ struct SettingsUpdateCard: View {
                         Text(L("自动检查 TokenFleet 新版本"))
                             .font(.headline.weight(.heavy))
                             .foregroundStyle(Color.tokenInk)
-                        Text(L("有更新时先提醒你，下载前会确认。"))
+                        Text(UpdateService.isConfigured
+                            ? L("有更新时先提醒你，下载前会确认。")
+                            : L("此源码版没有可信更新源，需要人工迁移到签名公证版。"))
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -58,11 +60,12 @@ struct SettingsUpdateCard: View {
                     Spacer()
 
                     Toggle("", isOn: Binding(
-                        get: { appState.settings.autoUpdateEnabled },
+                        get: { UpdateService.isConfigured && appState.settings.autoUpdateEnabled },
                         set: { appState.setAutoUpdateEnabled($0) }
                     ))
                     .labelsHidden()
                     .toggleStyle(.switch)
+                    .disabled(!UpdateService.isConfigured)
                 }
 
                 VStack(spacing: 8) {
@@ -82,10 +85,10 @@ struct SettingsUpdateCard: View {
 
                 HStack(spacing: 10) {
                     StatusLine(
-                        symbol: appState.availableUpdate == nil ? "checkmark.circle.fill" : "arrow.down.circle.fill",
-                        title: appState.availableUpdate == nil ? LFormat("当前版本 %@", UpdateService.currentVersion) : LFormat("发现 %@", appState.availableUpdate?.version ?? ""),
+                        symbol: !UpdateService.isConfigured ? "exclamationmark.triangle.fill" : appState.availableUpdate == nil ? "checkmark.circle.fill" : "arrow.down.circle.fill",
+                        title: !UpdateService.isConfigured ? L("源码版需手动升级") : appState.availableUpdate == nil ? LFormat("当前版本 %@", UpdateService.currentVersion) : LFormat("发现 %@", appState.availableUpdate?.version ?? ""),
                         value: updateCheckStatus,
-                        tint: appState.availableUpdate == nil ? .tokenGreen : .tokenGreenDark
+                        tint: !UpdateService.isConfigured ? .orange : appState.availableUpdate == nil ? .tokenGreen : .tokenGreenDark
                     )
 
                     updateActionButton
@@ -115,11 +118,14 @@ struct SettingsUpdateCard: View {
                     .frame(width: 76, height: 34)
             }
             .buttonStyle(SettingsSecondaryButtonStyle())
-            .disabled(appState.isCheckingForUpdates)
+            .disabled(appState.isCheckingForUpdates || !UpdateService.isConfigured)
         }
     }
 
     private var updateCheckStatus: String {
+        if !UpdateService.isConfigured {
+            return L("未配置可信更新源")
+        }
         if appState.isCheckingForUpdates {
             return L("正在检查")
         }

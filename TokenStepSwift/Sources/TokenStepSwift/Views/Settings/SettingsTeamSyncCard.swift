@@ -214,7 +214,7 @@ struct SettingsTeamSyncCard: View {
             TeamSyncPrivacyRow(text: L("仅上传日期、时区、工具、模型与 Token 数"))
             TeamSyncPrivacyRow(text: L("不上传主机名、序列号、本地路径、提示词、代码或会话正文"))
             TeamSyncPrivacyRow(text: L("设备密钥只存 macOS 钥匙串"))
-            TeamSyncPrivacyRow(text: L("与生财 OpenToken 的配置和凭证完全独立"))
+            TeamSyncPrivacyRow(text: L("与第三方服务的配置和凭证完全独立"))
             TeamSyncPrivacyRow(text: L("当前账务日固定为 Asia/Shanghai，上报时不做时区重组"))
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)

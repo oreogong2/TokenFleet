@@ -19,40 +19,63 @@ struct PopoverTodayRingCard: View {
                 }
 
                 HStack(spacing: 20) {
-                    ZStack {
-                        ProgressRingView(progress: progress, lineWidth: 16, color: .tokenGreenDark)
-                        VStack(spacing: 3) {
-                            Text(TokenStepFormat.tokens(appState.today.totalTokens))
-                                .font(.system(size: 31, weight: .heavy, design: .rounded))
-                                .foregroundStyle(Color.tokenInk)
-                                .minimumScaleFactor(0.52)
-                                .lineLimit(1)
-                            Text(LFormat("目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
-                                .font(.callout.weight(.bold))
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(width: 122)
+                    VStack(alignment: .leading, spacing: 9) {
+                        TokenFleetSignalMark(size: 40)
+                        Text(TokenStepFormat.tokens(appState.today.totalTokens))
+                            .font(.system(size: 34, weight: .heavy, design: .rounded))
+                            .foregroundStyle(Color.tokenInk)
+                            .minimumScaleFactor(0.52)
+                            .lineLimit(1)
+                        Text(L("今天已记录"))
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
                     }
-                    .frame(width: 148, height: 148)
+                    .frame(width: 138, alignment: .leading)
 
                     VStack(alignment: .leading, spacing: 11) {
                         Text(L("今日目标进度"))
                             .font(.headline.weight(.heavy))
                             .foregroundStyle(Color.tokenInk)
                         Text(percent)
-                            .font(.system(size: 43, weight: .heavy, design: .rounded))
+                            .font(.system(size: 36, weight: .heavy, design: .rounded))
                             .foregroundStyle(Color.tokenGreenDark)
                             .monospacedDigit()
                         Text(LFormat("每日目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
                             .font(.headline.weight(.bold))
                             .foregroundStyle(.secondary)
 
+                        ProgressView(value: progress)
+                            .tint(Color.tokenGreenDark)
+
                         VStack(alignment: .leading, spacing: 8) {
-                            MetricPill(label: L("消耗金额"), value: TokenStepFormat.money(appState.today.cost))
-                            MetricPill(label: L("活跃"), value: localizedDays(appState.snapshot.totals.activeDays))
+                            MetricPill(
+                                label: L("API 标准价估算"),
+                                value: TokenStepFormat.estimatedMoney(
+                                    appState.today.cost,
+                                    coverage: appState.today.pricingCoverage
+                                )
+                            )
+                            Text(TokenStepFormat.pricingCoverage(appState.today.pricingCoverage))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            MetricPill(label: L("连续活跃"), value: localizedDays(appState.activeStreak.days))
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if let pace = appState.todayRelativePace {
+                    HStack(spacing: 8) {
+                        Label(L("相对节奏"), systemImage: "waveform.path.ecg")
+                            .foregroundStyle(Color.tokenGreenDark)
+                        Text(pace.summary)
+                            .foregroundStyle(Color.tokenInk.opacity(0.72))
+                        Spacer(minLength: 0)
+                    }
+                    .font(.caption.weight(.heavy))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(Color.tokenTrack.opacity(0.30), in: Capsule())
                 }
 
                 if !todaySourceRows.isEmpty {

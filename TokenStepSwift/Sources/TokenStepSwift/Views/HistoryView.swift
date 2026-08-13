@@ -19,12 +19,16 @@ struct HistoryView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(LFormat("%d 个活跃日", appState.snapshot.totals.activeDays))
-                            .font(.callout.weight(.bold))
-                            .foregroundStyle(Color.tokenGreenDark)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .background(Color.tokenMint.opacity(0.28), in: Capsule())
+                        HStack(spacing: 8) {
+                            Text(LFormat("连续活跃 %d 天", appState.activeStreak.days))
+                            Text("·")
+                            Text(LFormat("%d 个活跃日", appState.snapshot.totals.activeDays))
+                        }
+                        .font(.callout.weight(.bold))
+                        .foregroundStyle(Color.tokenGreenDark)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(Color.tokenMint.opacity(0.28), in: Capsule())
                     }
 
                     ContributionWallView(
@@ -88,7 +92,7 @@ struct HistoryView: View {
             Color.clear.frame(width: 12)
             Text(L("日期")).frame(width: 90, alignment: .leading)
             Text(L("Token 消耗")).frame(width: 150, alignment: .leading)
-            Text(L("消耗金额")).frame(width: 126, alignment: .leading)
+            Text(L("费用估算")).frame(width: 126, alignment: .leading)
             Text(L("工具")).frame(maxWidth: .infinity, alignment: .leading)
         }
         .font(.caption.weight(.heavy))
@@ -134,7 +138,12 @@ private struct HistoryRow: View {
                         .fontWeight(.heavy)
                         .foregroundStyle(Color.tokenInk)
                         .frame(width: 150, alignment: .leading)
-                    Text(TokenStepFormat.money(row.cost))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(TokenStepFormat.estimatedMoney(row.cost, coverage: row.pricingCoverage))
+                        Text(TokenStepFormat.pricingCoverage(row.pricingCoverage))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                         .frame(width: 126, alignment: .leading)
                         .foregroundStyle(Color.tokenInk.opacity(0.72))
                     HStack(spacing: 8) {

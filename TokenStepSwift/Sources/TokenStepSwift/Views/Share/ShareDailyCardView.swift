@@ -68,7 +68,7 @@ struct ShareDailyCardView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            TokenStepMark(size: 42)
+            TokenFleetSignalMark(size: 42)
             VStack(alignment: .leading, spacing: 2) {
                 Text("TokenFleet")
                     .font(.system(size: 27, weight: .heavy, design: .rounded))
@@ -92,24 +92,18 @@ struct ShareDailyCardView: View {
     private var shareHero: some View {
         ShareCardSurface(padding: 20, cornerRadius: 26) {
             HStack(alignment: .center, spacing: 18) {
-                ZStack {
-                    Circle()
-                        .fill(Color.tokenGreenDark.opacity(0.09))
-                        .frame(width: 228, height: 228)
-                        .blur(radius: 10)
-                    ProgressRingView(progress: min(max(lap.rawProgress, 0), 1), lineWidth: 20, color: .tokenGreenDark)
-                        .frame(width: 212, height: 212)
-                    VStack(spacing: 7) {
-                        Text(dayNumber)
-                            .font(.system(size: 64, weight: .black, design: .rounded))
-                            .foregroundStyle(Color.tokenInk)
-                            .minimumScaleFactor(0.42)
-                            .lineLimit(1)
-                        Text(LFormat("目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
-                            .font(.headline.weight(.heavy))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(width: 182)
+                VStack(alignment: .leading, spacing: 12) {
+                    TokenFleetSignalMark(size: 48)
+                    Text(dayNumber)
+                        .font(.system(size: 62, weight: .black, design: .rounded))
+                        .foregroundStyle(Color.tokenInk)
+                        .minimumScaleFactor(0.42)
+                        .lineLimit(1)
+                    ProgressView(value: min(max(lap.rawProgress, 0), 1))
+                        .tint(Color.tokenGreenDark)
+                    Text(LFormat("目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
+                        .font(.headline.weight(.heavy))
+                        .foregroundStyle(.secondary)
                 }
                 .frame(width: 224, height: 224)
 
@@ -137,6 +131,10 @@ struct ShareDailyCardView: View {
                             .font(.subheadline.weight(.heavy))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                        Text(shareContextText)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Color.tokenInk.opacity(0.62))
+                            .lineLimit(2)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -151,7 +149,7 @@ struct ShareDailyCardView: View {
             Text("·")
             Text(L("不上传代码或对话"))
             Spacer()
-            Text("tokenstep.app")
+            Text("TokenFleet")
         }
         .font(.caption.weight(.bold))
         .foregroundStyle(.secondary)
@@ -163,6 +161,16 @@ struct ShareDailyCardView: View {
 
     private var totalCompletionText: String {
         TokenStepFormat.percent(lap.rawProgress * 100)
+    }
+
+    private var shareContextText: String {
+        let cost = TokenStepFormat.estimatedMoney(day.cost, coverage: day.pricingCoverage)
+        let coverage = TokenStepFormat.pricingCoverage(day.pricingCoverage)
+        let streak = LFormat("连续活跃 %d 天", appState.activeStreakDays(endingOn: day.date))
+        if let pace = appState.relativePace(for: day) {
+            return "\(streak) · \(pace.summary) · \(L("费用估算")) \(cost) · \(coverage)"
+        }
+        return "\(streak) · \(L("相对节奏样本不足")) · \(L("费用估算")) \(cost) · \(coverage)"
     }
 
     private var dominantTool: String {
@@ -194,9 +202,9 @@ struct ShareDailyCardView: View {
                 value: dominantModelTokens > 0 ? TokenStepFormat.tokens(dominantModelTokens, compact: true) : "0"
             ),
             ShareHeroRow(
-                title: L("消耗金额"),
-                name: TokenStepFormat.money(day.cost),
-                value: L("仅供参考")
+                title: L("API 标准价估算"),
+                name: TokenStepFormat.estimatedMoney(day.cost, coverage: day.pricingCoverage),
+                value: TokenStepFormat.pricingCoverage(day.pricingCoverage)
             )
         ]
     }

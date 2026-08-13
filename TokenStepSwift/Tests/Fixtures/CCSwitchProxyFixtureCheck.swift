@@ -256,8 +256,10 @@ struct CCSwitchProxyFixtureCheck {
 
         let snapshot = UsageCollector.collectClaudeCodeUsageSnapshot(rootURL: root)
         try assertEqual(snapshot.totals.tokens, 4_000_000, "claude opus cost tokens")
-        try assertEqual(snapshot.totals.cost, 36.75, "claude opus current cost")
-        try assertEqual(snapshot.daily.first?.cost, 36.75, "claude opus current daily cost")
+        try assertEqual(snapshot.totals.cost, 30.5, "claude opus known component cost")
+        try assertEqual(snapshot.daily.first?.cost, 30.5, "claude opus known daily cost")
+        try assertEqual(snapshot.totals.pricedTokens, 3_000_000, "claude priced tokens")
+        try assertEqual(snapshot.totals.unpricedTokens, 1_000_000, "claude unpriced cache write")
     }
 
     private static func runCrossSourceDedupeChecks() throws {

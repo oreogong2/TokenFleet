@@ -49,7 +49,7 @@ macOS 还保留了三项与本地用量展示有关的外部集成，不属于�
 
 官方客户端只上传按日、工具、模型聚合的四类 Token 和最小版本元数据。服务端
 schema 不接收 prompt、回复、代码、文件、路径、项目、repo、skill、MCP、agent、
-会话正文、Claude/Codex 登录凭证或生财 OpenToken 凭证。
+会话正文、Claude/Codex 登录凭证或任何第三方服务凭证。
 
 ## 社群榜公开什么
 
@@ -100,7 +100,7 @@ Windows 的设备 secret 必须用当前用户 DPAPI 加密且不得进入 roami
 分享 PNG 在浏览器本地从公开数据生成。二维码和链接只指向无凭证的同源 HTTPS
 公开榜，不调用第三方截图或二维码服务。
 
-生财排行榜仍由成员自行运行官方 OpenToken；TokenFleet 不读取、代理或保存其
+第三方排行榜或社区服务仍由成员自行连接；TokenFleet 不读取、代理或保存其
 专属上传地址、token 或 device secret。
 
 以上边界可以验证官方客户端和官方服务端的协议形状，但不能证明被恶意修改的

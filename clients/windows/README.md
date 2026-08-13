@@ -1,10 +1,10 @@
 # TokenFleet Windows 10/11 client
 
-> **Experimental source candidate:** cross-platform automation passes, but this
-> client has not completed real Windows 10/11 E2E for DPAPI, Task Scheduler,
-> upgrade, uninstall, or production sync. The current Mac beta does not promise
-> Windows production readiness. The commands below are for technical preview
-> and later hardware validation only.
+> **Beta client:** members have reported successful real-world use. The release
+> gate also runs on a real Windows GitHub runner and covers DPAPI, Task Scheduler,
+> source install, in-place upgrade, preview/status and uninstall. A production
+> community enrollment/sync smoke test and Windows 10/11 hardware sign-off are
+> still required before a release may call Windows fully certified.
 
 This is the source-distributed Windows participant client for the private
 TokenFleet community. It does not use WeChat, a member login, or an AI-provider
@@ -85,6 +85,6 @@ tokenfleet uninstall --yes
 ```
 
 This removes the scheduled task, local state, DPAPI ciphertext, installed files,
-and the user PATH entry. It does not touch `.codex`, `.claude`, TokenStep,
-OpenToken, or server-side history. Ask an administrator to disable the old
-device if immediate server-side revocation is required.
+and the user PATH entry. It does not touch `.codex`, `.claude`, other AI tools,
+their third-party credentials, or server-side history. Ask an administrator to
+disable the old device if immediate server-side revocation is required.

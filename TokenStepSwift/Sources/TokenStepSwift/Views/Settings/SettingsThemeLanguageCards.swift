@@ -6,7 +6,7 @@ struct SettingsThemeCard: View {
     var body: some View {
         SettingsCard(title: L("主题色"), symbol: "paintpalette.fill") {
             VStack(alignment: .leading, spacing: 16) {
-                Text(L("菜单栏、圆环、活动墙和按钮会一起跟随主题变化。"))
+                Text(L("菜单栏、目标刻度、活动墙和按钮会一起跟随主题变化。"))
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

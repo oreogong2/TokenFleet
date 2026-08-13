@@ -50,6 +50,7 @@ swiftc \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/MemoryPressure.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Theme.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/EnergyRefreshPolicy.swift" \
+  "$SWIFT_DIR/Sources/TokenStepSwift/Support/TokenPricing.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/DataService.swift" \

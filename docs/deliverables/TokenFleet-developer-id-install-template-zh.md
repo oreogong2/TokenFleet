@@ -6,7 +6,7 @@
 
 - 每位成员使用自己的 Codex / Claude 账号，不共用 AI 供应商账号。
 - TokenFleet 以“昵称参赛者 + 设备”记账，不要求成员注册、登录或绑定微信；同一参赛者可登记多台 Mac 或 Windows 设备，每台设备都要单独生成一次性接入码。
-- 官方 OpenToken 是上生财榜的独立链路。需要上榜的人继续保留自己的 OpenToken，不把它的 URL、token 或 secret 填进 TokenFleet。
+- 其他第三方排行榜或社区服务是独立链路。仍需使用的人继续保留自己的连接，不把其 URL、访问令牌或 secret 填进 TokenFleet。
 - 灰度期 TokenFleet 与 TokenStep 可以共存；正式试运行通过前不要卸载 TokenStep。
 
 ## 2. macOS 终端下载安装
@@ -93,4 +93,4 @@ tokenfleet connect
 
 ## 5. 何时可以卸载 TokenStep
 
-至少满足以下条件：正式包已签名和公证；社群同步、多设备、费用和自动更新均通过；50 人邀请测试已连续运行至少 14 天且无 P0/P1；每人的官方 OpenToken 当天仍能正常上生财榜。之后先在 TokenStep 设置中关闭开机启动并退出，再把 `TokenStep.app` 移到废纸篓；灰度期保留其 App Support 数据，方便回滚。
+至少满足以下条件：正式包已签名和公证；社群同步、多设备、费用和自动更新均通过；50 人邀请测试已连续运行至少 14 天且无 P0/P1；成员仍需使用的第三方服务状态正常。之后先在 TokenStep 设置中关闭开机启动并退出，再把 `TokenStep.app` 移到废纸篓；灰度期保留其 App Support 数据，方便回滚。

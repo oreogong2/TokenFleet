@@ -30,6 +30,7 @@ else
 fi
 BUILD_LOG="$BUILD_DIR/swift-build.log"
 HELPER_BUILD_LOG="$BUILD_DIR/swift-helper-build.log"
+ICON_BUILD_LOG="$BUILD_DIR/swift-icon-build.log"
 SDK_PATH="${TOKENFLEET_SWIFT_SDK:-}"
 if [[ -z "$SDK_PATH" ]]; then
   if ! SDK_PATH="$(/usr/bin/xcrun --sdk macosx --show-sdk-path 2>/dev/null)" \
@@ -45,8 +46,11 @@ EMPTY_MODULEMAP="$OVERLAY_DIR/empty.modulemap"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 EXECUTABLE="$BUILD_DIR/$PRODUCT_NAME"
 HELPER_EXECUTABLE="$BUILD_DIR/$HELPER_NAME"
-ICON_FILE="$ROOT_DIR/TokenUsageMenuApp/assets/TokenStepIcon.icns"
-VERSION="${TOKENFLEET_VERSION:-0.1.0-beta.7}"
+ARCHITECTURES_RAW="${TOKENFLEET_ARCHITECTURES:-arm64 x86_64}"
+read -r -a ARCHITECTURES <<<"$ARCHITECTURES_RAW"
+ICON_GENERATOR="$ROOT_DIR/script/generate_tokenfleet_icon.swift"
+ICON_HOST_ARCH="$(/usr/bin/uname -m)"
+VERSION="${TOKENFLEET_VERSION:-0.1.0-beta.8}"
 BUNDLE_ID="${TOKENFLEET_BUNDLE_ID:-com.lingdong.TokenFleet}"
 UPDATE_API_URL="${TOKENFLEET_UPDATE_API_URL:-}"
 COMMUNITY_SERVER_URL="${TOKENFLEET_COMMUNITY_SERVER_URL:-}"
@@ -118,6 +122,33 @@ if [[ ! -d "$SDK_PATH" ]]; then
   echo "Swift SDK not found: $SDK_PATH" >&2
   exit 2
 fi
+
+if [[ "${#ARCHITECTURES[@]}" -eq 0 ]]; then
+  echo "TOKENFLEET_ARCHITECTURES must include arm64, x86_64, or both." >&2
+  exit 2
+fi
+case "$ICON_HOST_ARCH" in
+  arm64|x86_64) ;;
+  *)
+    echo "Unsupported build host architecture: $ICON_HOST_ARCH" >&2
+    exit 2
+    ;;
+esac
+SEEN_ARCHITECTURES=" "
+for architecture in "${ARCHITECTURES[@]}"; do
+  case "$architecture" in
+    arm64|x86_64) ;;
+    *)
+      echo "Unsupported TOKENFLEET_ARCHITECTURES entry: $architecture" >&2
+      exit 2
+      ;;
+  esac
+  if [[ "$SEEN_ARCHITECTURES" == *" $architecture "* ]]; then
+    echo "TOKENFLEET_ARCHITECTURES contains a duplicate: $architecture" >&2
+    exit 2
+  fi
+  SEEN_ARCHITECTURES+="$architecture "
+done
 
 if [[ -n "$UPDATE_API_URL" ]]; then
   if [[ -z "$TEAM_ID" ]]; then
@@ -202,21 +233,34 @@ while IFS= read -r source; do
   SOURCES+=("$source")
 done < <(find "$SWIFT_DIR/Sources/TokenStepSwift" -type f -name '*.swift' | sort)
 
-if ! swiftc \
-  -target arm64-apple-macosx14.0 \
-  -sdk "$SDK_PATH" \
-  -module-cache-path "$MODULE_CACHE" \
-  -vfsoverlay "$OVERLAY_FILE" \
-  -Xcc -ivfsoverlay \
-  -Xcc "$OVERLAY_FILE" \
-  -parse-as-library \
-  "${SOURCES[@]}" \
-  -framework Security \
-  -framework LocalAuthentication \
-  -o "$EXECUTABLE" >"$BUILD_LOG" 2>&1; then
-  echo "TokenFleet SwiftUI build failed. Full log: $BUILD_LOG" >&2
-  tail -n 24 "$BUILD_LOG" >&2
-  exit 1
+: >"$BUILD_LOG"
+APP_SLICES=()
+for architecture in "${ARCHITECTURES[@]}"; do
+  architecture_executable="$BUILD_DIR/$PRODUCT_NAME-$architecture"
+  architecture_module_cache="$MODULE_CACHE/$architecture"
+  mkdir -p "$architecture_module_cache"
+  if ! swiftc \
+    -target "$architecture-apple-macosx14.0" \
+    -sdk "$SDK_PATH" \
+    -module-cache-path "$architecture_module_cache" \
+    -vfsoverlay "$OVERLAY_FILE" \
+    -Xcc -ivfsoverlay \
+    -Xcc "$OVERLAY_FILE" \
+    -parse-as-library \
+    "${SOURCES[@]}" \
+    -framework Security \
+    -framework LocalAuthentication \
+    -o "$architecture_executable" >>"$BUILD_LOG" 2>&1; then
+    echo "TokenFleet $architecture SwiftUI build failed. Full log: $BUILD_LOG" >&2
+    tail -n 24 "$BUILD_LOG" >&2
+    exit 1
+  fi
+  APP_SLICES+=("$architecture_executable")
+done
+if [[ "${#APP_SLICES[@]}" -eq 1 ]]; then
+  cp "${APP_SLICES[0]}" "$EXECUTABLE"
+else
+  /usr/bin/lipo -create "${APP_SLICES[@]}" -output "$EXECUTABLE"
 fi
 
 HELPER_SOURCES=(
@@ -224,25 +268,38 @@ HELPER_SOURCES=(
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Localization.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/MemoryPressure.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Theme.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Support/TokenPricing.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/DataService.swift"
   "$SWIFT_DIR/Sources/TokenStepHelper/main.swift"
 )
 
-if ! swiftc \
-  -target arm64-apple-macosx14.0 \
-  -sdk "$SDK_PATH" \
-  -module-cache-path "$MODULE_CACHE" \
-  -vfsoverlay "$OVERLAY_FILE" \
-  -Xcc -ivfsoverlay \
-  -Xcc "$OVERLAY_FILE" \
-  -parse-as-library \
-  "${HELPER_SOURCES[@]}" \
-  -o "$HELPER_EXECUTABLE" >"$HELPER_BUILD_LOG" 2>&1; then
-  echo "TokenFleet helper build failed. Full log: $HELPER_BUILD_LOG" >&2
-  tail -n 24 "$HELPER_BUILD_LOG" >&2
-  exit 1
+: >"$HELPER_BUILD_LOG"
+HELPER_SLICES=()
+for architecture in "${ARCHITECTURES[@]}"; do
+  architecture_helper="$BUILD_DIR/$HELPER_NAME-$architecture"
+  architecture_module_cache="$MODULE_CACHE/$architecture"
+  if ! swiftc \
+    -target "$architecture-apple-macosx14.0" \
+    -sdk "$SDK_PATH" \
+    -module-cache-path "$architecture_module_cache" \
+    -vfsoverlay "$OVERLAY_FILE" \
+    -Xcc -ivfsoverlay \
+    -Xcc "$OVERLAY_FILE" \
+    -parse-as-library \
+    "${HELPER_SOURCES[@]}" \
+    -o "$architecture_helper" >>"$HELPER_BUILD_LOG" 2>&1; then
+    echo "TokenFleet $architecture helper build failed. Full log: $HELPER_BUILD_LOG" >&2
+    tail -n 24 "$HELPER_BUILD_LOG" >&2
+    exit 1
+  fi
+  HELPER_SLICES+=("$architecture_helper")
+done
+if [[ "${#HELPER_SLICES[@]}" -eq 1 ]]; then
+  cp "${HELPER_SLICES[0]}" "$HELPER_EXECUTABLE"
+else
+  /usr/bin/lipo -create "${HELPER_SLICES[@]}" -output "$HELPER_EXECUTABLE"
 fi
 
 APP_STAGING_ROOT="$(mktemp -d "$DIST_DIR/.tokenfleet-app-stage.XXXXXX")"
@@ -254,9 +311,29 @@ RESOURCES="$CONTENTS/Resources"
 mkdir -p "$MACOS" "$HELPERS" "$RESOURCES"
 cp "$EXECUTABLE" "$MACOS/$PRODUCT_NAME"
 cp "$HELPER_EXECUTABLE" "$HELPERS/$HELPER_NAME"
-if [ -f "$ICON_FILE" ]; then
-  cp "$ICON_FILE" "$RESOURCES/TokenFleetIcon.icns"
+[[ -f "$ICON_GENERATOR" ]] || {
+  echo "TokenFleet icon generator is missing." >&2
+  exit 2
+}
+: >"$ICON_BUILD_LOG"
+if ! swiftc \
+  -target "$ICON_HOST_ARCH-apple-macosx14.0" \
+  -sdk "$SDK_PATH" \
+  -module-cache-path "$MODULE_CACHE/icon" \
+  -vfsoverlay "$OVERLAY_FILE" \
+  -Xcc -ivfsoverlay \
+  -Xcc "$OVERLAY_FILE" \
+  "$ICON_GENERATOR" \
+  -o "$BUILD_DIR/generate-tokenfleet-icon" >>"$ICON_BUILD_LOG" 2>&1; then
+  echo "TokenFleet icon generator build failed. Full log: $ICON_BUILD_LOG" >&2
+  tail -n 24 "$ICON_BUILD_LOG" >&2
+  exit 1
 fi
+"$BUILD_DIR/generate-tokenfleet-icon" "$RESOURCES/TokenFleetIcon.icns"
+[[ -s "$RESOURCES/TokenFleetIcon.icns" ]] || {
+  echo "TokenFleet icon generation did not produce an ICNS file." >&2
+  exit 1
+}
 cp "$ROOT_DIR/LICENSE" "$RESOURCES/LICENSE.txt"
 cp "$ROOT_DIR/NOTICE" "$RESOURCES/NOTICE.txt"
 

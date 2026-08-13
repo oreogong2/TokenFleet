@@ -27,7 +27,7 @@ disabled instead of falling back to plaintext storage.
 Each member/device enrollment is independent of Codex or Claude login identity.
 One member can enroll multiple Macs; the server shows and sums devices without
 cross-device deduplication. Shared AI provider accounts are not recommended.
-Shengcai OpenToken remains a separate personal connection.
+Third-party ranking or community credentials remain separate personal connections.
 
 Public releases embed one canonical community HTTPS origin in the signed
 `Info.plist`. Members paste only a one-time enrollment code; neither runtime
