@@ -1,4 +1,4 @@
-# TokenFleet beta.8 本地独立验收报告
+# TokenFleet beta.8 独立验收报告
 
 验收日期：2026-08-14
 
@@ -6,7 +6,11 @@
 
 基线：`origin/main` / `ee6a4e1fa750c4039bbba5cb4c8911e72e950257`
 
-本报告只记录当前正式工作树的可复现证据。beta.8 尚未发布、尚未部署生产，也尚未具备让 beta.7 自动收到 prerelease 的完整外部条件。
+验收提交：`98d8b23e46988205f8e426e8fc0844a6bce32246`
+
+CI：GitHub Actions `31730659034` 四项全部通过。
+
+本报告只记录当前正式工作树与 PR runner 的可复现证据。beta.8 尚未发布、尚未部署生产，也尚未具备让 beta.7 自动收到 prerelease 的完整外部条件。
 
 ## 用户可见结果
 
@@ -20,20 +24,20 @@
 - 管理员可从成员列表或详情页直接为已有成员补发 60 分钟一次性设备码；同一事务会让旧的未使用有效码立即失效，只保留一个有效未用码，不会新建重复成员、占批次名额或改变已使用码与审计记录。
 - App 与 Helper 均构建为 `arm64 + x86_64`，Intel Mac 与 Apple Silicon 使用同一 universal App。
 
-## 本地自动化证据
+## 自动化证据
 
 | 范围 | 结果 | 证据摘要 |
 | --- | --- | --- |
-| 服务端 | 通过 | `150 passed, 16 skipped`；跳过项为未配置 PostgreSQL 的 smoke。本人排名接口与补发回归验证私密资料、成员数、批次名额、已使用旧码状态不变，遗失的未使用有效码立即失效，明文码不落库；并发补发只留一个有效码的 PostgreSQL 测试等待 PR CI。 |
+| 服务端 | 本地与 PostgreSQL CI 均通过 | 本地 SQLite `150 passed, 16 skipped`；16 项仅 PostgreSQL smoke 已在 PostgreSQL 17 CI 全部通过。本人排名接口与补发回归验证私密资料、成员数、批次名额、已使用旧码状态不变，遗失的未使用有效码立即失效，明文码不落库；并发补发只留一个有效码。 |
 | Web 单元 | 通过 | Node `50 / 50`；补发请求固定为既有 `user_id + 60 分钟`，无多余字段。 |
 | 静态浏览器 | 通过 | 1440、820、390 px；7 条管理路由、空／长模型／最大数、401/403/503、键盘焦点、reduced motion、对比度；console/page error 为 0。 |
 | 社群浏览器竞态 | 通过 | 排行、分享、补发一次性码和退出的跨路由慢响应均不泄露旧弹窗或原始码。 |
 | 临时真实联调 | 通过 | 临时 SQLite 完成批次领取、成员补发、3 台设备、极值 Token、公开榜、成本、错误登录、退出清理；浏览器 console/page error 为 0，完成后服务与临时状态均删除。 |
-| Swift 完整门禁 | arm64 与 x86_64 均通过 | 源码与 XCTest typecheck、网络/Keychain/同步状态机、Codex/Claude/CC Switch fixture、费用覆盖、迁移、本地化和语言刷新通过；分享卡实际完成 ImageRenderer、复制用 PNG 和临时 JPEG 写入。本机已在 Rosetta 下执行整套 `x86_64` 门禁并通过。当前 Command Line Tools 没有可执行 XCTest 模块，真实 XCTest 留给 PR macOS CI。 |
-| universal 构建 | 本地产物与本机 x86_64 运行通过／Intel CI 待跑 | `TokenFleet` 与 `Contents/Helpers/TokenFleetHelper` 均由 `lipo` 确认为 `x86_64 arm64`；版本 `0.1.0-beta.8`；新 ICNS 有效。本机 Rosetta 已实际运行 x86_64 分享卡渲染／复制／保存及完整采集门禁。PR 使用官方 `macos-15-intel` runner 原生执行非 GPU XCTest、完整采集／同步门禁、App/Helper 构建及安装／升级／回滚／卸载；该无显示器 runner 不提供 Metal 设备，因此 CI 的 x86_64 分享卡真实渲染改由有 GPU 的 Apple runner 在 Rosetta 下执行，不能把 headless Metal 崩溃误写成产品通过或失败。 |
+| Swift 完整门禁 | arm64 与 x86_64 均通过 | 本机与 PR CI 的源码、真实 XCTest、网络/Keychain/同步状态机、Codex/Claude/CC Switch fixture、费用覆盖、迁移、本地化和语言刷新均通过；分享卡实际完成 ImageRenderer、复制用 PNG 和临时 JPEG 写入。本机与有 GPU 的 Apple runner 均已在 Rosetta 下执行整套 `x86_64` 门禁并通过。 |
+| universal 构建 | 本机、Apple CI 与真实 Intel runner 均通过 | `TokenFleet` 与 `Contents/Helpers/TokenFleetHelper` 均由 `lipo` 确认为 `x86_64 arm64`；版本 `0.1.0-beta.8`；新 ICNS 有效。官方 `macos-15-intel` runner 已证明 `uname -m=x86_64`，原生通过 131 项非 GPU XCTest、2 项分享非渲染测试、完整采集／同步、App/Helper 构建以及安装／升级／回滚／卸载。该无显示器 runner 不提供 Metal 设备，因此 x86_64 分享卡真实渲染由有 GPU 的 Apple runner 在 Rosetta 下执行并通过；真实 Intel 成员机的可见界面仍需人工验收。 |
 | 分发身份 | 通过 | 独立构建、固定 Bundle/Team/update origin、恶意版本、重复发布目录、签名失败原子性、旧发布物保留门禁通过。 |
 | 源码安装与回滚 | 通过 | fail closed、ad-hoc／社群模式、灾难与 staged rollback、显式降级、卸载以及不修改正式 `dist` 通过；本机不支持隔离 legacy file Keychain 的项目明确跳过。 |
-| Windows 跨平台 | 本地通过／Windows CI 待重跑 | macOS 上 `26 passed, 2 skipped`；两个跳过项只在真实 Windows 验证 DPAPI round-trip 与计划任务。CI 覆盖安装、同源升级、preview、status，以及计划任务不存在／存在两种卸载路径。第一轮 CI 已验证 28 项 Windows 测试全过，并暴露、修正了“计划任务不存在时卸载提前终止”的真实生命周期问题。 |
+| Windows 跨平台 | 本地与 Windows CI 均通过 | macOS 上 `26 passed, 2 skipped`；两个平台项已在真实 Windows runner 验证，合计 28 项通过。CI 还完成安装、同源升级、preview、status，以及计划任务不存在／存在两种卸载路径；门禁曾暴露并已修正“计划任务不存在时卸载提前终止”的真实生命周期问题。 |
 
 ## schema 与后端影响
 
@@ -46,9 +50,8 @@
 
 ## PR / 发布前仍然阻断
 
-1. PR 的 Apple Silicon 与官方 `macos-15-intel` runner 必须跑真实 XCTest；Intel runner 必须通过非 GPU XCTest、完整采集／同步、App/Helper 和源码安装生命周期门禁，Apple runner 还必须用 x86_64/Rosetta 实际完成分享卡渲染／复制／保存。真实 Intel 成员机仍需发布前人工启动与菜单栏 E2E。
-2. PR 的 PostgreSQL 17 服务必须让 16 条 smoke 全部通过，包含并发补发只保留一个有效未用码。
-3. Windows runner 必须完成真实 DPAPI、计划任务、安装、同源升级、preview/status 和卸载；真实 Windows 10/11 成员机仍需发布前人工 E2E。
-4. beta.7 当时的分享图片报错缺少入口、错误文字和环境，无法证明原故障已经复现；自动化已覆盖 App 真实分享视图渲染／复制数据／保存文件及 Web 海报边界，但仍需在奥哥安装后的真实桌面入口点击复制、保存各一次才能关单。
-5. 自动更新仍缺真实 Apple Team ID、Developer ID 签名、公证凭据和独立 HTTPS 更新源。beta.7 必须手工迁移一次；没有这些条件不得声称 beta.8 能自动推送。
-6. 生产服务、更新源切换、成员通知、DMG 发布与合并均未执行。执行前必须再次用中文说明影响范围和回滚，并等待奥哥单独确认。
+1. 当前自动化已全部通过；真实 Intel 成员机仍需发布前人工启动与菜单栏可见性 E2E，真实 Windows 10/11 成员机仍需人工界面 E2E。现有 Intel 与 Windows runner 证据不能冒充成员真实桌面操作。
+2. beta.7 当时的分享图片报错缺少入口、错误文字和环境，无法证明原故障已经复现；自动化已覆盖 App 真实分享视图渲染／复制数据／保存文件及 Web 海报边界，但仍需在奥哥安装后的真实桌面入口点击复制、保存各一次才能关单。
+3. 奥哥本机还需完成单屏菜单栏入口、快览布局、显性社群排行、主窗口可发现性、费用状态、9 套配色、分享图复制／保存、退出重启和升级／回滚的实际点击验收。
+4. 自动更新仍缺真实 Apple Team ID、Developer ID 签名、公证凭据和独立 HTTPS 更新源。beta.7 必须手工迁移一次；没有这些条件不得声称 beta.8 能自动推送。
+5. 生产服务、更新源切换、成员通知、DMG 发布与合并均未执行。执行前必须再次用中文说明影响范围和回滚，并等待奥哥单独确认。
