@@ -80,9 +80,10 @@ test "$(git rev-parse HEAD)" = "<new-reviewed-commit-sha>"
 
 ## 5. Windows 10/11：源码安装与登记
 
-重要：Windows 客户端目前是实验性源码候选。跨平台自动化已通过，但尚未在真实
-Windows 10/11 电脑完成 DPAPI、计划任务、升级、卸载和真实同步 E2E。当前 Mac
-首批灰度不向成员承诺 Windows 正式可用；下列命令仅供后续真机验收和技术预览。
+Windows 源码客户端已于 2026 年 8 月 13 日在真实 Windows 10 电脑完成安装、
+DPAPI 登记、同源升级、正式同步、公开榜展示和重复同步不翻倍验收。部分标准用户
+Windows 策略可能拒绝创建计划任务；该限制不会阻断首次或手动同步，但仍需在更多
+Windows 10/11 环境继续验证自动任务、卸载、重登记和多设备流程。
 
 Windows 首版需要 Python 3.10 或更高版本。下载或克隆经过复核的 TokenFleet 发布版本，进入仓库根目录后运行：
 
@@ -97,7 +98,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps
 tokenfleet connect
 ```
 
-社群 HTTPS origin 在安装时固定，后续升级必须传入相同值；`connect` 不接受 `--server`。接入码通过隐藏输入读取，不提供会进入命令历史或进程列表的 `--code` 参数。连接成功后，当前用户 DPAPI 保护 device secret，计划任务每六小时自动同步；也可运行：
+社群 HTTPS origin 在安装时固定，后续升级必须传入相同值；`connect` 不接受 `--server`。接入码通过隐藏输入读取，不提供会进入命令历史或进程列表的 `--code` 参数。连接成功后，当前用户 DPAPI 保护 device secret。客户端会尝试创建每六小时运行一次的计划任务；如果 Windows 拒绝创建，首次同步仍会继续，并明确提示用户定期手动同步。也可运行：
 
 ```powershell
 tokenfleet preview
@@ -106,7 +107,7 @@ tokenfleet sync
 tokenfleet open-rank
 ```
 
-Windows 首版采集 Codex 与 Claude Code 本地 JSONL，支持安全连接、自动同步和上榜；暂不采集 CC Switch，也没有与 macOS 原生 App 等同的完整桌面历史与统计界面。完整说明与卸载方式见 `clients/windows/README.md`。
+Windows 首版默认读取最近 366 个本地自然日内的 Codex 与 Claude Code JSONL，支持安全连接、同步和上榜；暂不采集 CC Switch，也没有与 macOS 原生 App 等同的完整桌面历史与统计界面。完整说明与卸载方式见 `clients/windows/README.md`。
 
 ## 6. 与 TokenStep 短期共存
 

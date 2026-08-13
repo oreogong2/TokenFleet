@@ -6,6 +6,8 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 import tokenfleet_cli
 from tokenfleet.constants import TASK_NAME
@@ -55,6 +57,77 @@ class CLIAndStateTests(unittest.TestCase):
         self.assertIn(TASK_NAME, command)
         self.assertIn("LIMITED", command)
         self.assertNotIn("SYSTEM", command)
+
+    def test_connect_syncs_when_task_registration_fails(self) -> None:
+        fake_client = mock.Mock()
+        fake_client.connect.return_value = SimpleNamespace(
+            device_public_id="22222222-2222-4222-8222-222222222222"
+        )
+        fake_client.sync.return_value = SimpleNamespace(buckets=2, total_tokens=30)
+        args = SimpleNamespace(no_initial_sync=False)
+        with (
+            mock.patch("tokenfleet_cli._client", return_value=fake_client),
+            mock.patch("tokenfleet_cli.getpass.getpass", return_value="A" * 32),
+            mock.patch(
+                "tokenfleet_cli.register",
+                side_effect=tokenfleet_cli.SchedulerError("denied"),
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            self.assertEqual(tokenfleet_cli._connect(args, mock.Mock()), 0)
+        fake_client.connect.assert_called_once_with(enrollment_token="A" * 32)
+        fake_client.sync.assert_called_once_with()
+
+    def test_connect_without_initial_sync_does_not_claim_data_was_synced(self) -> None:
+        fake_client = mock.Mock()
+        fake_client.connect.return_value = SimpleNamespace(
+            device_public_id="22222222-2222-4222-8222-222222222222"
+        )
+        args = SimpleNamespace(no_initial_sync=True)
+        stderr = io.StringIO()
+        with (
+            mock.patch("tokenfleet_cli._client", return_value=fake_client),
+            mock.patch("tokenfleet_cli.getpass.getpass", return_value="A" * 32),
+            mock.patch(
+                "tokenfleet_cli.register",
+                side_effect=tokenfleet_cli.SchedulerError("denied"),
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(stderr),
+        ):
+            self.assertEqual(tokenfleet_cli._connect(args, mock.Mock()), 0)
+        fake_client.sync.assert_not_called()
+        self.assertNotIn("数据已同步", stderr.getvalue())
+
+    def test_manual_sync_continues_when_task_registration_fails(self) -> None:
+        fake_client = mock.Mock()
+        fake_client.sync.return_value = SimpleNamespace(
+            buckets=2,
+            total_tokens=30,
+            created=2,
+            updated=0,
+            unchanged=0,
+            ledger_version=1,
+            generated_at="2026-08-13T00:00:00Z",
+        )
+        args = SimpleNamespace(quiet=False, as_json=True)
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with (
+            mock.patch("tokenfleet_cli._client", return_value=fake_client),
+            mock.patch("tokenfleet_cli.is_registered", return_value=False),
+            mock.patch(
+                "tokenfleet_cli.register",
+                side_effect=tokenfleet_cli.SchedulerError("denied"),
+            ),
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
+            self.assertEqual(tokenfleet_cli._sync(args, mock.Mock()), 0)
+        fake_client.sync.assert_called_once_with()
+        self.assertIn('"created": 2', stdout.getvalue())
+        self.assertIn("tokenfleet sync", stderr.getvalue())
 
 
 if __name__ == "__main__":

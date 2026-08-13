@@ -106,18 +106,25 @@ def _connect(args: argparse.Namespace, paths: ClientPaths) -> int:
         credential = client.connect(enrollment_token=code)
     finally:
         code = ""  # do not retain the one-time code beyond enrollment
-    schedule_warning: str | None = None
+    schedule_warning = False
     try:
         register(Path(__file__))
     except SchedulerError:
-        schedule_warning = "设备已连接，但自动同步任务创建失败；请运行 tokenfleet sync 重试。"
+        schedule_warning = True
     print(f"设备已连接：{credential.device_public_id}")
-    if schedule_warning:
-        print(schedule_warning, file=sys.stderr)
-        return 2
     if not args.no_initial_sync:
         summary = client.sync()
         print(f"首次同步完成：{summary.buckets} 个日聚合，{summary.total_tokens} Token")
+    if schedule_warning:
+        warning = (
+            "设备已连接，但自动同步任务创建失败；请运行 tokenfleet sync。"
+            if args.no_initial_sync
+            else "设备和数据已同步，但自动同步任务创建失败；请定期运行 tokenfleet sync。"
+        )
+        print(
+            warning,
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -128,8 +135,12 @@ def _preview(args: argparse.Namespace, paths: ClientPaths) -> int:
 
 
 def _sync(args: argparse.Namespace, paths: ClientPaths) -> int:
+    schedule_warning = False
     if not is_registered():
-        register(Path(__file__))
+        try:
+            register(Path(__file__))
+        except SchedulerError:
+            schedule_warning = True
     summary = _client(paths).sync()
     value = {
         "bucket_count": summary.buckets,
@@ -142,6 +153,11 @@ def _sync(args: argparse.Namespace, paths: ClientPaths) -> int:
     }
     if not args.quiet:
         _print_value(value, as_json=args.as_json)
+    if schedule_warning:
+        print(
+            "数据已同步，但自动同步任务仍未创建；请定期手动运行 tokenfleet sync。",
+            file=sys.stderr,
+        )
     return 0
 
 

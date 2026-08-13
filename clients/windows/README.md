@@ -1,10 +1,10 @@
 # TokenFleet Windows 10/11 client
 
-> **Experimental source candidate:** cross-platform automation passes, but this
-> client has not completed real Windows 10/11 E2E for DPAPI, Task Scheduler,
-> upgrade, uninstall, or production sync. The current Mac beta does not promise
-> Windows production readiness. The commands below are for technical preview
-> and later hardware validation only.
+> **Source-installed Windows client:** installation, DPAPI enrollment, source
+> upgrade, production sync, public leaderboard projection, and idempotent repeat
+> sync were verified on a real Windows 10 computer on August 13, 2026. Some
+> standard-user Windows policies can still deny Task Scheduler registration;
+> this no longer blocks initial or manual sync and is reported as a warning.
 
 This is the source-distributed Windows participant client for the private
 TokenFleet community. It does not use WeChat, a member login, or an AI-provider
@@ -77,6 +77,12 @@ tokenfleet open-rank
 `preview` and `status` never print prompt text, response text, code, source
 paths, AI account IDs, enrollment codes, or the device secret. `open-rank`
 opens only `<connected HTTPS origin>/rank` without credentials in the URL.
+The existing client behavior is preserved: `preview`, initial sync, manual sync,
+and scheduled sync consider up to the most recent 366 local calendar days.
+
+If Windows denies creation of the six-hour Task Scheduler job, enrollment and
+data upload still complete. `status` reports `scheduled_sync: false`; run
+`tokenfleet sync` periodically until the local Windows policy permits the task.
 
 ## Uninstall
 

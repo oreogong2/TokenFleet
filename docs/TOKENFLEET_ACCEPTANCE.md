@@ -108,10 +108,12 @@
 
 ## H. Windows 10/11 参赛端
 
-- [x] 跨平台单元检查覆盖 Codex 增量/fork、Claude Code 去重、精确分项拒绝、context-window sentinel、安装时固定 HTTPS origin、配置损坏/升级换 origin/凭据 origin 不匹配时失败关闭、HMAC 金向量、服务端记账响应、分片、连接前凭据探测、严格非敏感状态、安静计划任务和无命令行接入码，共 26 项通过。
+- [x] Windows 单元检查覆盖 Codex 增量/fork、Claude Code 去重、精确分项拒绝、context-window sentinel、安装时固定 HTTPS origin、配置损坏/升级换 origin/凭据 origin 不匹配时失败关闭、HMAC 金向量、服务端记账响应、分片、连接前凭据探测、严格非敏感状态、366 天默认窗口、计划任务失败不阻断同步和无命令行接入码，共 30 项通过。
 - [x] 首版范围明确为 Codex / Claude Code 采集、DPAPI 安全连接、手动/计划任务自动同步、状态/预览和打开公榜；不采集 CC Switch，也不声称具有 macOS 同级完整桌面明细。
 - [x] CLI 不提供 `--code` 参数，接入码使用隐藏输入；不同设备各自登记并使用独立凭据。
-- [ ] 在真实 Windows 10/11 完成安装、DPAPI round-trip、计划任务、双设备上榜、重登记轮换和卸载 E2E。
+- [x] 2026-08-13 在真实 Windows 10 完成源码安装、DPAPI 登记、保留凭据升级、正式同步、公开榜投影和重复同步 `created=0` 验收。
+- [ ] 继续在更多 Windows 10/11 环境验证计划任务；当前实机标准用户会话返回 `0x80070005`，客户端已降级为不阻断首次或手动同步。
+- [ ] 完成双设备上榜、重登记轮换和卸载 E2E。
 
 ## I. 运维
 
