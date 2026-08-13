@@ -32,6 +32,7 @@ from app.models import (
     Organization,
     User,
     UserRole,
+    utcnow,
 )
 from app.schemas import DailyUsageReport
 from app.security import hash_password, opaque_token_hash, sign_device_request

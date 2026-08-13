@@ -33,7 +33,7 @@
 | universal 构建 | 本地产物通过／Intel CI 待跑 | `TokenFleet` 与 `Contents/Helpers/TokenFleetHelper` 均由 `lipo` 确认为 `x86_64 arm64`；版本 `0.1.0-beta.8`；新 ICNS 有效。PR 新增官方 `macos-15-intel` runner，必须原生执行 XCTest、完整采集／同步门禁、App/Helper 构建及安装／升级／回滚／卸载后，才完成 Intel 正式验收。 |
 | 分发身份 | 通过 | 独立构建、固定 Bundle/Team/update origin、恶意版本、重复发布目录、签名失败原子性、旧发布物保留门禁通过。 |
 | 源码安装与回滚 | 通过 | fail closed、ad-hoc／社群模式、灾难与 staged rollback、显式降级、卸载以及不修改正式 `dist` 通过；本机不支持隔离 legacy file Keychain 的项目明确跳过。 |
-| Windows 跨平台 | 通过／真机待跑 | macOS 上 `26 passed, 2 skipped`；两个跳过项只在真实 Windows 验证 DPAPI round-trip 与计划任务。CI 已增加安装、同源升级、preview、status 与卸载。 |
+| Windows 跨平台 | 本地通过／Windows CI 待重跑 | macOS 上 `26 passed, 2 skipped`；两个跳过项只在真实 Windows 验证 DPAPI round-trip 与计划任务。CI 覆盖安装、同源升级、preview、status，以及计划任务不存在／存在两种卸载路径。第一轮 CI 已验证 28 项 Windows 测试全过，并暴露、修正了“计划任务不存在时卸载提前终止”的真实生命周期问题。 |
 
 ## schema 与后端影响
 

@@ -235,7 +235,12 @@ jobs:
         run: brew install ripgrep
 
       - name: Run XCTest natively on Intel
-        run: swift test --package-path TokenStepSwift --parallel
+        run: |
+          # Headless Intel runners can abort Metal initialization when two
+          # ImageRenderer tests start concurrently. Keep the rest parallel and
+          # execute the real share-card class serially, without reducing coverage.
+          swift test --package-path TokenStepSwift --parallel --skip ScreenshotExporterTests
+          swift test --package-path TokenStepSwift --filter ScreenshotExporterTests
 
       - name: Run collector, pricing, share, and sync gates natively on Intel
         run: |
@@ -306,3 +311,9 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -NoPathUpdate
           powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\uninstall.ps1 -Yes
           if (Test-Path (Join-Path $env:LOCALAPPDATA "TokenFleet")) { throw "TokenFleet uninstall left the install root behind" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -NoPathUpdate
+          schtasks.exe /Create /SC DAILY /ST 23:59 /TN "TokenFleet Community Sync" /TR "cmd.exe /c exit 0" /F | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "TokenFleet scheduled-task fixture could not be created" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\uninstall.ps1 -Yes
+          if (Get-ScheduledTask -TaskName "TokenFleet Community Sync" -ErrorAction SilentlyContinue) { throw "TokenFleet uninstall left the scheduled task behind" }
+          if (Test-Path (Join-Path $env:LOCALAPPDATA "TokenFleet")) { throw "TokenFleet second uninstall left the install root behind" }

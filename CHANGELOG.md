@@ -32,6 +32,8 @@
 - Built the macOS App and helper as universal arm64 + x86_64 binaries and expanded
   CI with a native `macos-15-intel` lifecycle gate; Windows CI exercises install,
   same-origin upgrade, preview, status, DPAPI, scheduled-task, and uninstall paths.
+  Windows uninstall is idempotent when the scheduled task is already absent and
+  still removes it when present.
 - Documented strict feasibility and privacy boundaries for Kimi Code, DeepSeek,
   Cursor, and Gemini CLI; only observed CC Switch proxy rows are labeled as
   experimental support, and no conversation, code, prompt, response, or path is
