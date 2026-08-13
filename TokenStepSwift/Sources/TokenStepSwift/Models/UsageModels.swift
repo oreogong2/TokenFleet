@@ -66,6 +66,15 @@ struct UsageSnapshot: Codable {
         agentWork.first { $0.date == date && $0.totalTokens > 0 }
     }
 
+    /// Sources that contributed real usage rows to this snapshot. Disabled,
+    /// unavailable, or deliberately unsupported collectors remain visible in
+    /// diagnostics but must not be presented as collected clients.
+    var collectedSourceCount: Int {
+        sources.values.filter { source in
+            source.status == "ok" && (source.records ?? 0) > 0
+        }.count
+    }
+
     static let empty = UsageSnapshot(
         generatedAt: nil,
         timezone: "Asia/Shanghai",

@@ -176,7 +176,7 @@ struct SettingsPrivacyCard: View {
                 HStack(spacing: 8) {
                     PrivacyMetaChip(title: L("本机"))
                     PrivacyMetaChip(title: TokenStepFormat.generatedTime(appState.snapshot.generatedAt))
-                    PrivacyMetaChip(title: LFormat("%d 个客户端", appState.snapshot.sources.count))
+                    PrivacyMetaChip(title: LFormat("%d 个已采集客户端", appState.snapshot.collectedSourceCount))
                 }
             }
         }

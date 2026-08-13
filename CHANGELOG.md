@@ -35,7 +35,8 @@
 - Documented strict feasibility and privacy boundaries for Kimi Code, DeepSeek,
   Cursor, and Gemini CLI; only observed CC Switch proxy rows are labeled as
   experimental support, and no conversation, code, prompt, response, or path is
-  parsed.
+  parsed. The privacy card counts only sources that actually contributed usage,
+  not disabled, missing, or deliberately unsupported collectors.
 - Added prerelease-channel rules and an explicit beta.7 migration plan. beta.7
   source installs still require one manual transition to a Developer ID signed,
   notarized universal build with a pinned HTTPS update feed and Team ID; beta.8

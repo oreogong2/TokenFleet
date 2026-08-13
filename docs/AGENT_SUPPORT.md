@@ -23,7 +23,7 @@ TokenFleet 对 CC Switch 的支持定位为实验性的高级统计来源，sour
 当前 MVP 只读 `~/.cc-switch/cc-switch.db` 的 `proxy_request_logs` 表，并且只统计：
 
 - `status_code >= 200 and status_code < 300`
-- `data_source` 为空或等于 `proxy`（老库没有该列时按 proxy 处理）
+- `data_source = proxy`；缺少该列、值为空或为其他来源时都不计入
 - `input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens > 0`
 
 Token 总量口径为 `input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens`。模型显示优先使用 `pricing_model`，其次是 `model`、`request_model`，都为空时显示 `unknown`。成本使用 CC Switch 写入的 `total_cost_usd`。
