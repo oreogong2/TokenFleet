@@ -71,7 +71,9 @@ struct UsageSnapshot: Codable {
     /// diagnostics but must not be presented as collected clients.
     var collectedSourceCount: Int {
         sources.values.filter { source in
-            source.status == "ok" && (source.records ?? 0) > 0
+            guard let status = source.status else { return false }
+            let succeeded = status == "ok" || status == "ok_sqlite"
+            return succeeded && (source.records ?? 0) > 0
         }.count
     }
 

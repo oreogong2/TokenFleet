@@ -108,12 +108,13 @@ final class DailyUsageSchemaTests: XCTestCase {
         var snapshot = UsageSnapshot.empty
         snapshot.sources = [
             "Codex": SourceInfo(status: "ok", records: 3),
+            "Codex SQLite Fallback": SourceInfo(status: "ok_sqlite", records: 2),
             "Claude Code": SourceInfo(status: "missing", records: 0),
             "CC Switch Proxy": SourceInfo(status: "disabled", records: 0),
             "WorkBuddy": SourceInfo(status: "unsupported_privacy_boundary", records: 0),
             "Empty Successful Source": SourceInfo(status: "ok", records: 0)
         ]
 
-        XCTAssertEqual(snapshot.collectedSourceCount, 1)
+        XCTAssertEqual(snapshot.collectedSourceCount, 2)
     }
 }
