@@ -14,6 +14,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SWIFT_DIR="$ROOT_DIR/TokenStepSwift"
 SDK_PATH="${TOKENFLEET_SWIFT_SDK:-/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk}"
 TEST_ARCHITECTURE="${TOKENFLEET_SWIFT_TEST_ARCHITECTURE:-$(uname -m)}"
+REQUIRE_SHARE_CARD_RENDER="${TOKENFLEET_REQUIRE_SHARE_CARD_RENDER:-1}"
 BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/tokenfleet-swift-verify.XXXXXX")"
 MODULE_CACHE="$BUILD_DIR/module-cache"
 MODULE_PATH="$BUILD_DIR/TokenStepSwift.swiftmodule"
@@ -42,6 +43,10 @@ if [[ ! -d "$SDK_PATH" ]]; then
 fi
 if [[ "$TEST_ARCHITECTURE" != "arm64" && "$TEST_ARCHITECTURE" != "x86_64" ]]; then
   echo "Unsupported native Swift verification architecture: $TEST_ARCHITECTURE" >&2
+  exit 1
+fi
+if [[ "$REQUIRE_SHARE_CARD_RENDER" != "0" && "$REQUIRE_SHARE_CARD_RENDER" != "1" ]]; then
+  echo "TOKENFLEET_REQUIRE_SHARE_CARD_RENDER must be 0 or 1" >&2
   exit 1
 fi
 
@@ -175,18 +180,22 @@ swiftc \
 
 "$KEYCHAIN_FIXTURE_PATH"
 
-swiftc \
-  -parse-as-library \
-  "${COMMON_FLAGS[@]}" \
-  -I "$BUILD_DIR" \
-  -L "$BUILD_DIR" \
-  -lTokenStepSwift \
-  -Xlinker -rpath \
-  -Xlinker "$BUILD_DIR" \
-  "$SWIFT_DIR/Tests/Fixtures/ShareCardExportFixtureCheck.swift" \
-  -o "$SHARE_CARD_FIXTURE_PATH"
+if [[ "$REQUIRE_SHARE_CARD_RENDER" == "1" ]]; then
+  swiftc \
+    -parse-as-library \
+    "${COMMON_FLAGS[@]}" \
+    -I "$BUILD_DIR" \
+    -L "$BUILD_DIR" \
+    -lTokenStepSwift \
+    -Xlinker -rpath \
+    -Xlinker "$BUILD_DIR" \
+    "$SWIFT_DIR/Tests/Fixtures/ShareCardExportFixtureCheck.swift" \
+    -o "$SHARE_CARD_FIXTURE_PATH"
 
-"$SHARE_CARD_FIXTURE_PATH"
+  "$SHARE_CARD_FIXTURE_PATH"
+else
+  echo "Share-card UI render fixture skipped on this headless runner; a GPU-capable gate must run it" >&2
+fi
 
 swiftc \
   -parse-as-library \

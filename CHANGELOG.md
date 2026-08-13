@@ -34,6 +34,10 @@
   same-origin upgrade, preview, status, DPAPI, scheduled-task, and uninstall paths.
   Windows uninstall is idempotent when the scheduled task is already absent and
   still removes it when present.
+- The headless Intel runner validates native x86_64 logic, collectors, builds,
+  and source lifecycle; because it exposes no Metal device, the same x86_64
+  share-card render/copy/save path is executed under Rosetta on a GPU-capable
+  Apple runner instead of being silently skipped.
 - Documented strict feasibility and privacy boundaries for Kimi Code, DeepSeek,
   Cursor, and Gemini CLI; only observed CC Switch proxy rows are labeled as
   experimental support, and no conversation, code, prompt, response, or path is

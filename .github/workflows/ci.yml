@@ -170,6 +170,17 @@ jobs:
           SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
           TOKENFLEET_SWIFT_SDK="$SDK_PATH" bash script/verify_tokenstep_swift.sh
 
+      - name: Run x86_64 share render and complete Swift gate under Rosetta
+        run: |
+          if ! arch -x86_64 /usr/bin/true; then
+            sudo /usr/sbin/softwareupdate --install-rosetta --agree-to-license
+          fi
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" \
+          TOKENFLEET_SWIFT_TEST_ARCHITECTURE="x86_64" \
+          TOKENFLEET_REQUIRE_SHARE_CARD_RENDER="1" \
+            bash script/verify_tokenstep_swift.sh
+
       - name: Build and verify Intel + Apple Silicon app slices
         run: |
           SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
@@ -234,18 +245,20 @@ jobs:
       - name: Install desktop verification tools
         run: brew install ripgrep
 
-      - name: Run XCTest natively on Intel
+      - name: Run non-GPU XCTest natively on Intel
         run: |
-          # Headless Intel runners can abort Metal initialization when two
-          # ImageRenderer tests start concurrently. Keep the rest parallel and
-          # execute the real share-card class serially, without reducing coverage.
+          # This Intel runner exposes no Metal device, so ImageRenderer aborts
+          # before XCTest can report a skip. The same x86_64 render/copy/save
+          # fixture runs under Rosetta in the GPU-capable Apple Silicon job.
           swift test --package-path TokenStepSwift --parallel --skip ScreenshotExporterTests
-          swift test --package-path TokenStepSwift --filter ScreenshotExporterTests
+          swift test --package-path TokenStepSwift --filter 'ScreenshotExporterTests.test(EveryExportFailureNamesItsStage|GeneratedImageEncodesAsPNGAndJPGWithoutTIFFRoundTrip)'
 
-      - name: Run collector, pricing, share, and sync gates natively on Intel
+      - name: Run collector, pricing, and sync gates natively on Intel
         run: |
           SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
-          TOKENFLEET_SWIFT_SDK="$SDK_PATH" bash script/verify_tokenstep_swift.sh
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" \
+          TOKENFLEET_REQUIRE_SHARE_CARD_RENDER="0" \
+            bash script/verify_tokenstep_swift.sh
 
       - name: Build native Intel App and Helper
         run: |

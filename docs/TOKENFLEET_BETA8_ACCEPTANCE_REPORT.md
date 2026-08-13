@@ -29,8 +29,8 @@
 | 静态浏览器 | 通过 | 1440、820、390 px；7 条管理路由、空／长模型／最大数、401/403/503、键盘焦点、reduced motion、对比度；console/page error 为 0。 |
 | 社群浏览器竞态 | 通过 | 排行、分享、补发一次性码和退出的跨路由慢响应均不泄露旧弹窗或原始码。 |
 | 临时真实联调 | 通过 | 临时 SQLite 完成批次领取、成员补发、3 台设备、极值 Token、公开榜、成本、错误登录、退出清理；浏览器 console/page error 为 0，完成后服务与临时状态均删除。 |
-| Swift 完整门禁 | 通过 | 源码与 XCTest typecheck、网络/Keychain/同步状态机、Codex/Claude/CC Switch fixture、费用覆盖、迁移、本地化和语言刷新通过；分享卡实际完成 ImageRenderer、复制用 PNG 和临时 JPEG 写入。当前 Command Line Tools 没有可执行 XCTest 模块，真实 XCTest 留给 PR macOS CI。 |
-| universal 构建 | 本地产物通过／Intel CI 待跑 | `TokenFleet` 与 `Contents/Helpers/TokenFleetHelper` 均由 `lipo` 确认为 `x86_64 arm64`；版本 `0.1.0-beta.8`；新 ICNS 有效。PR 新增官方 `macos-15-intel` runner，必须原生执行 XCTest、完整采集／同步门禁、App/Helper 构建及安装／升级／回滚／卸载后，才完成 Intel 正式验收。 |
+| Swift 完整门禁 | arm64 与 x86_64 均通过 | 源码与 XCTest typecheck、网络/Keychain/同步状态机、Codex/Claude/CC Switch fixture、费用覆盖、迁移、本地化和语言刷新通过；分享卡实际完成 ImageRenderer、复制用 PNG 和临时 JPEG 写入。本机已在 Rosetta 下执行整套 `x86_64` 门禁并通过。当前 Command Line Tools 没有可执行 XCTest 模块，真实 XCTest 留给 PR macOS CI。 |
+| universal 构建 | 本地产物与本机 x86_64 运行通过／Intel CI 待跑 | `TokenFleet` 与 `Contents/Helpers/TokenFleetHelper` 均由 `lipo` 确认为 `x86_64 arm64`；版本 `0.1.0-beta.8`；新 ICNS 有效。本机 Rosetta 已实际运行 x86_64 分享卡渲染／复制／保存及完整采集门禁。PR 使用官方 `macos-15-intel` runner 原生执行非 GPU XCTest、完整采集／同步门禁、App/Helper 构建及安装／升级／回滚／卸载；该无显示器 runner 不提供 Metal 设备，因此 CI 的 x86_64 分享卡真实渲染改由有 GPU 的 Apple runner 在 Rosetta 下执行，不能把 headless Metal 崩溃误写成产品通过或失败。 |
 | 分发身份 | 通过 | 独立构建、固定 Bundle/Team/update origin、恶意版本、重复发布目录、签名失败原子性、旧发布物保留门禁通过。 |
 | 源码安装与回滚 | 通过 | fail closed、ad-hoc／社群模式、灾难与 staged rollback、显式降级、卸载以及不修改正式 `dist` 通过；本机不支持隔离 legacy file Keychain 的项目明确跳过。 |
 | Windows 跨平台 | 本地通过／Windows CI 待重跑 | macOS 上 `26 passed, 2 skipped`；两个跳过项只在真实 Windows 验证 DPAPI round-trip 与计划任务。CI 覆盖安装、同源升级、preview、status，以及计划任务不存在／存在两种卸载路径。第一轮 CI 已验证 28 项 Windows 测试全过，并暴露、修正了“计划任务不存在时卸载提前终止”的真实生命周期问题。 |
@@ -46,7 +46,7 @@
 
 ## PR / 发布前仍然阻断
 
-1. PR 的 Apple Silicon 与官方 `macos-15-intel` runner 必须跑真实 `swift test --parallel`；Intel runner 还必须通过完整采集／同步、App/Helper 和源码安装生命周期门禁。
+1. PR 的 Apple Silicon 与官方 `macos-15-intel` runner 必须跑真实 XCTest；Intel runner 必须通过非 GPU XCTest、完整采集／同步、App/Helper 和源码安装生命周期门禁，Apple runner 还必须用 x86_64/Rosetta 实际完成分享卡渲染／复制／保存。真实 Intel 成员机仍需发布前人工启动与菜单栏 E2E。
 2. PR 的 PostgreSQL 17 服务必须让 16 条 smoke 全部通过，包含并发补发只保留一个有效未用码。
 3. Windows runner 必须完成真实 DPAPI、计划任务、安装、同源升级、preview/status 和卸载；真实 Windows 10/11 成员机仍需发布前人工 E2E。
 4. beta.7 当时的分享图片报错缺少入口、错误文字和环境，无法证明原故障已经复现；自动化已覆盖 App 真实分享视图渲染／复制数据／保存文件及 Web 海报边界，但仍需在奥哥安装后的真实桌面入口点击复制、保存各一次才能关单。
