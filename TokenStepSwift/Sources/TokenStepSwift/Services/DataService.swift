@@ -57,7 +57,7 @@ enum DataService {
         if TokenPricingCatalog.shouldPreserveSnapshot(
             storedVersion: previousSnapshot?.totals.pricingVersion
         ) {
-            return .unchanged
+            throw newerPricingCatalogError()
         }
         let beforeState = UsageCollector.collectionState(
             historyDays: historyDays,
@@ -130,13 +130,7 @@ enum DataService {
         if TokenPricingCatalog.shouldPreserveSnapshot(
             storedVersion: previousSnapshot?.totals.pricingVersion
         ), collectedSnapshot.totals.pricingVersion != previousSnapshot?.totals.pricingVersion {
-            throw NSError(
-                domain: "TokenFleetCollector",
-                code: 3,
-                userInfo: [
-                    NSLocalizedDescriptionKey: L("用量数据由更新的价格目录生成，已保留原统计。")
-                ]
-            )
+            throw newerPricingCatalogError()
         }
         guard let previousCodex = previousSnapshot?.sources["Codex"],
               (previousCodex.records ?? 0) > 0
@@ -160,6 +154,16 @@ enum DataService {
                 ]
             )
         }
+    }
+
+    private static func newerPricingCatalogError() -> NSError {
+        NSError(
+            domain: "TokenFleetCollector",
+            code: 3,
+            userInfo: [
+                NSLocalizedDescriptionKey: L("用量数据由更新的价格目录生成，已保留原统计。请使用较新版本的 TokenFleet 刷新。")
+            ]
+        )
     }
 
     private static func persist(

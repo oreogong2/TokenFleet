@@ -190,7 +190,20 @@ enum TokenPricingCatalog {
     }
 
     private static func matches(_ model: String, alias: String) -> Bool {
-        model == alias || model.hasPrefix(alias + "-20")
+        guard model != alias else { return true }
+        guard model.hasPrefix(alias) else { return false }
+        let suffix = String(model.dropFirst(alias.count))
+        guard suffix.first == "-" else { return false }
+        let date = String(suffix.dropFirst())
+        if date.count == 8 {
+            return date.hasPrefix("20") && date.allSatisfy(\.isNumber)
+        }
+        guard date.count == 10 else { return false }
+        let characters = Array(date)
+        guard characters[4] == "-", characters[7] == "-" else { return false }
+        return characters.enumerated().allSatisfy { index, character in
+            index == 4 || index == 7 ? character == "-" : character.isNumber
+        } && date.hasPrefix("20")
     }
 
     private static func normalize(_ value: String) -> String {

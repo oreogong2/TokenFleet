@@ -87,14 +87,21 @@ final class TokenPricingTests: XCTestCase {
     }
 
     func testNearMatchIsUnpricedInsteadOfGuessingAnAlias() {
-        XCTAssertNil(
-            TokenPricingCatalog.estimate(
-                tool: "Codex",
-                model: "gpt-5.6-sol-preview",
-                usage: usage(input: 1_000_000, output: 1_000_000),
-                date: TokenPricingCatalog.verifiedDate
+        for model in [
+            "gpt-5.6-sol-preview",
+            "gpt-5.6-2026-preview",
+            "gpt-5.6-sol-2026-08-14-preview"
+        ] {
+            XCTAssertNil(
+                TokenPricingCatalog.estimate(
+                    tool: "Codex",
+                    model: model,
+                    usage: usage(input: 1_000_000, output: 1_000_000),
+                    date: TokenPricingCatalog.verifiedDate
+                ),
+                model
             )
-        )
+        }
     }
 
     func testCurrentClaudeOpusIncludesCacheReadRateWhenNoWriteTTLIsNeeded() throws {
