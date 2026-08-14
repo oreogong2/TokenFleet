@@ -34,13 +34,6 @@ enum DataService {
         return storedRevision < UsageCollector.codexAccountingRevision
     }
 
-    static func requiresImmediatePricingReestimation(_ snapshot: UsageSnapshot) -> Bool {
-        guard snapshot.totals.tokens > 0 else { return false }
-        return TokenPricingCatalog.shouldReestimate(
-            storedVersion: snapshot.totals.pricingVersion
-        )
-    }
-
     static func saveSettings(_ settings: TokenStepSettings) throws {
         let normalized = normalize(settings)
         let encoder = JSONEncoder()
@@ -61,6 +54,11 @@ enum DataService {
         defer { MemoryPressure.relieveAllocatorPressure() }
         let settings = loadSettings()
         let previousSnapshot = try? loadSnapshot()
+        if TokenPricingCatalog.shouldPreserveSnapshot(
+            storedVersion: previousSnapshot?.totals.pricingVersion
+        ) {
+            return .unchanged
+        }
         let beforeState = UsageCollector.collectionState(
             historyDays: historyDays,
             includeExperimentalAgentSources: settings.showExperimentalAgentSources
@@ -129,6 +127,17 @@ enum DataService {
         _ collectedSnapshot: UsageSnapshot,
         previousSnapshot: UsageSnapshot?
     ) throws {
+        if TokenPricingCatalog.shouldPreserveSnapshot(
+            storedVersion: previousSnapshot?.totals.pricingVersion
+        ), collectedSnapshot.totals.pricingVersion != previousSnapshot?.totals.pricingVersion {
+            throw NSError(
+                domain: "TokenFleetCollector",
+                code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey: L("用量数据由更新的价格目录生成，已保留原统计。")
+                ]
+            )
+        }
         guard let previousCodex = previousSnapshot?.sources["Codex"],
               (previousCodex.records ?? 0) > 0
         else {
@@ -160,29 +169,25 @@ enum DataService {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(snapshot)
-        try FileManager.default.createDirectory(
-            at: AppPaths.usageJSON.deletingLastPathComponent(),
-            withIntermediateDirectories: true
+        let createsUsageNotice = shouldCreateUsageRecalibrationNotice(snapshot)
+        let createsPricingNotice = shouldCreatePricingReestimationNotice(
+            snapshot: snapshot,
+            previousSnapshot: previousSnapshot
         )
-        try data.write(to: AppPaths.usageJSON, options: .atomic)
-        if let previousRevision = snapshot.sources["Codex"]?.recalibratedFromRevision,
-           let currentRevision = snapshot.sources["Codex"]?.accountingRevision,
-           previousRevision < currentRevision,
-           (snapshot.sources["Codex"]?.records ?? 0) > 0 {
+        if createsUsageNotice {
             try FileManager.default.createDirectory(
                 at: AppPaths.usageRecalibrationNoticeMarker.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
+            let currentRevision = snapshot.sources["Codex"]?.accountingRevision
+                ?? UsageCollector.codexAccountingRevision
             try String(currentRevision).write(
                 to: AppPaths.usageRecalibrationNoticeMarker,
                 atomically: true,
                 encoding: .utf8
             )
         }
-        if shouldCreatePricingReestimationNotice(
-            snapshot: snapshot,
-            previousSnapshot: previousSnapshot
-        ) {
+        if createsPricingNotice {
             try FileManager.default.createDirectory(
                 at: AppPaths.pricingReestimationNoticeMarker.deletingLastPathComponent(),
                 withIntermediateDirectories: true
@@ -195,6 +200,22 @@ enum DataService {
                 encoding: .utf8
             )
         }
+        try FileManager.default.createDirectory(
+            at: AppPaths.usageJSON.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: AppPaths.usageJSON, options: .atomic)
+    }
+
+    private static func shouldCreateUsageRecalibrationNotice(_ snapshot: UsageSnapshot) -> Bool {
+        guard let previousRevision = snapshot.sources["Codex"]?.recalibratedFromRevision,
+              let currentRevision = snapshot.sources["Codex"]?.accountingRevision,
+              previousRevision < currentRevision,
+              (snapshot.sources["Codex"]?.records ?? 0) > 0
+        else {
+            return false
+        }
+        return true
     }
 
     private static func shouldCreatePricingReestimationNotice(
@@ -225,12 +246,15 @@ enum DataService {
     }
 #endif
 
-    static var hasPendingUsageRecalibrationNotice: Bool {
-        FileManager.default.fileExists(atPath: AppPaths.usageRecalibrationNoticeMarker.path)
+    static func hasPendingUsageRecalibrationNotice(for snapshot: UsageSnapshot) -> Bool {
+        snapshot.sources["Codex"]?.accountingRevision == UsageCollector.codexAccountingRevision
+            && (snapshot.sources["Codex"]?.records ?? 0) > 0
+            && FileManager.default.fileExists(atPath: AppPaths.usageRecalibrationNoticeMarker.path)
     }
 
-    static var hasPendingPricingReestimationNotice: Bool {
-        FileManager.default.fileExists(atPath: AppPaths.pricingReestimationNoticeMarker.path)
+    static func hasPendingPricingReestimationNotice(for snapshot: UsageSnapshot) -> Bool {
+        snapshot.totals.pricingVersion == TokenPricingCatalog.version
+            && FileManager.default.fileExists(atPath: AppPaths.pricingReestimationNoticeMarker.path)
     }
 
     private static func loadCollectionCheckpoint() -> CollectionCheckpoint? {

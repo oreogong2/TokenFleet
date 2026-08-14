@@ -29,7 +29,9 @@ final class TokenPricingTests: XCTestCase {
             var cacheWrite: Double
         }
         let rows = [
+            Row(model: "gpt-5.6", priceModel: "gpt-5.6-sol", input: 5, output: 30, cacheRead: 0.5, cacheWrite: 6.25),
             Row(model: "gpt-5.6-sol", priceModel: "gpt-5.6-sol", input: 5, output: 30, cacheRead: 0.5, cacheWrite: 6.25),
+            Row(model: "gpt-5.6-sol-2026-08-14", priceModel: "gpt-5.6-sol", input: 5, output: 30, cacheRead: 0.5, cacheWrite: 6.25),
             Row(model: "gpt-5.6-terra", priceModel: "gpt-5.6-terra", input: 2, output: 12, cacheRead: 0.2, cacheWrite: 2.5),
             Row(model: "gpt-5.6-luna", priceModel: "gpt-5.6-luna", input: 0.2, output: 1.2, cacheRead: 0.02, cacheWrite: 0.25),
             Row(model: "gpt-5.5", priceModel: "gpt-5.5", input: 5, output: 30, cacheRead: 0.5, cacheWrite: 5),
@@ -75,6 +77,24 @@ final class TokenPricingTests: XCTestCase {
         XCTAssertTrue(TokenPricingCatalog.shouldReestimate(storedVersion: "public-usd-2026-08-13"))
         XCTAssertFalse(TokenPricingCatalog.shouldReestimate(storedVersion: TokenPricingCatalog.version))
         XCTAssertFalse(TokenPricingCatalog.shouldReestimate(storedVersion: "public-usd-2026-08-15"))
+        XCTAssertFalse(TokenPricingCatalog.shouldReestimate(storedVersion: "provider-catalog-v2"))
+
+        XCTAssertFalse(TokenPricingCatalog.shouldPreserveSnapshot(storedVersion: nil))
+        XCTAssertFalse(TokenPricingCatalog.shouldPreserveSnapshot(storedVersion: "public-usd-2026-08-13"))
+        XCTAssertFalse(TokenPricingCatalog.shouldPreserveSnapshot(storedVersion: TokenPricingCatalog.version))
+        XCTAssertTrue(TokenPricingCatalog.shouldPreserveSnapshot(storedVersion: "public-usd-2026-08-15"))
+        XCTAssertTrue(TokenPricingCatalog.shouldPreserveSnapshot(storedVersion: "provider-catalog-v2"))
+    }
+
+    func testNearMatchIsUnpricedInsteadOfGuessingAnAlias() {
+        XCTAssertNil(
+            TokenPricingCatalog.estimate(
+                tool: "Codex",
+                model: "gpt-5.6-sol-preview",
+                usage: usage(input: 1_000_000, output: 1_000_000),
+                date: TokenPricingCatalog.verifiedDate
+            )
+        )
     }
 
     func testCurrentClaudeOpusIncludesCacheReadRateWhenNoWriteTTLIsNeeded() throws {

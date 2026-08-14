@@ -49,20 +49,19 @@ final class UsageSnapshotRefreshPolicyTests: XCTestCase {
         )
     }
 
-    func testOlderPricingCatalogRefreshesEvenWhenAutomaticRefreshIsDisabled() {
+    func testPricingCatalogChangeDoesNotMasqueradeAsAUsageRefresh() {
         let snapshot = makeSnapshot(
             accountingRevision: UsageCollector.codexAccountingRevision,
             records: 1,
             pricingVersion: "public-usd-2026-08-13"
         )
 
-        XCTAssertEqual(
+        XCTAssertNil(
             UsageSnapshotRefreshPolicy.reason(
                 snapshot: snapshot,
                 refreshIntervalSeconds: 0,
                 now: now
-            ),
-            .pricingVersion
+            )
         )
     }
 

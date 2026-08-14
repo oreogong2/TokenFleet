@@ -230,7 +230,7 @@ struct PricingReestimationNotice: View {
             Image(systemName: "dollarsign.arrow.circlepath")
                 .foregroundStyle(Color.tokenGreen)
                 .padding(.top, 1)
-            Text(L("TokenFleet 已按新的公开价格目录重新估算历史金额。Token 消耗与原始记录没有变化，估算仍不等于账单。"))
+            Text(L("TokenFleet 已在本次用量刷新中采用新的公开价格目录。价格目录本身只影响金额估算；Token 仍来自本地用量记录，估算不等于账单。"))
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(Color.tokenInk.opacity(0.82))
                 .fixedSize(horizontal: false, vertical: true)

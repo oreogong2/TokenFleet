@@ -85,9 +85,23 @@ enum TokenPricingCatalog {
         guard let storedVersion, !storedVersion.isEmpty else { return true }
         let prefix = "public-usd-"
         guard storedVersion.hasPrefix(prefix), version.hasPrefix(prefix) else {
-            return true
+            return false
         }
         return storedVersion < version
+    }
+
+    /// An older binary must not overwrite estimates written by a newer or
+    /// unrecognized catalog. It cannot truthfully price newly collected rows
+    /// with rules that it does not know.
+    static func shouldPreserveSnapshot(storedVersion: String?) -> Bool {
+        guard let storedVersion, !storedVersion.isEmpty, storedVersion != version else {
+            return false
+        }
+        let prefix = "public-usd-"
+        guard storedVersion.hasPrefix(prefix), version.hasPrefix(prefix) else {
+            return true
+        }
+        return storedVersion > version
     }
 
     private static func rates(tool: String, model: String, date: String) -> Rates? {

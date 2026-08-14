@@ -2117,31 +2117,6 @@ enum UsageCollector {
             matchedNativeIndices: &matchedNativeIndices
         )
 
-        // Similar timing/model/token vectors alone are not proof of identity: concurrent
-        // requests can legitimately look the same. A shared session is the minimum
-        // fallback correlation when request/response IDs are unavailable.
-        let remainingProxyIndices = deduplicableProxyIndices.filter { !matchedProxyIndices.contains($0) }
-        let remainingNativeIndices = nativeRecords.indices.filter { !matchedNativeIndices.contains($0) }
-        let sessionPairs = uniqueDedupePairs(
-            proxyIndices: remainingProxyIndices,
-            nativeIndices: Array(remainingNativeIndices)
-        ) { proxyIndex, nativeIndex in
-            isSameDedupeDomain(
-                proxyRecord: proxyRecords[proxyIndex],
-                nativeRecord: nativeRecords[nativeIndex]
-            ) && hasSessionIdentityMatch(
-                proxyRecord: proxyRecords[proxyIndex],
-                nativeRecord: nativeRecords[nativeIndex]
-            )
-        }
-        applyDedupePairs(
-            sessionPairs,
-            proxyRecords: proxyRecords,
-            enrichedNativeRecords: &enrichedNativeRecords,
-            matchedProxyIndices: &matchedProxyIndices,
-            matchedNativeIndices: &matchedNativeIndices
-        )
-
         let possibleOverlapRecords = deduplicableProxyIndices.filter { proxyIndex in
             guard !matchedProxyIndices.contains(proxyIndex) else { return false }
             return nativeRecords.indices.contains { nativeIndex in
@@ -2261,19 +2236,6 @@ enum UsageCollector {
         let proxyIDs = Set([proxyRecord.requestID, proxyRecord.responseID].compactMap(nonEmptyString))
         let nativeIDs = Set([nativeRecord.requestID, nativeRecord.responseID].compactMap(nonEmptyString))
         return !proxyIDs.isDisjoint(with: nativeIDs)
-    }
-
-    private static func hasSessionIdentityMatch(proxyRecord: UsageRecord, nativeRecord: UsageRecord) -> Bool {
-        guard let proxySessionID = nonEmptyString(proxyRecord.sessionID),
-              let nativeSessionID = nonEmptyString(nativeRecord.sessionID),
-              proxySessionID == nativeSessionID,
-              areTimestampsClose(proxyRecord.timestamp, nativeRecord.timestamp, seconds: 10),
-              modelsCompatible(proxyRecord.model, nativeRecord.model),
-              usageVectorsClose(proxyRecord: proxyRecord, nativeRecord: nativeRecord)
-        else {
-            return false
-        }
-        return true
     }
 
     private static func enrichedRecord(

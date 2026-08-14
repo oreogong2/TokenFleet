@@ -264,7 +264,7 @@ struct CCSwitchProxyFixtureCheck {
     private static func runCrossSourceDedupeChecks() throws {
         try runClaudeProxyDedupeChecks()
         try runCodexSimilarIndependentRequestCheck()
-        try runCodexSharedSessionDedupeCheck()
+        try runCodexSharedSessionOverlapCheck()
     }
 
     private static func runAmbiguousFuzzyDedupeCheck() throws {
@@ -578,7 +578,7 @@ struct CCSwitchProxyFixtureCheck {
         )
     }
 
-    private static func runCodexSharedSessionDedupeCheck() throws {
+    private static func runCodexSharedSessionOverlapCheck() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("TokenStepCodexSessionDedupeFixture-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -639,11 +639,12 @@ struct CCSwitchProxyFixtureCheck {
             ccSwitchDatabaseURL: database
         )
         let source = snapshot.sources["CC Switch Proxy"]
-        try assertEqual(source?.status, "all_deduped", "shared-session Codex source status")
-        try assertEqual(source?.records, 0, "shared-session proxy record is removed")
-        try assertEqual(source?.dedupedRecords, 1, "shared-session proxy record is deduplicated")
-        try assertEqual(snapshot.totals.tokens, 35, "shared-session request counts once")
-        try assertEqual(snapshot.totals.cost, 0.45, "shared-session proxy cost enriches native record")
+        try assertEqual(source?.status, "ok", "shared-session Codex source status")
+        try assertEqual(source?.records, 1, "shared-session request remains without a matching request ID")
+        try assertEqual(source?.dedupedRecords, 0, "a session ID alone never deletes a request")
+        try assertEqual(source?.possibleOverlapRecords, 1, "shared-session similarity is diagnostic only")
+        try assertEqual(snapshot.totals.tokens, 70, "distinct request IDs are both retained")
+        try assertEqual(snapshot.totals.cost, 0.45, "retained proxy request keeps its source cost")
 
         let incremental = UsageCollector.collectIncrementalCodexAndProxySnapshotForTests(
             codexRoots: [root],
@@ -653,16 +654,21 @@ struct CCSwitchProxyFixtureCheck {
         let incrementalSource = incremental.sources["CC Switch Proxy"]
         try assertEqual(
             incrementalSource?.status,
-            "all_deduped",
+            "ok",
             "incremental shared-session Codex source status"
         )
         try assertEqual(
             incrementalSource?.dedupedRecords,
-            1,
-            "incremental cache retains request-level details for proxy dedupe"
+            0,
+            "incremental cache does not treat a session as request identity"
         )
-        try assertEqual(incremental.totals.tokens, 35, "incremental shared-session request counts once")
-        try assertEqual(incremental.totals.cost, 0.45, "incremental proxy cost enriches native record")
+        try assertEqual(
+            incrementalSource?.possibleOverlapRecords,
+            1,
+            "incremental shared-session similarity remains diagnostic"
+        )
+        try assertEqual(incremental.totals.tokens, 70, "incremental distinct request IDs are retained")
+        try assertEqual(incremental.totals.cost, 0.45, "incremental retained proxy cost remains visible")
     }
 
     private static func codexLines(sessionID: String, totalTokens: Int) -> [String] {
