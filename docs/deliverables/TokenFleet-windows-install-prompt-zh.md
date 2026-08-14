@@ -1,7 +1,8 @@
 # TokenFleet Windows 安装提示词
 
-状态：待发布。本文固定的 Windows 客户端 commit 目前仅存在于维护者本地；只有发放人
-确认该 commit 已推送至公开 GitHub 仓库后，才可以把下面的提示词交给用户执行。
+状态：公开发布候选。本文固定的 Windows 客户端 commit 已发布到公开 Fork：
+`https://github.com/sproulefasial-svg/TokenFleet-winds`。上游 PR #5 审核期间，Windows
+用户必须使用该 Fork；上游合并后再按最终 commit 更新本提示词，不能自行切换到 `main`。
 
 固定 Windows 客户端 commit：
 
@@ -35,7 +36,8 @@ e1e214f502771d74882fd95d723ba688e128c4ef
    我明确同意后，才可以把安装命令交给我，由我本人执行。不要自行触发 winget、商店安装、
    系统安装窗口或管理员权限请求。
 
-3. 源码只能从公开仓库 https://github.com/oreogong2/TokenFleet.git 获取，并必须固定到：
+3. 源码只能从公开 Windows 候选 Fork
+   https://github.com/sproulefasial-svg/TokenFleet-winds.git 获取，并必须固定到：
 
    e1e214f502771d74882fd95d723ba688e128c4ef
 
@@ -56,7 +58,7 @@ e1e214f502771d74882fd95d723ba688e128c4ef
        throw "固定版本源码目录已存在；请停止并联系发放人确认，不要覆盖。"
    }
    New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
-   git clone --no-checkout https://github.com/oreogong2/TokenFleet.git $SourceRoot
+   git clone --no-checkout https://github.com/sproulefasial-svg/TokenFleet-winds.git $SourceRoot
    if ($LASTEXITCODE -ne 0) { throw "源码下载失败。" }
    git -C $SourceRoot checkout --detach e1e214f502771d74882fd95d723ba688e128c4ef
    if ($LASTEXITCODE -ne 0) { throw "固定版本不可用。" }
