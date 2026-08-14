@@ -138,6 +138,7 @@ SINGLE_INSTANCE="$ROOT_DIR/TokenStepSwift/Sources/TokenStepSwift/Support/SingleI
 UPDATER="$ROOT_DIR/TokenStepSwift/Sources/TokenStepSwift/Services/UpdateService.swift"
 HELPER="$ROOT_DIR/TokenStepSwift/Sources/TokenStepHelper/main.swift"
 POPOVER_FOOTER="$ROOT_DIR/TokenStepSwift/Sources/TokenStepSwift/Views/Popover/PopoverFooterView.swift"
+COMMUNITY_VIEW="$ROOT_DIR/TokenStepSwift/Sources/TokenStepSwift/Views/CommunityView.swift"
 BUILD_SCRIPT="$ROOT_DIR/script/build_swiftui_and_run.sh"
 RELEASE_SCRIPT="$ROOT_DIR/script/package_release.sh"
 RELEASE_WORKFLOW="$ROOT_DIR/.github/workflows/release.yml"
@@ -163,8 +164,10 @@ assert_source_has "$HELPER" '/Applications/TokenFleet.app'
 assert_source_has "$HELPER" '"-x", "TokenFleet"'
 assert_source_lacks "$HELPER" '/Applications/TokenStep.app'
 assert_source_lacks "$HELPER" '"-x", "TokenStepSwift"'
-assert_source_has "$POPOVER_FOOTER" 'appState.openCommunityLeaderboard('
+assert_source_has "$POPOVER_FOOTER" 'MainWindowPresenter.shared.show(appState: appState, section: .community)'
 assert_source_has "$POPOVER_FOOTER" '@Environment(\.isScreenshotRendering)'
+assert_source_has "$COMMUNITY_VIEW" 'appState.openCommunityLeaderboard(isScreenshotRendering: isScreenshotRendering)'
+assert_source_has "$COMMUNITY_VIEW" '@Environment(\.isScreenshotRendering)'
 assert_source_lacks "$BUILD_SCRIPT" 'pkill -f "TokenUsageMenu.py"'
 assert_source_lacks "$BUILD_SCRIPT" 'pkill -x "TokenStepSwift"'
 assert_source_lacks "$RELEASE_SCRIPT" 'rm -rf "$RELEASE_DIR"'
