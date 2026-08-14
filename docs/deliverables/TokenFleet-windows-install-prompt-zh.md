@@ -6,7 +6,7 @@
 固定 Windows 客户端 commit：
 
 ```text
-5a8e63729afacde20bd4bc5ef28dbdfa6d043c1c
+e1e214f502771d74882fd95d723ba688e128c4ef
 ```
 
 下面代码块中的内容可以完整交给 Windows 用户使用：
@@ -24,6 +24,9 @@
    - %LOCALAPPDATA%\TokenFleet 中 TokenFleet 自己的程序、配置、DPAPI 密文、状态和回滚暂存；
    - 当前用户 PATH 中 TokenFleet 自己的 bin 目录；
    - 当前用户的 `TokenFleet Community Sync` 计划任务。
+   - 当计划任务被系统策略拒绝时，当前用户
+     `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 中仅名为
+     `TokenFleet Community Sync` 的启动值。
    不要求管理员权限，不修改系统 PATH、系统凭据、网络设置、其他项目或其他计划任务。
 
 2. 先做只读检查，确认系统是 Windows 10 或 Windows 11，并检查 Git、PowerShell 和
@@ -34,7 +37,7 @@
 
 3. 源码只能从公开仓库 https://github.com/oreogong2/TokenFleet.git 获取，并必须固定到：
 
-   5a8e63729afacde20bd4bc5ef28dbdfa6d043c1c
+   e1e214f502771d74882fd95d723ba688e128c4ef
 
    在提供安装命令前，先确认这个 commit 已能从公开远端获取。如果远端不存在、下载失败、
    HEAD 校验不一致或工作区不干净，立即停止，不允许退回 main、beta.7、其他 tag 或相近版本。
@@ -48,17 +51,17 @@
 
    $ErrorActionPreference = "Stop"
    $InstallRoot = Join-Path $HOME "TokenFleet-Install"
-   $SourceRoot = Join-Path $InstallRoot "TokenFleet-5a8e637"
+   $SourceRoot = Join-Path $InstallRoot "TokenFleet-e1e214f"
    if (Test-Path -LiteralPath $SourceRoot) {
        throw "固定版本源码目录已存在；请停止并联系发放人确认，不要覆盖。"
    }
    New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
    git clone --no-checkout https://github.com/oreogong2/TokenFleet.git $SourceRoot
    if ($LASTEXITCODE -ne 0) { throw "源码下载失败。" }
-   git -C $SourceRoot checkout --detach 5a8e63729afacde20bd4bc5ef28dbdfa6d043c1c
+   git -C $SourceRoot checkout --detach e1e214f502771d74882fd95d723ba688e128c4ef
    if ($LASTEXITCODE -ne 0) { throw "固定版本不可用。" }
    $ActualCommit = (git -C $SourceRoot rev-parse HEAD).Trim()
-   if ($LASTEXITCODE -ne 0 -or $ActualCommit -ne "5a8e63729afacde20bd4bc5ef28dbdfa6d043c1c") {
+   if ($LASTEXITCODE -ne 0 -or $ActualCommit -ne "e1e214f502771d74882fd95d723ba688e128c4ef") {
        throw "源码 commit 校验失败。"
    }
    $WorktreeStatus = git -C $SourceRoot status --porcelain
@@ -96,17 +99,20 @@
    环境变量、剪贴记录、聊天消息或日志中。连接完成后，我本人确认隐藏输入已经结束，并立即
    清理剪贴板。你只等待我回复“成功”或提供已经脱敏的错误摘要。
 
-10. 客户端会尝试创建每六小时运行一次的当前用户计划任务。部分 Windows 安全策略可能
-    拒绝创建该任务；这种情况下设备连接和首次正式同步仍应继续完成，并显示需要定期运行
-    `tokenfleet sync` 的警告。不要要求管理员权限，不要绕过系统策略，也不要声称自动同步成功。
+10. 客户端会优先创建每六小时运行一次的当前用户计划任务。部分 Windows 安全策略可能
+    拒绝创建该任务；这种情况下设备连接和首次正式同步仍应完成，并只注册 TokenFleet 自己的
+    当前用户启动值。登录后隐藏后台循环应立即同步，之后每六小时同步；网络失败五分钟后重试，
+    且只能运行一个实例。不要要求管理员权限或绕过系统策略。只有两种注册方式都失败时，才提示
+    定期运行 `tokenfleet sync`。
 
 11. 等我确认设备码已提交、隐藏输入已结束且剪贴板已清理后，才可以继续指导我执行：
 
     tokenfleet status --json
     tokenfleet open-rank
 
-    检查项目仅限：客户端版本、连接状态、固定服务器、最近同步状态、是否存在用户级计划任务，
-    以及公开排行榜是否出现对应昵称和统计。不要读取 DPAPI 密文或安装原始日志。
+    检查项目仅限：客户端版本、连接状态、固定服务器、最近同步状态、`scheduled_sync` 是否为
+    `true`、`scheduled_backend` 是 `task_scheduler` 或 `startup_loop`，以及公开排行榜是否出现
+    对应昵称和统计。不要读取 DPAPI 密文、启动项原始命令或安装原始日志。
 
 12. 正式同步默认覆盖最近 366 个本地自然日；只上传日期、时区、工具、模型和四类 Token
     聚合，不上传 prompt、回复、代码、文件内容、项目路径或 AI 账号 ID。首次验收后可以再运行

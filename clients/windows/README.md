@@ -2,9 +2,11 @@
 
 > **Source-installed Windows client:** installation, DPAPI enrollment, source
 > upgrade, production sync, public leaderboard projection, and idempotent repeat
-> sync were verified on a real Windows 10 computer on August 13, 2026. Some
-> standard-user Windows policies can still deny Task Scheduler registration;
-> this no longer blocks initial or manual sync and is reported as a warning.
+> sync were verified on a real Windows 10 computer on August 13, 2026. When a
+> standard-user Windows policy denies Task Scheduler registration, TokenFleet
+> falls back to its own current-user startup entry without requiring elevation;
+> that fallback, immediate sign-in sync, single-instance behavior, and production
+> leaderboard update were verified on the same computer on August 14, 2026.
 
 This is the source-distributed Windows participant client for the private
 TokenFleet community. It does not use WeChat, a member login, or an AI-provider
@@ -22,8 +24,9 @@ issues a separate one-time code for every device.
   several computers add to the same participant without sharing an AI account.
 - Current-user Windows DPAPI storage. The device secret is never written or
   logged in plaintext and is not put in Windows roaming settings.
-- A Task Scheduler job every six hours, plus `status`, `preview`, `sync`,
-  `open-rank`, and `uninstall` commands.
+- Automatic sync every six hours. Task Scheduler is preferred; a hidden,
+  single-instance current-user startup loop is used when policy denies it.
+- `status`, `preview`, `sync`, `open-rank`, and `uninstall` commands.
 
 CC Switch is deliberately **not collected in Windows v1**. Its proxy database
 can overlap the native Codex/Claude JSONL. Uploading both before the same
@@ -81,8 +84,12 @@ The existing client behavior is preserved: `preview`, initial sync, manual sync,
 and scheduled sync consider up to the most recent 366 local calendar days.
 
 If Windows denies creation of the six-hour Task Scheduler job, enrollment and
-data upload still complete. `status` reports `scheduled_sync: false`; run
-`tokenfleet sync` periodically until the local Windows policy permits the task.
+data upload still complete. TokenFleet registers only its own value under the
+current user's `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` key. The
+background loop syncs immediately after sign-in, then every six hours, retries
+transient failures after five minutes, and uses a named mutex to prevent duplicate
+instances. `status` reports `scheduled_backend: startup_loop`; if both mechanisms
+fail, it reports `scheduled_sync: false` and asks for manual `tokenfleet sync`.
 
 ## Uninstall
 
@@ -90,7 +97,8 @@ data upload still complete. `status` reports `scheduled_sync: false`; run
 tokenfleet uninstall --yes
 ```
 
-This removes the scheduled task, local state, DPAPI ciphertext, installed files,
-and the user PATH entry. It does not touch `.codex`, `.claude`, TokenStep,
+This removes the scheduled task, TokenFleet's current-user startup value, local
+state, DPAPI ciphertext, installed files, and the user PATH entry. It does not
+touch `.codex`, `.claude`, TokenStep,
 OpenToken, or server-side history. Ask an administrator to disable the old
 device if immediate server-side revocation is required.

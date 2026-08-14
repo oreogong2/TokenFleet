@@ -16,7 +16,7 @@ TokenFleet 是基于 TokenStep v0.1.48 的邀请制社群 AI Token 账本：保�
 ## 目录
 
 - `TokenStepSwift/`：原生 macOS 客户端、本地采集、精确历史和团队同步；
-- `clients/windows/`：Windows 10/11 Codex / Claude Code 采集、DPAPI 凭据、计划任务同步和公榜入口；
+- `clients/windows/`：Windows 10/11 Codex / Claude Code 采集、DPAPI 凭据、计划任务/登录启动回退同步和公榜入口；
 - `server/`：FastAPI 多租户账本、RBAC、设备注册、HMAC、价格和留存；
 - `web/`：无构建依赖的管理员后台、匿名社群榜、公开个人页和本地分享海报；
 - `docs/TOKENFLEET_PRODUCT_SPEC.md`：产品范围；
@@ -64,6 +64,6 @@ PYTHONPATH=clients/windows python3 -m unittest discover -s clients/windows/tests
 - 生产稳定版：当前 50 人邀请测试用于集中收集反馈；要改称稳定版，仍须完成至少 14 天
   连续运行且 P0/P1 为 0；
 - macOS 社群连接：file-login Keychain 凭据存储、固定 HTTPS origin、本机稳定自签安装、升级回滚与安全关闭路径均已落地；自动化只使用隔离临时钥匙串。向社群下发前仍须在一台干净 Mac 的真实登录钥匙串完成首次登记、重启、升级复用和卸载保留人工验收。
-- Windows 参赛端：首版支持 Codex / Claude Code 采集、DPAPI 安全连接、安装时固定社群 origin、计划任务自动同步和上榜，跨平台自动化 26 项通过；不采集 CC Switch，也不宣称具备 macOS 同级完整桌面明细。向社群下发前仍须在真实 Windows 10/11 完成 DPAPI、计划任务、升级和卸载 E2E。
+- Windows 参赛端：首版支持 Codex / Claude Code 采集、DPAPI 安全连接、安装时固定社群 origin、计划任务优先与登录启动循环回退、自动同步和上榜，Windows 自动化 38 项通过；真实 Windows 10 已完成安装、DPAPI、同源升级、回退调度、正式同步和今日公榜验收。不采集 CC Switch，也不宣称具备 macOS 同级完整桌面明细；仍需扩展 Windows 11、多设备、重登记和完整卸载 E2E。
 
 TokenStep 上游代码遵循 MIT License；本仓库保留原版权与许可声明，见 `LICENSE` 与 `NOTICE`。

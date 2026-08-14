@@ -82,8 +82,8 @@ test "$(git rev-parse HEAD)" = "<new-reviewed-commit-sha>"
 
 Windows 源码客户端已于 2026 年 8 月 13 日在真实 Windows 10 电脑完成安装、
 DPAPI 登记、同源升级、正式同步、公开榜展示和重复同步不翻倍验收。部分标准用户
-Windows 策略可能拒绝创建计划任务；该限制不会阻断首次或手动同步，但仍需在更多
-Windows 10/11 环境继续验证自动任务、卸载、重登记和多设备流程。
+Windows 策略可能拒绝创建计划任务；客户端会改用 TokenFleet 自己的当前用户登录启动项，
+无需管理员权限，并仍需在更多 Windows 10/11 环境继续验证卸载、重登记和多设备流程。
 
 Windows 首版需要 Python 3.10 或更高版本。下载或克隆经过复核的 TokenFleet 发布版本，进入仓库根目录后运行：
 
@@ -98,7 +98,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps
 tokenfleet connect
 ```
 
-社群 HTTPS origin 在安装时固定，后续升级必须传入相同值；`connect` 不接受 `--server`。接入码通过隐藏输入读取，不提供会进入命令历史或进程列表的 `--code` 参数。连接成功后，当前用户 DPAPI 保护 device secret。客户端会尝试创建每六小时运行一次的计划任务；如果 Windows 拒绝创建，首次同步仍会继续，并明确提示用户定期手动同步。也可运行：
+社群 HTTPS origin 在安装时固定，后续升级必须传入相同值；`connect` 不接受 `--server`。接入码通过隐藏输入读取，不提供会进入命令历史或进程列表的 `--code` 参数。连接成功后，当前用户 DPAPI 保护 device secret。客户端优先创建每六小时运行一次的计划任务；如果 Windows 拒绝创建，则注册 TokenFleet 专属的当前用户启动项。用户登录后隐藏后台循环会立即同步，之后每六小时同步，失败后五分钟重试，并以单实例锁防止重复运行。两种方式都失败时才要求定期手动同步。也可运行：
 
 ```powershell
 tokenfleet preview
