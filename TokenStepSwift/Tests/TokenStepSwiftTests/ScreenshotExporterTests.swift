@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import TokenStepSwift
 
@@ -14,6 +15,20 @@ final class ScreenshotExporterTests: XCTestCase {
         XCTAssertTrue(jpg.starts(with: [0xFF, 0xD8, 0xFF]))
         XCTAssertTrue(png.count > 100)
         XCTAssertTrue(jpg.count > 100)
+    }
+
+    func testSwiftUIExportUsesDeterministicTwoTimesPixelScale() throws {
+        _ = NSApplication.shared
+        let view = Color.tokenMint.frame(width: 120, height: 80)
+
+        let image = try ScreenshotExporter.renderImage(view)
+        let png = try ScreenshotExporter.pngData(from: image)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: png))
+
+        XCTAssertEqual(image.size.width, 120, accuracy: 0.5)
+        XCTAssertEqual(image.size.height, 80, accuracy: 0.5)
+        XCTAssertEqual(bitmap.pixelsWide, 240)
+        XCTAssertEqual(bitmap.pixelsHigh, 160)
     }
 
     func testEveryExportFailureNamesItsStage() {

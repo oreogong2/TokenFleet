@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// A 600 × 800 point canvas. ScreenshotExporter renders at Retina scale, so
-/// the exported PNG is exactly 1200 × 1600 on a standard 2× Mac display.
+/// A 600 × 800 point canvas. ScreenshotExporter uses a deterministic 2× export
+/// scale, so the PNG is exactly 1200 × 1600 on every supported Mac and in CI.
 struct CommunityRankingShareView: View {
     var rank: TeamSyncCommunityRank
     var leaderboard: TeamSyncPublicLeaderboard

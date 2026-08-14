@@ -117,7 +117,10 @@ enum ScreenshotExporter {
 
     static func renderImage<V: View>(_ view: V) throws -> NSImage {
         let renderer = ImageRenderer(content: view)
-        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
+        // Exported assets must have deterministic pixels on Retina, non-Retina,
+        // and headless CI screens. A display-dependent scale made the same
+        // 600 x 800 poster alternate between 600 x 800 and 1200 x 1600.
+        renderer.scale = 2
         guard let image = renderer.nsImage else {
             throw ScreenshotExportError.renderFailed
         }
