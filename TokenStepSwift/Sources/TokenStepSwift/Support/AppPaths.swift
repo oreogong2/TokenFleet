@@ -22,6 +22,7 @@ enum AppPaths {
     static let teamSyncStateJSON = appSupportRoot.appendingPathComponent("config/team-sync-state.json")
     static let autostartDefaultMarker = appSupportRoot.appendingPathComponent("config/autostart-default-applied")
     static let usageRecalibrationNoticeMarker = appSupportRoot.appendingPathComponent("config/usage-recalibration-v6-pending")
+    static let pricingReestimationNoticeMarker = appSupportRoot.appendingPathComponent("config/pricing-reestimation-pending")
     static let updates = appSupportRoot.appendingPathComponent("updates", isDirectory: true)
     static let logs = appSupportRoot.appendingPathComponent("logs", isDirectory: true)
 }

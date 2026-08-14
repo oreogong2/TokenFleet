@@ -307,6 +307,7 @@ struct CCSwitchProxyFixtureCheck {
         let source = snapshot.sources["CC Switch Proxy"]
         try assertEqual(source?.records, 2, "ambiguous fuzzy candidates are both kept")
         try assertEqual(source?.dedupedRecords, 0, "ambiguous fuzzy candidates are not deduplicated")
+        try assertEqual(source?.possibleOverlapRecords, 2, "ambiguous candidates are diagnosed without deletion")
         try assertEqual(snapshot.totals.tokens, 339, "one native plus two ambiguous proxy rows")
     }
 
@@ -498,6 +499,7 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(source?.rawRecords, 3, "claude dedupe raw proxy records")
         try assertEqual(source?.records, 2, "claude dedupe kept proxy records")
         try assertEqual(source?.dedupedRecords, 1, "claude dedupe skipped duplicate proxy records")
+        try assertEqual(source?.possibleOverlapRecords, 0, "resolved duplicates leave no uncertain overlap")
         try assertEqual(source?.strategy, "request_level_dedupe", "claude dedupe strategy")
         try assertEqual(snapshot.totals.tokens, 143, "claude dedupe total tokens")
         try assertEqual(snapshot.totals.cost, 0.42, "claude dedupe total cost")
@@ -565,6 +567,7 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(source?.rawRecords, 1, "independent Codex raw proxy records")
         try assertEqual(source?.records, 1, "independent Codex proxy record is kept")
         try assertEqual(source?.dedupedRecords, 0, "similar requests without a shared ID are not deduplicated")
+        try assertEqual(source?.possibleOverlapRecords, 1, "similar requests are retained and diagnosed")
         try assertEqual(snapshot.totals.tokens, 70, "native and independent proxy Codex requests both count")
         try assertEqual(snapshot.totals.cost, 0.45, "independent Codex request total cost")
         try assertEqual(snapshot.daily.first?.tools["Codex"], 35, "independent native Codex tokens")

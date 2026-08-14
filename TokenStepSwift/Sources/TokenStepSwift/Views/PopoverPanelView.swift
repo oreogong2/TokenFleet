@@ -17,6 +17,10 @@ struct PopoverPanelView: View {
                 UsageRecalibrationNotice {
                     appState.dismissUsageRecalibrationNotice()
                 }
+            } else if appState.showsPricingReestimationNotice {
+                PricingReestimationNotice {
+                    appState.dismissPricingReestimationNotice()
+                }
             }
             PopoverTodayRingCard()
             PopoverAgentWorkStrip()

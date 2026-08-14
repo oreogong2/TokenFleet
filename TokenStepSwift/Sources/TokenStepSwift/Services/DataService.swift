@@ -34,6 +34,13 @@ enum DataService {
         return storedRevision < UsageCollector.codexAccountingRevision
     }
 
+    static func requiresImmediatePricingReestimation(_ snapshot: UsageSnapshot) -> Bool {
+        guard snapshot.totals.tokens > 0 else { return false }
+        return TokenPricingCatalog.shouldReestimate(
+            storedVersion: snapshot.totals.pricingVersion
+        )
+    }
+
     static func saveSettings(_ settings: TokenStepSettings) throws {
         let normalized = normalize(settings)
         let encoder = JSONEncoder()
@@ -81,7 +88,7 @@ enum DataService {
             collectedSnapshot,
             previousSnapshot: previousSnapshot
         )
-        try persist(snapshot: snapshot)
+        try persist(snapshot: snapshot, previousSnapshot: previousSnapshot)
         let afterState = UsageCollector.collectionState(
             historyDays: historyDays,
             includeExperimentalAgentSources: settings.showExperimentalAgentSources
@@ -146,7 +153,10 @@ enum DataService {
         }
     }
 
-    private static func persist(snapshot: UsageSnapshot) throws {
+    private static func persist(
+        snapshot: UsageSnapshot,
+        previousSnapshot: UsageSnapshot?
+    ) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(snapshot)
@@ -169,6 +179,38 @@ enum DataService {
                 encoding: .utf8
             )
         }
+        if shouldCreatePricingReestimationNotice(
+            snapshot: snapshot,
+            previousSnapshot: previousSnapshot
+        ) {
+            try FileManager.default.createDirectory(
+                at: AppPaths.pricingReestimationNoticeMarker.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let previousVersion = previousSnapshot?.totals.pricingVersion ?? "legacy-unversioned"
+            let currentVersion = snapshot.totals.pricingVersion ?? TokenPricingCatalog.version
+            try "\(previousVersion)\n\(currentVersion)\n".write(
+                to: AppPaths.pricingReestimationNoticeMarker,
+                atomically: true,
+                encoding: .utf8
+            )
+        }
+    }
+
+    private static func shouldCreatePricingReestimationNotice(
+        snapshot: UsageSnapshot,
+        previousSnapshot: UsageSnapshot?
+    ) -> Bool {
+        guard let previousSnapshot,
+              previousSnapshot.totals.tokens > 0,
+              snapshot.totals.tokens > 0,
+              snapshot.totals.pricingVersion == TokenPricingCatalog.version
+        else {
+            return false
+        }
+        return TokenPricingCatalog.shouldReestimate(
+            storedVersion: previousSnapshot.totals.pricingVersion
+        )
     }
 
 #if TOKENSTEP_TESTING
@@ -178,13 +220,17 @@ enum DataService {
     ) throws -> UsageSnapshot {
         try validateRecalibrationCandidate(snapshot, previousSnapshot: previousSnapshot)
         let prepared = snapshotWithMigrationMetadata(snapshot, previousSnapshot: previousSnapshot)
-        try persist(snapshot: prepared)
+        try persist(snapshot: prepared, previousSnapshot: previousSnapshot)
         return prepared
     }
 #endif
 
     static var hasPendingUsageRecalibrationNotice: Bool {
         FileManager.default.fileExists(atPath: AppPaths.usageRecalibrationNoticeMarker.path)
+    }
+
+    static var hasPendingPricingReestimationNotice: Bool {
+        FileManager.default.fileExists(atPath: AppPaths.pricingReestimationNoticeMarker.path)
     }
 
     private static func loadCollectionCheckpoint() -> CollectionCheckpoint? {
@@ -211,6 +257,10 @@ enum DataService {
 
     static func acknowledgeUsageRecalibrationNotice() {
         try? FileManager.default.removeItem(at: AppPaths.usageRecalibrationNoticeMarker)
+    }
+
+    static func acknowledgePricingReestimationNotice() {
+        try? FileManager.default.removeItem(at: AppPaths.pricingReestimationNoticeMarker)
     }
 
     static func runCollectorInHelper(

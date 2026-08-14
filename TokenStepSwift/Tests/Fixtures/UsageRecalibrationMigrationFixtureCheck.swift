@@ -9,6 +9,7 @@ struct UsageRecalibrationMigrationFixtureCheck {
 
         try checkEnergyRefreshPolicy()
         try checkCollectionCheckpointPolicy()
+        try checkPricingCatalog()
 
         let currentRevision = UsageCollector.codexAccountingRevision
         let legacy = snapshot(accountingRevision: nil, records: 1)
@@ -82,6 +83,70 @@ struct UsageRecalibrationMigrationFixtureCheck {
             "an already-current snapshot must not recreate the notice"
         )
 
+        let oldPricing = snapshot(
+            accountingRevision: currentRevision,
+            records: 1,
+            pricingVersion: "public-usd-2026-08-13"
+        )
+        let unversionedPricing = snapshot(
+            accountingRevision: currentRevision,
+            records: 1,
+            pricingVersion: nil
+        )
+        let futurePricing = snapshot(
+            accountingRevision: currentRevision,
+            records: 1,
+            pricingVersion: "public-usd-2026-08-15"
+        )
+        try expect(
+            DataService.requiresImmediatePricingReestimation(oldPricing),
+            "an older pricing catalog should re-estimate immediately"
+        )
+        try expect(
+            DataService.requiresImmediatePricingReestimation(unversionedPricing),
+            "an unversioned legacy estimate should re-estimate immediately"
+        )
+        try expect(
+            !DataService.requiresImmediatePricingReestimation(current),
+            "the current pricing catalog should not re-estimate again"
+        )
+        try expect(
+            !DataService.requiresImmediatePricingReestimation(futurePricing),
+            "a newer pricing catalog should not be downgraded"
+        )
+        try expect(
+            !DataService.requiresImmediatePricingReestimation(emptyLegacy),
+            "an empty snapshot should not create a pricing refresh loop"
+        )
+
+        _ = try DataService.persistSnapshotForMigrationTests(
+            current,
+            previousSnapshot: oldPricing
+        )
+        try expect(
+            DataService.hasPendingPricingReestimationNotice,
+            "a successful price-catalog migration should create a pending notice"
+        )
+        try expect(
+            try String(contentsOf: AppPaths.pricingReestimationNoticeMarker, encoding: .utf8)
+                == "public-usd-2026-08-13\n\(TokenPricingCatalog.version)\n",
+            "the price marker should record the old and new catalogs"
+        )
+        DataService.acknowledgePricingReestimationNotice()
+        try expect(
+            !DataService.hasPendingPricingReestimationNotice,
+            "acknowledging the price notice should remove its marker"
+        )
+
+        _ = try DataService.persistSnapshotForMigrationTests(
+            current,
+            previousSnapshot: alreadyCurrent
+        )
+        try expect(
+            !DataService.hasPendingPricingReestimationNotice,
+            "an already-current catalog must not recreate the price notice"
+        )
+
         try? FileManager.default.removeItem(at: root)
         _ = try DataService.persistSnapshotForMigrationTests(legacy, previousSnapshot: nil)
         let failedRecalibration = snapshot(accountingRevision: currentRevision, records: 0)
@@ -136,7 +201,44 @@ struct UsageRecalibrationMigrationFixtureCheck {
             "a SQLite fallback must not create a migration notice"
         )
 
-        print("PASS: usage recalibration migration marker and failure preservation")
+        print("PASS: usage and pricing migration markers preserve Token truth")
+    }
+
+    private static func checkPricingCatalog() throws {
+        let usage = TokenPricingUsage(
+            inputTokens: 1_000_000,
+            outputTokens: 1_000_000,
+            cacheReadTokens: 1_000_000,
+            cacheWriteTokens: 1_000_000,
+            totalTokens: 4_000_000,
+            breakdownComplete: true
+        )
+        let rows: [(model: String, expected: Double)] = [
+            ("gpt-5.6-sol", 41.75),
+            ("gpt-5.6-terra", 16.7),
+            ("gpt-5.6-luna", 1.67),
+            ("gpt-5.3-chat-latest", 17.675),
+            ("gpt-5.1-chat-latest", 12.625)
+        ]
+        for row in rows {
+            guard let estimate = TokenPricingCatalog.estimate(
+                tool: "Codex",
+                model: row.model,
+                usage: usage,
+                date: TokenPricingCatalog.verifiedDate
+            ) else {
+                try expect(false, "missing verified price for \(row.model)")
+                continue
+            }
+            try expect(
+                abs(estimate.costUSD - row.expected) < 0.000_001,
+                "unexpected verified price for \(row.model)"
+            )
+            try expect(
+                estimate.pricingVersion == TokenPricingCatalog.version,
+                "unexpected catalog version for \(row.model)"
+            )
+        }
     }
 
     private static func checkCollectionCheckpointPolicy() throws {
@@ -300,12 +402,18 @@ struct UsageRecalibrationMigrationFixtureCheck {
     private static func snapshot(
         accountingRevision: Int?,
         records: Int,
-        status: String = "ok"
+        status: String = "ok",
+        pricingVersion: String? = TokenPricingCatalog.version
     ) -> UsageSnapshot {
         UsageSnapshot(
             generatedAt: "2026-07-13T00:00:00Z",
             timezone: "Asia/Shanghai",
-            totals: UsageTotals(tokens: records * 100, cost: 0, activeDays: records > 0 ? 1 : 0),
+            totals: UsageTotals(
+                tokens: records * 100,
+                cost: 0,
+                activeDays: records > 0 ? 1 : 0,
+                pricingVersion: pricingVersion
+            ),
             daily: [],
             tools: [],
             models: [],

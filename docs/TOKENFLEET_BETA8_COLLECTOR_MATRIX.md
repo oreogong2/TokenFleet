@@ -22,6 +22,8 @@ TokenFleet 只允许读取日期、工具、模型、输入、输出、缓存读
 
 beta.8 保留 CC Switch SQLite 只读采集，并继续使用严格条件：HTTP 2xx、`data_source = proxy`、四类 Token 合计大于 0。查询只选择请求时间、`app_type`、模型、四类 Token、来源费用和请求去重 ID；不选择请求体、响应体、prompt、代码或路径字段。
 
+CC Switch 与原生记录只有在请求／响应 ID 唯一吻合，或共享会话 ID 且时间、模型、Token 向量唯一吻合时才去重。只有时间和数值相似但缺少身份依据的记录不会被猜测删除；它们继续计入，并在本地来源诊断中记录 `possible_overlap_records`，便于排查潜在重复而不牺牲真实并发请求。
+
 Kimi、DeepSeek、Cursor 的 CC Switch 名称明确带有 `experimental`，不会伪装成原生支持；没有真实行时界面不会出现它们。Gemini 的代理来源同样不等于 Gemini CLI 原生日志支持。
 
 ## 原生采集器进入正式支持的门槛

@@ -669,6 +669,10 @@ struct SourceInfo: Codable {
     var records: Int?
     var rawRecords: Int?
     var dedupedRecords: Int?
+    /// Proxy rows that resemble a native record but lack sufficient identity
+    /// evidence to delete safely. They remain counted and are surfaced only as
+    /// a diagnostic so totals are never changed by a heuristic guess.
+    var possibleOverlapRecords: Int?
     var skippedRecords: Int?
     var strategy: String?
     var exactRecords: Int?
@@ -688,6 +692,7 @@ struct SourceInfo: Codable {
         case records
         case rawRecords = "raw_records"
         case dedupedRecords = "deduped_records"
+        case possibleOverlapRecords = "possible_overlap_records"
         case skippedRecords = "skipped_records"
         case strategy
         case exactRecords = "exact_records"

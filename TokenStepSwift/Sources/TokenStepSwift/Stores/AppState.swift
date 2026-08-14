@@ -19,6 +19,7 @@ final class AppState: ObservableObject {
     @Published private(set) var updateDownloadedURL: URL?
     @Published private(set) var tokenIslandAvailable = TokenIslandDisplayDetector.isAvailable
     @Published private(set) var showsUsageRecalibrationNotice = false
+    @Published private(set) var showsPricingReestimationNotice = false
     @Published private(set) var teamSyncState: TeamSyncPersistentState?
     @Published private(set) var isTeamSyncing = false
     @Published private(set) var teamSyncActionError: String?
@@ -225,6 +226,7 @@ final class AppState: ObservableObject {
         snapshot = (try? DataService.loadSnapshot()) ?? .empty
         teamSyncState = FileTeamSyncStateStore().load()
         showsUsageRecalibrationNotice = DataService.hasPendingUsageRecalibrationNotice
+        showsPricingReestimationNotice = DataService.hasPendingPricingReestimationNotice
         if !loadedSettings.showCodexQuota {
             codexQuota = .unavailable
             claudeQuota = .unavailable
@@ -401,6 +403,11 @@ final class AppState: ObservableObject {
     func dismissUsageRecalibrationNotice() {
         DataService.acknowledgeUsageRecalibrationNotice()
         showsUsageRecalibrationNotice = false
+    }
+
+    func dismissPricingReestimationNotice() {
+        DataService.acknowledgePricingReestimationNotice()
+        showsPricingReestimationNotice = false
     }
 
     func refreshTokenIslandAvailability() {
@@ -821,6 +828,12 @@ final class AppState: ObservableObject {
                 "Codex accounting revision \(storedRevision) is older than "
                     + "\(UsageCollector.codexAccountingRevision); starting immediate recalibration."
             )
+        } else if reason == .pricingVersion {
+            let storedVersion = snapshot.totals.pricingVersion ?? "legacy-unversioned"
+            LifecycleLogger.log(
+                "Pricing catalog \(storedVersion) is older than "
+                    + "\(TokenPricingCatalog.version); starting immediate re-estimation."
+            )
         }
         refresh(forceCollection: reason != .stale)
     }
@@ -884,6 +897,7 @@ final class AppState: ObservableObject {
 
 enum UsageSnapshotRefreshReason: Equatable {
     case accountingRevision
+    case pricingVersion
     case missingModelBreakdown
     case missingSnapshotTimestamp
     case stale
@@ -897,6 +911,9 @@ enum UsageSnapshotRefreshPolicy {
     ) -> UsageSnapshotRefreshReason? {
         if DataService.requiresImmediateCodexRecalibration(snapshot) {
             return .accountingRevision
+        }
+        if DataService.requiresImmediatePricingReestimation(snapshot) {
+            return .pricingVersion
         }
         if snapshot.daily.contains(where: { $0.totalTokens > 0 && $0.models.isEmpty }) {
             return .missingModelBreakdown

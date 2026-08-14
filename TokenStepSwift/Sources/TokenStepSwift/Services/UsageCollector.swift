@@ -2142,6 +2142,27 @@ enum UsageCollector {
             matchedNativeIndices: &matchedNativeIndices
         )
 
+        let possibleOverlapRecords = deduplicableProxyIndices.filter { proxyIndex in
+            guard !matchedProxyIndices.contains(proxyIndex) else { return false }
+            return nativeRecords.indices.contains { nativeIndex in
+                guard !matchedNativeIndices.contains(nativeIndex) else { return false }
+                return isSameDedupeDomain(
+                    proxyRecord: proxyRecords[proxyIndex],
+                    nativeRecord: nativeRecords[nativeIndex]
+                ) && areTimestampsClose(
+                    proxyRecords[proxyIndex].timestamp,
+                    nativeRecords[nativeIndex].timestamp,
+                    seconds: 10
+                ) && modelsCompatible(
+                    proxyRecords[proxyIndex].model,
+                    nativeRecords[nativeIndex].model
+                ) && usageVectorsClose(
+                    proxyRecord: proxyRecords[proxyIndex],
+                    nativeRecord: nativeRecords[nativeIndex]
+                )
+            }
+        }.count
+
         let keptProxyRecords = proxyRecords.indices
             .filter { !matchedProxyIndices.contains($0) }
             .map { proxyRecords[$0] }
@@ -2150,6 +2171,7 @@ enum UsageCollector {
             rawProxyRecords: proxyRecords.count,
             keptProxyRecords: keptProxyRecords.count,
             dedupedProxyRecords: matchedProxyIndices.count,
+            possibleOverlapRecords: possibleOverlapRecords,
             skippedProxyRecords: skippedProxyRecords
         )
     }
@@ -2204,6 +2226,7 @@ enum UsageCollector {
         var annotated = source
         annotated.rawRecords = result.rawProxyRecords
         annotated.dedupedRecords = result.dedupedProxyRecords
+        annotated.possibleOverlapRecords = result.possibleOverlapRecords
         annotated.skippedRecords = result.skippedProxyRecords
         annotated.strategy = "request_level_dedupe"
         annotated.records = result.keptProxyRecords
@@ -4227,6 +4250,7 @@ private struct CrossSourceDedupeResult {
     var rawProxyRecords: Int
     var keptProxyRecords: Int
     var dedupedProxyRecords: Int
+    var possibleOverlapRecords: Int
     var skippedProxyRecords: Int
 }
 

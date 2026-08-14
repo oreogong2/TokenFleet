@@ -34,11 +34,11 @@ struct TokenCostEstimate: Equatable {
 /// Versioned public list-price catalog for records that do not contain a source cost.
 ///
 /// Rates are USD per one million tokens, verified against provider documentation on
-/// 2026-08-13. Model matching is deliberately exact (plus dated snapshot suffixes),
+/// 2026-08-14. Model matching is deliberately exact (plus dated snapshot suffixes),
 /// so aliases, routers, service tiers and unknown future models remain unpriced.
 enum TokenPricingCatalog {
-    static let version = "public-usd-2026-08-13"
-    static let verifiedDate = "2026-08-13"
+    static let version = "public-usd-2026-08-14"
+    static let verifiedDate = "2026-08-14"
 
     private struct Rates {
         var provider: String
@@ -77,6 +77,19 @@ enum TokenPricingCatalog {
         )
     }
 
+    /// Returns true only when a stored snapshot is unversioned or uses an older
+    /// dated public-price catalog. A snapshot written by a newer app is never
+    /// downgraded merely because an older binary was launched.
+    static func shouldReestimate(storedVersion: String?) -> Bool {
+        guard storedVersion != version else { return false }
+        guard let storedVersion, !storedVersion.isEmpty else { return true }
+        let prefix = "public-usd-"
+        guard storedVersion.hasPrefix(prefix), version.hasPrefix(prefix) else {
+            return true
+        }
+        return storedVersion < version
+    }
+
     private static func rates(tool: String, model: String, date: String) -> Rates? {
         let normalizedTool = normalize(tool)
         let normalizedModel = normalize(model)
@@ -93,15 +106,15 @@ enum TokenPricingCatalog {
     private static func openAIRates(model: String) -> Rates? {
         let rows: [(aliases: [String], rates: Rates)] = [
             (["gpt-5.6-sol", "gpt-5.6"], openAI("gpt-5.6-sol", 5, 30, 0.5, 6.25)),
-            (["gpt-5.6-terra"], openAI("gpt-5.6-terra", 2.5, 15, 0.25, 3.125)),
-            (["gpt-5.6-luna"], openAI("gpt-5.6-luna", 1, 6, 0.1, 1.25)),
+            (["gpt-5.6-terra"], openAI("gpt-5.6-terra", 2, 12, 0.2, 2.5)),
+            (["gpt-5.6-luna"], openAI("gpt-5.6-luna", 0.2, 1.2, 0.02, 0.25)),
             (["gpt-5.5"], openAI("gpt-5.5", 5, 30, 0.5, 5)),
             (["gpt-5.4-mini"], openAI("gpt-5.4-mini", 0.75, 4.5, 0.075, 0.75)),
             (["gpt-5.4-nano"], openAI("gpt-5.4-nano", 0.2, 1.25, 0.02, 0.2)),
             (["gpt-5.4"], openAI("gpt-5.4", 2.5, 15, 0.25, 2.5)),
-            (["gpt-5.3-chat"], openAI("gpt-5.3-chat", 1.75, 14, 0.175, 1.75)),
+            (["gpt-5.3-chat-latest", "gpt-5.3-chat"], openAI("gpt-5.3-chat", 1.75, 14, 0.175, 1.75)),
             (["gpt-5.2"], openAI("gpt-5.2", 1.75, 14, 0.175, 1.75)),
-            (["gpt-5.1-chat", "gpt-5.1"], openAI("gpt-5.1", 1.25, 10, 0.125, 1.25)),
+            (["gpt-5.1-chat-latest", "gpt-5.1-chat", "gpt-5.1"], openAI("gpt-5.1", 1.25, 10, 0.125, 1.25)),
             (["gpt-5-mini"], openAI("gpt-5-mini", 0.25, 2, 0.025, 0.25)),
             (["gpt-5-nano"], openAI("gpt-5-nano", 0.05, 0.4, 0.005, 0.05)),
             (["gpt-5"], openAI("gpt-5", 1.25, 10, 0.125, 1.25))

@@ -10,7 +10,10 @@ struct UsageRecalibrationNoticeRender {
             ?? FileManager.default.temporaryDirectory
                 .appendingPathComponent("tokenstep-usage-recalibration-notice.png")
                 .path
-        let content = UsageRecalibrationNotice(dismiss: {})
+        let content = VStack(spacing: 12) {
+            UsageRecalibrationNotice(dismiss: {})
+            PricingReestimationNotice(dismiss: {})
+        }
             .padding(20)
             .frame(width: 412)
             .background(Color.tokenCanvas)

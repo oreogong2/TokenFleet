@@ -222,6 +222,35 @@ struct UsageRecalibrationNotice: View {
     }
 }
 
+struct PricingReestimationNotice: View {
+    var dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "dollarsign.arrow.circlepath")
+                .foregroundStyle(Color.tokenGreen)
+                .padding(.top, 1)
+            Text(L("TokenFleet 已按新的公开价格目录重新估算历史金额。Token 消耗与原始记录没有变化，估算仍不等于账单。"))
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(Color.tokenInk.opacity(0.82))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L("关闭"))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(Color.tokenMint.opacity(0.20), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.tokenGreen.opacity(0.18))
+        )
+    }
+}
+
 struct MetricPill: View {
     var label: String
     var value: String
