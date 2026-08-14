@@ -18,12 +18,8 @@ struct PopoverFooterView: View {
             }
 
             Button {
-                if appState.communityLeaderboardURL(
-                    isScreenshotRendering: isScreenshotRendering
-                ) != nil {
-                    appState.openCommunityLeaderboard(
-                        isScreenshotRendering: isScreenshotRendering
-                    )
+                if appState.isCommunitySyncEnrollmentCompatible {
+                    MainWindowPresenter.shared.show(appState: appState, section: .community)
                 } else {
                     SettingsWindowPresenter.shared.show(appState: appState)
                 }
@@ -39,7 +35,7 @@ struct PopoverFooterView: View {
                         }
                     }
                     Spacer()
-                    Image(systemName: appState.isCommunitySyncEnrollmentCompatible ? "arrow.up.right" : "link")
+                    Image(systemName: appState.isCommunitySyncEnrollmentCompatible ? "chevron.right" : "link")
                 }
                 .font(.callout.weight(.heavy))
                 .foregroundStyle(Color.tokenGreenDark)

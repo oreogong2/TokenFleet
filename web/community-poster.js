@@ -1,13 +1,10 @@
 import {
-  PUBLIC_METRICS,
   PUBLIC_PERIODS,
-  formatPublicCost,
   isHttpsPublicUrl,
-  publicMetricValue,
   sanitizePublicFilters,
 } from "./community-contract.js";
 import { createQrMatrix } from "./qr-code.js";
-import { formatTokenCount } from "./server-adapter.js";
+import { formatTokenCount, toTokenBigInt } from "./server-adapter.js";
 
 export const COMMUNITY_POSTER_LAYOUT = Object.freeze({
   urlX: 500,
@@ -24,39 +21,96 @@ function cleanText(value, limit = 80) {
     .slice(0, limit);
 }
 
-function primaryValue(person, metric) {
-  if (metric === "cost") return formatPublicCost(person.cost);
-  return formatTokenCount(publicMetricValue(person, metric), { compact: true });
+function tokenValue(person) {
+  return formatTokenCount(person?.totalTokens ?? "0", { compact: true });
+}
+
+function posterCost(cost) {
+  if (!cost || cost.unpriced || !cost.amounts?.length) return "未定价";
+  return cost.amounts.map(({ currency, microunits }) => {
+    const cents = (toTokenBigInt(microunits) + 5000n) / 10000n;
+    const whole = cents / 100n;
+    const decimal = String(cents % 100n).padStart(2, "0");
+    const prefix = currency === "USD" ? "US$" : currency === "CNY" ? "¥" : `${currency} `;
+    return `${prefix}${whole}.${decimal}`;
+  }).join(" · ");
+}
+
+function primaryBreakdown(person, dimension) {
+  const isTool = dimension === "tool";
+  const primaryName = isTool ? person?.primaryTool : person?.primaryModel;
+  const primaryTokens = isTool ? person?.primaryToolTokens : person?.primaryModelTokens;
+  const distribution = isTool ? person?.tools : person?.models;
+  const fallback = Array.isArray(distribution) ? distribution[0] : null;
+  return {
+    name: cleanText(primaryName || fallback?.name, 42) || "暂无可靠字段",
+    value: primaryTokens !== null && primaryTokens !== undefined
+      ? formatTokenCount(primaryTokens, { compact: true })
+      : fallback
+        ? formatTokenCount(fallback.totalTokens, { compact: true })
+        : "—",
+    count: Math.max(
+      0,
+      Number(isTool ? person?.toolCount : person?.modelCount) || 0,
+      Array.isArray(distribution) ? distribution.length : 0,
+    ),
+  };
+}
+
+function posterRow(person, focus) {
+  const tool = primaryBreakdown(person, "tool");
+  const model = primaryBreakdown(person, "model");
+  return {
+    rank: person.rank,
+    nickname: cleanText(person.displayName, 42) || "匿名参赛者",
+    tool: tool.name,
+    toolValue: tool.value,
+    toolCount: tool.count,
+    model: model.name,
+    modelValue: model.value,
+    modelCount: model.count,
+    tokenValue: tokenValue(person),
+    costValue: posterCost(person.cost),
+    isFocus: Boolean(
+      focus && person.rank === focus.rank && person.displayName === focus.displayName
+    ),
+  };
 }
 
 export function buildCommunityPosterModel({ leaderboard, focus = null, filters = {}, publicUrl, demo = false }) {
   if (!isHttpsPublicUrl(publicUrl)) throw new TypeError("分享海报需要公开 HTTPS 榜单地址");
-  const safeFilters = sanitizePublicFilters(filters);
+  const safeFilters = sanitizePublicFilters({ ...filters, metric: "tokens" });
   const periodLabel = PUBLIC_PERIODS.find(([key]) => key === safeFilters.period)?.[1] || "今天";
-  const metricLabel = PUBLIC_METRICS.find(([key]) => key === safeFilters.metric)?.[1] || "含缓存";
   const topPeople = (leaderboard?.participants || []).slice(0, 10);
-  const top = topPeople.map((person) => ({
-    rank: person.rank,
-    nickname: cleanText(person.displayName, 42) || "匿名参赛者",
-    value: primaryValue(person, safeFilters.metric),
-  }));
-  const focusRow = focus ? {
-    rank: focus.rank,
-    nickname: cleanText(focus.displayName, 42) || "匿名参赛者",
-    value: primaryValue(focus, safeFilters.metric),
-  } : null;
+  const totalEntries = Math.max(
+    Number(leaderboard?.totalEntries) || 0,
+    Number(focus?.rank) || 0,
+  );
+  const top = topPeople.map((person) => posterRow(person, focus));
+  const focusRow = focus ? posterRow(focus, focus) : null;
+  if (focusRow) {
+    focusRow.totalEntries = totalEntries;
+    focusRow.exceededPercent = focusRow.rank && totalEntries
+      ? Math.max(0, Math.min(100, Math.round(((totalEntries - focusRow.rank) / totalEntries) * 100)))
+      : null;
+  }
 
   return Object.freeze({
     title: "Token 消耗排行榜",
-    subtitle: `${periodLabel} · ${metricLabel}`,
+    subtitle: `${periodLabel} · 含缓存 Token · API 公开标准价估算`,
     filters: Object.freeze([
       safeFilters.tool ? `工具：${cleanText(safeFilters.tool, 42)}` : "全部工具",
       safeFilters.model ? `模型：${cleanText(safeFilters.model, 42)}` : "全部模型",
     ]),
     rows: Object.freeze(top),
     focus: focusRow ? Object.freeze(focusRow) : null,
+    summary: Object.freeze({
+      period: periodLabel,
+      participants: totalEntries,
+    }),
     publicUrl: new URL(publicUrl).href,
-    footer: "扫码查看完整排行榜",
+    footer: "扫码查看同一口径的完整排行榜",
+    slogan: "让自己 AI Native 化，Learn in Public.",
     demoLabel: demo === true ? "演示数据 · 非真实排名" : "",
   });
 }
@@ -146,27 +200,77 @@ export function renderCommunityPosterCanvas(model, documentRef = document) {
   context.font = "600 25px Avenir Next, PingFang SC, sans-serif";
   context.fillText(model.subtitle, 84, 233);
 
-  let panelY = 280;
+  const panelY = 442;
+  context.fillStyle = "#fffdf7";
+  roundedRect(context, 76, 270, 1048, 144, 22);
+  context.strokeStyle = "rgba(29,119,79,.28)";
+  context.lineWidth = 2;
+  strokeRoundedRect(context, 77, 271, 1046, 142, 21);
   if (model.focus) {
-    context.fillStyle = "#fffdf7";
-    roundedRect(context, 76, 270, 1048, 144, 22);
-    context.strokeStyle = "rgba(29,119,79,.28)";
-    context.lineWidth = 2;
-    strokeRoundedRect(context, 77, 271, 1046, 142, 21);
     context.fillStyle = "#657068";
     context.font = "700 18px Avenir Next, PingFang SC, sans-serif";
-    context.fillText("我的排名", 108, 308);
+    context.fillText("我的成绩", 108, 303);
+    context.fillStyle = "#17211c";
+    context.font = "750 30px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(fitText(context, model.focus.nickname, 520), 108, 341);
+    context.fillStyle = "#1d774f";
+    context.font = "850 40px Avenir Next, PingFang SC, sans-serif";
+    const focusTokenValue = fitText(context, model.focus.tokenValue, 430);
+    context.fillText(focusTokenValue, 108, 391);
+    const focusTokenWidth = context.measureText(focusTokenValue).width;
+    context.fillStyle = "#657068";
+    context.font = "750 16px Avenir Next, PingFang SC, sans-serif";
+    context.fillText("TOKEN · 含缓存", 124 + focusTokenWidth, 389);
+    context.strokeStyle = "rgba(29,119,79,.18)";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(714, 292);
+    context.lineTo(714, 392);
+    context.stroke();
+    context.textAlign = "left";
+    context.fillStyle = "#657068";
+    context.font = "700 18px Avenir Next, PingFang SC, sans-serif";
+    context.fillText("社群排名", 760, 303);
+    context.fillStyle = "#1d774f";
+    context.font = "850 54px Avenir Next, sans-serif";
+    const rankValue = model.focus.rank ? `#${model.focus.rank}` : "未上榜";
+    context.fillText(rankValue, 760, 360);
+    const rankWidth = context.measureText(rankValue).width;
+    if (model.focus.rank) {
+      context.font = "800 26px Avenir Next, PingFang SC, sans-serif";
+      context.fillText(`/ ${model.focus.totalEntries} 名`, 774 + rankWidth, 357);
+    }
+    context.fillStyle = "#657068";
+    context.font = "700 18px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(
+      model.focus.exceededPercent === null
+        ? "当前筛选下暂无名次"
+        : `超过 ${model.focus.exceededPercent}% 参榜用户`,
+      760,
+      391,
+    );
+    context.textAlign = "left";
+  } else {
+    context.fillStyle = "#657068";
+    context.font = "700 18px Avenir Next, PingFang SC, sans-serif";
+    context.fillText("当前榜单", 108, 305);
     context.fillStyle = "#17211c";
     context.font = "700 31px Avenir Next, PingFang SC, sans-serif";
-    context.fillText(fitText(context, model.focus.nickname, 500), 108, 359);
+    context.fillText(model.summary.period, 108, 348);
+    context.fillStyle = "#657068";
+    context.font = "700 20px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(model.filters.join(" · "), 108, 382);
     context.textAlign = "right";
+    context.fillStyle = "#657068";
+    context.font = "700 18px Avenir Next, PingFang SC, sans-serif";
+    context.fillText("参与人数", 1080, 305);
     context.fillStyle = "#1d774f";
-    context.font = "800 48px Avenir Next, sans-serif";
-    context.fillText(model.focus.rank ? `#${model.focus.rank}` : "未上榜", 1080, 328);
-    context.font = "750 29px Avenir Next, PingFang SC, sans-serif";
-    context.fillText(fitText(context, model.focus.value, 340), 1080, 372);
+    context.font = "800 48px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(`${model.summary.participants} 人`, 1080, 351);
+    context.fillStyle = "#657068";
+    context.font = "700 20px Avenir Next, PingFang SC, sans-serif";
+    context.fillText("公开社群 Token 排名", 1080, 382);
     context.textAlign = "left";
-    panelY = 442;
   }
 
   const rankingPanelHeight = Math.max(254, 82 + model.rows.length * 58);
@@ -174,26 +278,55 @@ export function renderCommunityPosterCanvas(model, documentRef = document) {
   roundedRect(context, 76, panelY, 1048, rankingPanelHeight, 24);
   context.fillStyle = "#657068";
   context.font = "700 19px Avenir Next, PingFang SC, sans-serif";
-  context.fillText("名次", 112, panelY + 46);
-  context.fillText("昵称", 226, panelY + 46);
+  context.fillText("名次", 108, panelY + 46);
+  context.fillText("成员", 168, panelY + 46);
+  context.fillText("主力工具", 430, panelY + 46);
+  context.fillText("主力模型", 630, panelY + 46);
   context.textAlign = "right";
-  context.fillText("Token 用量", 1076, panelY + 46);
+  context.fillText("Token", 956, panelY + 46);
+  context.fillText("估算", 1090, panelY + 46);
 
-  let y = panelY + 100;
+  let y = panelY + 94;
   const drawRow = (row) => {
+    if (row.isFocus) {
+      context.fillStyle = "rgba(220,239,226,.82)";
+      context.fillRect(92, y - 30, 1016, 56);
+    }
     context.strokeStyle = "rgba(23,33,28,.09)";
-    context.beginPath(); context.moveTo(108, y + 25); context.lineTo(1092, y + 25); context.stroke();
+    context.beginPath(); context.moveTo(108, y + 27); context.lineTo(1092, y + 27); context.stroke();
     context.textAlign = "left";
     context.fillStyle = row.rank && row.rank <= 3 ? "#1d774f" : "#657068";
-    context.font = "700 27px Avenir Next, sans-serif";
-    context.fillText(row.rank ? String(row.rank).padStart(2, "0") : "—", 112, y);
+    context.font = "700 21px Avenir Next, sans-serif";
+    context.fillText(row.rank ? String(row.rank).padStart(2, "0") : "—", 108, y);
     context.fillStyle = "#17211c";
-    context.font = "600 25px Avenir Next, PingFang SC, sans-serif";
-    context.fillText(fitText(context, row.nickname, 565), 226, y);
+    context.font = "650 19px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(fitText(context, row.nickname, 230), 168, y);
+    context.font = "650 16px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(fitText(context, row.tool, 175), 430, y - 6);
+    context.fillStyle = "#657068";
+    context.font = "600 13px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(
+      `${row.toolValue}${row.toolCount > 1 ? ` · 共 ${row.toolCount} 个` : ""}`,
+      430,
+      y + 16,
+    );
+    context.fillStyle = "#17211c";
+    context.font = "650 16px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(fitText(context, row.model, 190), 630, y - 6);
+    context.fillStyle = "#657068";
+    context.font = "600 13px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(
+      `${row.modelValue}${row.modelCount > 1 ? ` · 共 ${row.modelCount} 个` : ""}`,
+      630,
+      y + 16,
+    );
     context.textAlign = "right";
-    context.fillStyle = row.value === "未定价" ? "#d66336" : "#17211c";
-    context.font = "650 25px Avenir Next, PingFang SC, sans-serif";
-    context.fillText(fitText(context, row.value, 250), 1076, y);
+    context.fillStyle = "#17211c";
+    context.font = "700 18px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(fitText(context, row.tokenValue, 110), 956, y);
+    context.fillStyle = row.costValue === "未定价" ? "#d66336" : "#657068";
+    context.font = "650 16px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(fitText(context, row.costValue, 125), 1090, y);
     y += 58;
   };
   model.rows.forEach((row) => drawRow(row));
@@ -207,12 +340,14 @@ export function renderCommunityPosterCanvas(model, documentRef = document) {
   context.fillStyle = "#657068";
   context.font = "600 20px Avenir Next, PingFang SC, sans-serif";
   context.fillText("Top 10 之外还有更多排名", 500, 1268);
-  context.fillText(model.filters.join(" · "), 500, 1310);
+  context.fillText(model.slogan, 500, 1310);
+  context.font = "600 18px Avenir Next, PingFang SC, sans-serif";
+  context.fillText(model.filters.join(" · "), 500, 1350);
   context.font = "500 17px Avenir Next, sans-serif";
   context.fillText(
     fitText(context, model.publicUrl, COMMUNITY_POSTER_LAYOUT.urlMaxWidth),
     COMMUNITY_POSTER_LAYOUT.urlX,
-    1390,
+    1400,
   );
   drawQr(
     context,

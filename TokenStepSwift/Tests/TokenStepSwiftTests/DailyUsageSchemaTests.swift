@@ -84,6 +84,25 @@ final class DailyUsageSchemaTests: XCTestCase {
         XCTAssertEqual(decoded.atomicUsage, [])
     }
 
+    func testLegacyHourlyAgentSourceDefaultsMissingModelToUnknown() throws {
+        let data = Data(#"""
+        {
+          "source":"Codex",
+          "tokens":120,
+          "input_tokens":80,
+          "cached_input_tokens":20,
+          "output_tokens":40,
+          "cache_coverage_complete":true
+        }
+        """#.utf8)
+
+        let row = try JSONDecoder().decode(AgentWorkHourlySource.self, from: data)
+
+        XCTAssertEqual(row.source, "Codex")
+        XCTAssertEqual(row.model, "unknown")
+        XCTAssertEqual(row.tokens, 120)
+    }
+
     func testLegacySettingsDefaultTeamSyncToOffWithoutServer() throws {
         let settings = try JSONDecoder().decode(TokenStepSettings.self, from: Data("{}".utf8))
 

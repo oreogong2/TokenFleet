@@ -4393,7 +4393,7 @@ private struct AgentWorkAccumulator {
     var modelRequestCount = 0
     var toolCallCount = 0
     var sources: [String: AgentWorkSourceAccumulator] = [:]
-    var hourlySources: [Int: [String: AgentWorkHourlySourceAccumulator]] = [:]
+    var hourlySources: [Int: [ModelKey: AgentWorkHourlySourceAccumulator]] = [:]
 
     mutating func add(record: UsageRecord, hour: Int?) {
         totalTokens += record.usage.totalTokens
@@ -4404,7 +4404,14 @@ private struct AgentWorkAccumulator {
         if let hour {
             activeHours.insert(hour)
             var sourceRows = hourlySources[hour] ?? [:]
-            sourceRows[record.tool, default: AgentWorkHourlySourceAccumulator(source: record.tool)]
+            let key = ModelKey(tool: record.tool, model: record.model)
+            sourceRows[
+                key,
+                default: AgentWorkHourlySourceAccumulator(
+                    source: record.tool,
+                    model: record.model
+                )
+            ]
                 .add(record: record)
             hourlySources[hour] = sourceRows
         } else {
@@ -4438,6 +4445,9 @@ private struct AgentWorkAccumulator {
                         .filter { $0.tokens > 0 }
                         .sorted {
                             if $0.tokens == $1.tokens {
+                                if $0.source == $1.source {
+                                    return $0.model < $1.model
+                                }
                                 return $0.source < $1.source
                             }
                             return $0.tokens > $1.tokens
@@ -4474,6 +4484,7 @@ private struct AgentWorkSourceAccumulator {
 
 private struct AgentWorkHourlySourceAccumulator {
     var source: String
+    var model: String
     var tokens = 0
     var inputTokens = 0
     var cachedInputTokens = 0
@@ -4491,6 +4502,7 @@ private struct AgentWorkHourlySourceAccumulator {
     var hourlySource: AgentWorkHourlySource {
         AgentWorkHourlySource(
             source: source,
+            model: model,
             tokens: tokens,
             inputTokens: inputTokens,
             cachedInputTokens: cachedInputTokens,

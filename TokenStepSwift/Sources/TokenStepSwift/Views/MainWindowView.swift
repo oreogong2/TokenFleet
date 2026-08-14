@@ -57,6 +57,7 @@ enum AppSection: String, CaseIterable, Identifiable {
 
 struct MainWindowView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.isScreenshotRendering) private var isScreenshotRendering
     @ObservedObject var navigation: MainWindowNavigation
 
     var body: some View {
@@ -71,7 +72,9 @@ struct MainWindowView: View {
         }
         .background(TokenStepBackdrop().id(appState.appearanceID))
         .onAppear {
-            appState.refreshForForeground()
+            if !isScreenshotRendering {
+                appState.refreshForForeground()
+            }
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

@@ -146,6 +146,11 @@ test("poster model contains only public display fields and appends a rank beyond
 
   assert.equal(model.rows.length, 10);
   assert.equal(model.focus.rank, 137);
+  assert.equal(model.focus.tool, "CC Switch");
+  assert.equal(model.focus.model, "kimi-k2");
+  assert.equal(model.rows[0].toolCount, 2);
+  assert.equal(model.rows[0].modelCount, 2);
+  assert.match(model.subtitle, /含缓存 Token/);
   assert.equal(model.publicUrl, "https://tokenfleet.example/rank");
   assert.equal(model.demoLabel, "演示数据 · 非真实排名");
   for (const forbidden of ["email", "internal", "device", "session", "message", "publicId", "outside-100"]) {
@@ -165,7 +170,8 @@ test("unpriced entries stay explicit in posters and QR generation is determinist
     filters: { metric: "cost" },
     publicUrl: "https://tokenfleet.example/rank",
   });
-  assert.equal(model.focus.value, "未定价");
+  assert.equal(model.focus.costValue, "未定价");
+  assert.notEqual(model.focus.tokenValue, "未定价");
   const first = createQrMatrix(model.publicUrl);
   const second = createQrMatrix(model.publicUrl);
   assert.equal(first.length, 41);

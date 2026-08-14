@@ -103,8 +103,7 @@ struct StatsView: View {
     }
 
     private var selectedRows: [DailyUsage] {
-        guard let days = range.days else { return appState.snapshot.daily }
-        return Array(appState.snapshot.daily.suffix(days))
+        UsageCalendarWindow.rows(from: appState.snapshot.daily, days: range.days)
     }
 
     private var selectedTokens: Int {

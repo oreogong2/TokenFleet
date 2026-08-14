@@ -283,6 +283,9 @@ class DeviceCommunityRankResponse(StrictModel):
     rank: Annotated[int, Field(ge=1)] | None
     total_entries: Annotated[int, Field(ge=0)]
     metric_value: NonNegativeIntegerString | None
+    primary_tool: Annotated[str | None, Field(min_length=1, max_length=128)] = None
+    primary_model: Annotated[str | None, Field(min_length=1, max_length=128)] = None
+    totals: PublicUsageTotals | None = None
 
 
 class DeviceStatusUpdate(StrictModel):
@@ -501,6 +504,12 @@ class PublicLeaderboardEntry(StrictModel):
     public_id: str
     nickname: str
     metric_value: NonNegativeIntegerString | None
+    primary_tool: str | None
+    primary_tool_tokens: NonNegativeIntegerString | None
+    tool_count: int
+    primary_model: str | None
+    primary_model_tokens: NonNegativeIntegerString | None
+    model_count: int
     totals: PublicUsageTotals
 
 

@@ -3,7 +3,8 @@ import SwiftUI
 struct TodayBreakdownCard: View {
     var title: String
     var rows: [TodayBreakdownRow]
-    var maxRows: Int = 4
+    var maxRows: Int = 3
+    @State private var isExpanded = false
 
     var body: some View {
         TokenCard {
@@ -13,7 +14,7 @@ struct TodayBreakdownCard: View {
                         .font(.title3.weight(.heavy))
                         .foregroundStyle(Color.tokenInk)
                     Spacer()
-                    Text(L("今日"))
+                    Text(LFormat("%d 项", rows.count))
                         .font(.caption.weight(.bold))
                         .foregroundStyle(Color.tokenGreenDark)
                         .padding(.horizontal, 10)
@@ -28,17 +29,43 @@ struct TodayBreakdownCard: View {
                         .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
                 } else {
                     VStack(spacing: 14) {
-                        ForEach(Array(rows.prefix(maxRows).enumerated()), id: \.element.id) { index, row in
+                        ForEach(Array(visibleRows.enumerated()), id: \.element.id) { index, row in
                             TodayBreakdownRowView(
                                 row: row,
                                 color: row.color ?? rowColor(index: index)
                             )
                         }
                     }
+
+                    if rows.count > maxRows {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                isExpanded.toggle()
+                            }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text(isExpanded
+                                    ? L("收起，只看 Top 3")
+                                    : LFormat("展开全部 %d 项", rows.count))
+                                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                Spacer()
+                            }
+                            .font(.caption.weight(.heavy))
+                            .foregroundStyle(Color.tokenGreenDark)
+                            .frame(height: 34)
+                            .background(Color.tokenMint.opacity(0.16), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var visibleRows: [TodayBreakdownRow] {
+        isExpanded ? rows : Array(rows.prefix(maxRows))
     }
 
     private func rowColor(index: Int) -> Color {

@@ -128,6 +128,33 @@ final class TeamSyncServiceTests: XCTestCase {
         XCTAssertNotNil(request.value(forHTTPHeaderField: "X-Signature"))
     }
 
+    func testPublicLeaderboardUsesNoCredentialOrEnrollmentState() async throws {
+        let http = RecordingTeamSyncHTTPClient(
+            responses: [
+                TeamSyncHTTPResponse(
+                    data: Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":["gpt-5"],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"甲","metric_value":"330","primary_tool":"Codex","primary_tool_tokens":"330","tool_count":1,"primary_model":"gpt-5","primary_model_tokens":"330","model_count":1,"totals":{"input_tokens":"10","output_tokens":"20","cache_read_tokens":"300","cache_write_tokens":"0","norm_tokens":"30","total_tokens":"330","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false}}]}"#.utf8),
+                    statusCode: 200
+                )
+            ]
+        )
+        let service = TeamSyncService(
+            httpClient: http,
+            credentialStore: DisabledTeamSyncCredentialStore(),
+            stateStore: MemoryTeamSyncStateStore()
+        )
+
+        let board = try await service.fetchPublicLeaderboard(
+            serverURL: "https://team.example.com"
+        )
+
+        XCTAssertEqual(board.entries.first?.nickname, "甲")
+        let requests = await http.requests
+        let request = try XCTUnwrap(requests.first)
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "X-Device-ID"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "X-Signature"))
+    }
+
     func testEnrollmentRejectsUnexpectedSigningKeyDerivationBeforeStoringSecret() async {
         let stablePublicID = "123e4567-e89b-12d3-a456-426614174000"
         let http = RecordingTeamSyncHTTPClient(

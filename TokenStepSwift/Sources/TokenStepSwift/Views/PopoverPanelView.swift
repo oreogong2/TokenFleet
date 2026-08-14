@@ -52,6 +52,9 @@ struct PopoverPanelView: View {
                 Text("TokenFleet")
                     .font(.system(size: 24, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
+                Text(L("每天一个亿"))
+                    .font(.caption2.weight(.heavy))
+                    .foregroundStyle(Color.tokenGreenDark)
             }
             Spacer()
             HStack(spacing: 6) {

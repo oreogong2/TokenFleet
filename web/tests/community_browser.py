@@ -68,7 +68,7 @@ class CommunityStaticHandler(SimpleHTTPRequestHandler):
                 {"items": []}, delay=type(self).pricing_delay_seconds
             )
             return
-        if path == "/join" or re.fullmatch(r"/join/batch(?:/[^/?#]+)?", path) or re.fullmatch(
+        if path in {"/join", "/install"} or re.fullmatch(r"/join/batch(?:/[^/?#]+)?", path) or re.fullmatch(
             r"/(?:rank|community)(?:/p/[A-Za-z0-9_-]{1,128})?", path
         ):
             self.path = "/index.html"
@@ -174,20 +174,35 @@ def main():
             ),
         )
 
+        page.set_viewport_size({"width": 1440, "height": 900})
+        page.goto(f"{base}/?demo=1#/rank", wait_until="networkidle")
+        page.get_by_role("link", name="安装与参与", exact=True).click()
+        page.locator(".install-contact").wait_for()
+        assert page.url.endswith("#/install")
+
         for width in (390, 820, 1440):
             page.set_viewport_size({"width": width, "height": 900})
             page.goto(f"{base}/?demo=1#/rank", wait_until="networkidle")
             page.locator(".community-rank-row").first.wait_for()
             assert page.locator(".community-rank-row").count() == 12
+            assert page.locator(".community-model-summary").count() == 12
+            assert page.get_by_text("主力工具", exact=True).count() == 12
+            assert page.get_by_text("主力模型", exact=True).count() == 12
+            assert page.get_by_text("共 2 个工具", exact=False).count() == 12
+            assert page.get_by_text("共 2 个模型", exact=False).count() == 12
+            first_summary = page.locator(".community-model-summary").first.inner_text()
+            assert first_summary.index("主力工具") < first_summary.index("主力模型")
+            assert "900719" not in page.locator(".community-rank-row").nth(1).inner_text()
             assert page.get_by_text("未定价", exact=True).count() >= 1
             assert page.get_by_text("演示·这是一个专门验证窄屏截断", exact=False).count() == 1
             assert page.get_by_text("演示数据 · 不是真实排名或真实成员数据", exact=True).count() == 1
             assert page.locator('input[name="tool"], input[name="model"]').count() == 0
-            assert page.get_by_role("link", name="Kimi CLI", exact=True).count() == 1
+            assert page.get_by_role("link", name="CC Switch", exact=True).count() == 1
             assert page.get_by_role("link", name="kimi-k2", exact=True).count() == 1
-            assert page.get_by_role("link", name="全部工具", exact=True).count() == 1
-            assert page.get_by_role("link", name="全部模型", exact=True).count() == 1
+            assert page.get_by_role("link", name="全部工具（3）", exact=True).count() == 1
+            assert page.get_by_role("link", name="全部模型（6）", exact=True).count() == 1
             assert page.get_by_role("button", name="应用筛选").count() == 0
+            assert page.get_by_role("link", name="安装与参与", exact=True).count() == 1
             assert page.get_by_text("未跨时区重新归日", exact=False).count() == 1
             if width == 1440:
                 headline = page.locator(".community-hero h1")
@@ -205,6 +220,55 @@ def main():
             page.keyboard.press("Tab")
             focused = page.evaluate("document.activeElement?.tagName")
             assert focused in {"A", "BUTTON", "INPUT", "SELECT", "MAIN"}, focused
+
+        for width in (390, 820, 1440):
+            page.set_viewport_size({"width": width, "height": 900})
+            page.goto(f"{base}/?demo=1#/install", wait_until="networkidle")
+            page.locator(".install-contact").wait_for()
+            assert page.get_by_role("heading", name="安装只是第一步， 领取邀请码才算加入。").count() == 1
+            assert page.get_by_text("只下载安装不会自动加入", exact=False).count() == 1
+            assert page.get_by_text("没有邀请码，安装后仍无法加入社群。", exact=True).count() == 1
+            assert page.get_by_text("诗奥", exact=False).count() == 0
+            assert page.get_by_text("奥哥", exact=False).count() == 0
+            assert page.get_by_role("img", name="扫码添加微信领取邀请码二维码", exact=True).count() == 1
+            qr_layout = page.locator(".install-qr-frame").evaluate(
+                """frame => {
+                  const image = frame.querySelector('img');
+                  const outer = frame.getBoundingClientRect();
+                  const inner = image.getBoundingClientRect();
+                  return {
+                    square: Math.abs(outer.width - outer.height),
+                    intrinsicSquare: image.naturalWidth === image.naturalHeight,
+                    intrinsicWidth: image.naturalWidth,
+                    contained: Math.abs(inner.width - frame.clientWidth) <= 1
+                      && Math.abs(inner.height - frame.clientHeight) <= 1,
+                  };
+                }"""
+            )
+            assert qr_layout["square"] <= 1, qr_layout
+            assert qr_layout["intrinsicSquare"], qr_layout
+            assert qr_layout["intrinsicWidth"] == 432, qr_layout
+            assert qr_layout["contained"], qr_layout
+            assert_no_horizontal_overflow(page)
+            assert_accessible_controls(page)
+            page.screenshot(path=str(ARTIFACT_DIR / f"tokenfleet-install-{width}.png"), full_page=True)
+
+        document_response = page.goto(f"{base}/install?demo=1", wait_until="networkidle")
+        assert document_response.status == 200
+        page.locator(".install-contact").wait_for()
+        assert resource_status.get("/tokenfleet-contact-wechat-qr.jpg") == 200
+
+        # The anonymous leaderboard share uses the same rich poster layout, but
+        # truthfully shows a community summary because no member identity exists.
+        page.goto(f"{base}/?demo=1#/rank", wait_until="networkidle")
+        page.get_by_role("button", name="分享社群排名", exact=True).click()
+        page.locator(".community-poster-modal img").wait_for()
+        with page.expect_download() as download_info:
+            page.get_by_role("button", name="保存图片", exact=True).click()
+        board_poster_path = str(ARTIFACT_DIR / "tokenfleet-community-poster-all.png")
+        download_info.value.save_as(board_poster_path)
+        assert png_dimensions(board_poster_path) == (1200, 1600)
+        page.get_by_role("button", name="关闭", exact=True).click()
 
         # The server fixture has nested totals for distributions; these must not normalize to zero.
         page.goto(f"{base}/?demo=1#/rank/p/demo-1?period=7d", wait_until="networkidle")
@@ -243,7 +307,7 @@ def main():
 
         # A public profile outside the leaderboard API limit is appended to its share poster.
         page.goto(
-            f"{base}/?demo=1#/rank/p/outside-100?period=30d&metric=norm&tool=Kimi+CLI&model=kimi-k2",
+            f"{base}/?demo=1#/rank/p/outside-100?period=30d&metric=norm&tool=CC+Switch&model=kimi-k2",
             wait_until="networkidle",
         )
         page.get_by_text("Top 100 之外", exact=False).wait_for()
@@ -433,7 +497,7 @@ def main():
 
         # Admin creates one shared batch link without ever rendering its raw token.
         page.goto(f"{base}/?demo=1#/people", wait_until="networkidle")
-        page.get_by_role("button", name="创建 50 人自助批次").click()
+        page.get_by_role("button", name="创建自助批次（单批最多 50）").click()
         batch_dialog = page.locator("#batch-dialog")
         assert batch_dialog.locator('input[name="capacity"]').input_value() == "50"
         assert batch_dialog.locator('select[name="expires_in_hours"]').input_value() == "24"
@@ -441,7 +505,7 @@ def main():
         batch_link_dialog = page.locator("dialog.token-dialog")
         batch_link_dialog.wait_for()
         assert "demo_batch" not in batch_link_dialog.inner_text()
-        batch_link_dialog.get_by_role("button", name="复制 50 人自助接入链接").click()
+        batch_link_dialog.get_by_role("button", name="复制本批次自助接入链接").click()
         copied_batch_link = page.evaluate("navigator.clipboard.readText()")
         assert copied_batch_link.startswith(f"{base}/join/batch#invite=")
         assert "demo_batch_7Yp4" in copied_batch_link

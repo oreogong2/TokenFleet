@@ -25,6 +25,7 @@ OFFLINE_FIXTURE_PATH="$BUILD_DIR/team-sync-offline-recovery"
 NETWORK_FIXTURE_PATH="$BUILD_DIR/network-supply-chain"
 KEYCHAIN_FIXTURE_PATH="$BUILD_DIR/team-sync-keychain"
 SHARE_CARD_FIXTURE_PATH="$BUILD_DIR/share-card-export"
+BETA8_FINAL_VIEWS_FIXTURE_PATH="$BUILD_DIR/beta8-final-views-render"
 COMPLETED=false
 
 cleanup() {
@@ -193,6 +194,21 @@ if [[ "$REQUIRE_SHARE_CARD_RENDER" == "1" ]]; then
     -o "$SHARE_CARD_FIXTURE_PATH"
 
   "$SHARE_CARD_FIXTURE_PATH"
+
+  swiftc \
+    -parse-as-library \
+    "${COMMON_FLAGS[@]}" \
+    -I "$BUILD_DIR" \
+    -L "$BUILD_DIR" \
+    -lTokenStepSwift \
+    -Xlinker -rpath \
+    -Xlinker "$BUILD_DIR" \
+    "$SWIFT_DIR/Tests/Fixtures/Beta8FinalViewsRender.swift" \
+    -o "$BETA8_FINAL_VIEWS_FIXTURE_PATH"
+
+  TOKENFLEET_TEST_APP_SUPPORT_ROOT="$BUILD_DIR/beta8-final-app-support" \
+  TOKENFLEET_BETA8_RENDER_DIR="${TOKENFLEET_BETA8_RENDER_DIR:-$BUILD_DIR/beta8-final-output}" \
+    "$BETA8_FINAL_VIEWS_FIXTURE_PATH"
 else
   echo "Share-card UI render fixture skipped on this headless runner; a GPU-capable gate must run it" >&2
 fi

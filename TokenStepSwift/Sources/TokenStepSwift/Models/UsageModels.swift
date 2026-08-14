@@ -537,8 +537,12 @@ struct AgentWorkHourBucket: Codable, Identifiable {
 }
 
 struct AgentWorkHourlySource: Codable, Identifiable {
-    var id: String { source }
+    var id: String { "\(source)\u{1F}\(model)" }
     var source: String
+    /// Model is retained only as a bounded usage dimension. Older beta.7
+    /// snapshots did not persist it, so they decode to `unknown` without
+    /// inventing a model assignment.
+    var model: String
     var tokens: Int
     var inputTokens: Int
     var cachedInputTokens: Int
@@ -547,11 +551,41 @@ struct AgentWorkHourlySource: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case source
+        case model
         case tokens
         case inputTokens = "input_tokens"
         case cachedInputTokens = "cached_input_tokens"
         case outputTokens = "output_tokens"
         case cacheCoverageComplete = "cache_coverage_complete"
+    }
+
+    init(
+        source: String,
+        model: String = "unknown",
+        tokens: Int,
+        inputTokens: Int,
+        cachedInputTokens: Int,
+        outputTokens: Int,
+        cacheCoverageComplete: Bool
+    ) {
+        self.source = source
+        self.model = model
+        self.tokens = tokens
+        self.inputTokens = inputTokens
+        self.cachedInputTokens = cachedInputTokens
+        self.outputTokens = outputTokens
+        self.cacheCoverageComplete = cacheCoverageComplete
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        source = try container.decode(String.self, forKey: .source)
+        model = try container.decodeIfPresent(String.self, forKey: .model) ?? "unknown"
+        tokens = try container.decode(Int.self, forKey: .tokens)
+        inputTokens = try container.decode(Int.self, forKey: .inputTokens)
+        cachedInputTokens = try container.decode(Int.self, forKey: .cachedInputTokens)
+        outputTokens = try container.decode(Int.self, forKey: .outputTokens)
+        cacheCoverageComplete = try container.decode(Bool.self, forKey: .cacheCoverageComplete)
     }
 
     var cacheHitRate: Double? {

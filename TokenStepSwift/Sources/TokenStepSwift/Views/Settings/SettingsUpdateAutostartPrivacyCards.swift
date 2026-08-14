@@ -51,7 +51,7 @@ struct SettingsUpdateCard: View {
                             .foregroundStyle(Color.tokenInk)
                         Text(UpdateService.isConfigured
                             ? L("有更新时先提醒你，下载前会确认。")
-                            : L("此源码版没有可信更新源，需要人工迁移到签名公证版。"))
+                            : L("当前是源码安装版，在线检查更新暂不可用；请按人工升级流程迁移到签名公证版。"))
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -86,7 +86,7 @@ struct SettingsUpdateCard: View {
                 HStack(spacing: 10) {
                     StatusLine(
                         symbol: !UpdateService.isConfigured ? "exclamationmark.triangle.fill" : appState.availableUpdate == nil ? "checkmark.circle.fill" : "arrow.down.circle.fill",
-                        title: !UpdateService.isConfigured ? L("源码版需手动升级") : appState.availableUpdate == nil ? LFormat("当前版本 %@", UpdateService.currentVersion) : LFormat("发现 %@", appState.availableUpdate?.version ?? ""),
+                        title: !UpdateService.isConfigured ? L("检查更新暂不可用") : appState.availableUpdate == nil ? LFormat("当前版本 %@", UpdateService.currentVersion) : LFormat("发现 %@", appState.availableUpdate?.version ?? ""),
                         value: updateCheckStatus,
                         tint: !UpdateService.isConfigured ? .orange : appState.availableUpdate == nil ? .tokenGreen : .tokenGreenDark
                     )
@@ -113,7 +113,7 @@ struct SettingsUpdateCard: View {
             Button {
                 appState.checkForUpdates(silent: false)
             } label: {
-                Text(appState.isCheckingForUpdates ? L("检查中") : L("检查更新"))
+                Text(!UpdateService.isConfigured ? L("暂不可用") : appState.isCheckingForUpdates ? L("检查中") : L("检查更新"))
                     .font(.caption.weight(.heavy))
                     .frame(width: 76, height: 34)
             }
@@ -124,7 +124,7 @@ struct SettingsUpdateCard: View {
 
     private var updateCheckStatus: String {
         if !UpdateService.isConfigured {
-            return L("未配置可信更新源")
+            return L("源码安装版不提供在线检查")
         }
         if appState.isCheckingForUpdates {
             return L("正在检查")

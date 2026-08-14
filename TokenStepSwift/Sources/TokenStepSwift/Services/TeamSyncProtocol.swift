@@ -8,6 +8,7 @@ enum TeamSyncProtocolConfiguration {
     static let dailyUsagePath = "/api/v1/usage/daily"
     static let communityRankPath = "/api/v1/devices/me/community-rank"
     static let publicLeaderboardPath = "/rank"
+    static let publicLeaderboardAPIPath = "/api/v1/public/leaderboard"
     static let maxBucketsPerRequest = 2_000
     static let maximumHTTPResponseBytes = 1 * 1_024 * 1_024
     static let maximumTokenValue = 9_000_000_000_000_000
@@ -246,6 +247,9 @@ struct TeamSyncCommunityRank: Decodable, Equatable {
     var rank: Int?
     var totalEntries: Int
     var metricValue: String?
+    var primaryTool: String?
+    var primaryModel: String?
+    var totals: TeamSyncPublicUsageTotals?
 
     enum CodingKeys: String, CodingKey {
         case publicID = "public_id"
@@ -256,6 +260,9 @@ struct TeamSyncCommunityRank: Decodable, Equatable {
         case rank
         case totalEntries = "total_entries"
         case metricValue = "metric_value"
+        case primaryTool = "primary_tool"
+        case primaryModel = "primary_model"
+        case totals
     }
 
     var isValid: Bool {
@@ -270,13 +277,17 @@ struct TeamSyncCommunityRank: Decodable, Equatable {
         }
         if publicProfileEnabled {
             guard nickname != nil else { return false }
-        } else if nickname != nil || rank != nil || metricValue != nil {
+        } else if nickname != nil || rank != nil || metricValue != nil
+                    || primaryTool != nil || primaryModel != nil || totals != nil {
             return false
         }
         if let rank {
-            return rank > 0 && rank <= totalEntries && metricValue != nil
+            guard rank > 0 && rank <= totalEntries, let metricValue else { return false }
+            let hasSummary = primaryTool != nil || primaryModel != nil || totals != nil
+            guard !hasSummary || summaryIsValid(metricValue: metricValue) else { return false }
+            return true
         }
-        return metricValue == nil
+        return metricValue == nil && primaryTool == nil && primaryModel == nil && totals == nil
     }
 
     var exceededPercentage: Int? {
@@ -292,6 +303,184 @@ struct TeamSyncCommunityRank: Decodable, Equatable {
         else {
             return false
         }
+        return value == "0" || value.first != "0"
+    }
+
+    private func summaryIsValid(metricValue: String) -> Bool {
+        guard let primaryTool, let primaryModel, let totals,
+              validDimension(primaryTool), validDimension(primaryModel),
+              totals.isValid,
+              totals.totalTokens == metricValue
+        else { return false }
+        return true
+    }
+
+    private func validDimension(_ value: String) -> Bool {
+        !value.isEmpty
+            && value.count <= 128
+            && value.unicodeScalars.allSatisfy({ $0.value >= 32 && $0.value != 127 })
+    }
+}
+
+struct TeamSyncPublicUsageTotals: Decodable, Equatable {
+    var inputTokens: String
+    var outputTokens: String
+    var cacheReadTokens: String
+    var cacheWriteTokens: String
+    var normTokens: String
+    var totalTokens: String
+    var estimatedCostMicrounits: String?
+    var costCurrency: String?
+    var unpriced: Bool
+    var mixedCurrency: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case inputTokens = "input_tokens"
+        case outputTokens = "output_tokens"
+        case cacheReadTokens = "cache_read_tokens"
+        case cacheWriteTokens = "cache_write_tokens"
+        case normTokens = "norm_tokens"
+        case totalTokens = "total_tokens"
+        case estimatedCostMicrounits = "estimated_cost_microunits"
+        case costCurrency = "cost_currency"
+        case unpriced
+        case mixedCurrency = "mixed_currency"
+    }
+
+    var estimatedCost: Double? {
+        guard !unpriced, !mixedCurrency,
+              costCurrency == "USD",
+              let estimatedCostMicrounits,
+              let value = Double(estimatedCostMicrounits)
+        else { return nil }
+        return value / 1_000_000
+    }
+
+    var isValid: Bool {
+        let required = [
+            inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
+            normTokens, totalTokens
+        ]
+        guard required.allSatisfy(TeamSyncPublicLeaderboard.isCanonicalInteger) else {
+            return false
+        }
+        if let estimatedCostMicrounits,
+           !TeamSyncPublicLeaderboard.isCanonicalInteger(estimatedCostMicrounits) {
+            return false
+        }
+        if unpriced || mixedCurrency {
+            return estimatedCostMicrounits == nil && costCurrency == nil
+        }
+        return estimatedCostMicrounits != nil && costCurrency == "USD"
+    }
+}
+
+struct TeamSyncPublicLeaderboardEntry: Decodable, Equatable, Identifiable {
+    var id: String { publicID }
+    var rank: Int?
+    var publicID: String
+    var nickname: String
+    var metricValue: String?
+    var primaryTool: String?
+    var primaryToolTokens: String?
+    var toolCount: Int
+    var primaryModel: String?
+    var primaryModelTokens: String?
+    var modelCount: Int
+    var totals: TeamSyncPublicUsageTotals
+
+    enum CodingKeys: String, CodingKey {
+        case rank
+        case publicID = "public_id"
+        case nickname
+        case metricValue = "metric_value"
+        case primaryTool = "primary_tool"
+        case primaryToolTokens = "primary_tool_tokens"
+        case toolCount = "tool_count"
+        case primaryModel = "primary_model"
+        case primaryModelTokens = "primary_model_tokens"
+        case modelCount = "model_count"
+        case totals
+    }
+
+    var tokenValue: Int { Int(metricValue ?? "") ?? 0 }
+
+    func isValid(totalEntries: Int) -> Bool {
+        guard UUID(uuidString: publicID) != nil,
+              !nickname.isEmpty,
+              nickname.count <= 128,
+              nickname.unicodeScalars.allSatisfy({ $0.value >= 32 && $0.value != 127 }),
+              toolCount >= 0,
+              modelCount >= 0,
+              totals.isValid,
+              metricValue.map(TeamSyncPublicLeaderboard.isCanonicalInteger) ?? false
+        else { return false }
+        if let rank, !(1...max(totalEntries, 1)).contains(rank) { return false }
+        guard dimensionIsValid(
+            count: toolCount,
+            name: primaryTool,
+            tokenValue: primaryToolTokens
+        ), dimensionIsValid(
+            count: modelCount,
+            name: primaryModel,
+            tokenValue: primaryModelTokens
+        ) else { return false }
+        return true
+    }
+
+    private func dimensionIsValid(count: Int, name: String?, tokenValue: String?) -> Bool {
+        if count == 0 { return name == nil && tokenValue == nil }
+        guard let name, !name.isEmpty, name.count <= 128,
+              let tokenValue,
+              TeamSyncPublicLeaderboard.isCanonicalInteger(tokenValue)
+        else { return false }
+        return true
+    }
+}
+
+struct TeamSyncPublicLeaderboard: Decodable, Equatable {
+    var period: String
+    var metric: String
+    var timezone: String
+    var mixedTimezones: Bool
+    var totalEntries: Int
+    var availableTools: [String]
+    var availableModels: [String]
+    var entries: [TeamSyncPublicLeaderboardEntry]
+
+    enum CodingKeys: String, CodingKey {
+        case period
+        case metric
+        case timezone
+        case mixedTimezones = "mixed_timezones"
+        case totalEntries = "total_entries"
+        case availableTools = "available_tools"
+        case availableModels = "available_models"
+        case entries
+    }
+
+    var isValid: Bool {
+        guard period == "today",
+              metric == "tokens",
+              !timezone.isEmpty,
+              timezone.count <= 128,
+              totalEntries >= 0,
+              entries.count <= 10,
+              entries.count <= totalEntries,
+              Set(entries.map(\.publicID)).count == entries.count,
+              availableTools.count <= 512,
+              availableModels.count <= 2_048,
+              (availableTools + availableModels).allSatisfy({ !$0.isEmpty && $0.count <= 128 }),
+              entries.allSatisfy({ $0.isValid(totalEntries: totalEntries) })
+        else { return false }
+        let ranks = entries.compactMap(\.rank)
+        return ranks == ranks.sorted() && Set(ranks).count == ranks.count
+    }
+
+    static func isCanonicalInteger(_ value: String) -> Bool {
+        guard !value.isEmpty, value.count <= 128,
+              value.unicodeScalars.allSatisfy({ (48...57).contains($0.value) })
+        else { return false }
         return value == "0" || value.first != "0"
     }
 }
@@ -654,6 +843,33 @@ enum TeamSyncProtocol {
         request.setValue(headers.timestamp, forHTTPHeaderField: "X-Timestamp")
         request.setValue(headers.nonce, forHTTPHeaderField: "X-Nonce")
         request.setValue(headers.signature, forHTTPHeaderField: "X-Signature")
+        return request
+    }
+
+    /// Reads only the anonymous public projection. It never carries device
+    /// credentials, enrollment tokens, cookies, or an Authorization header.
+    static func publicLeaderboardAPIURLRequest(
+        serverURL rawServerURL: String
+    ) throws -> URLRequest {
+        let serverURL = try normalizedServerURL(rawServerURL)
+        let endpoint = try endpointURL(
+            serverURL: serverURL,
+            path: TeamSyncProtocolConfiguration.publicLeaderboardAPIPath
+        )
+        guard var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false) else {
+            throw TeamSyncProtocolError.invalidServerURL
+        }
+        components.queryItems = [
+            URLQueryItem(name: "period", value: "today"),
+            URLQueryItem(name: "metric", value: "tokens"),
+            URLQueryItem(name: "limit", value: "10")
+        ]
+        guard let url = components.url else {
+            throw TeamSyncProtocolError.invalidServerURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
         return request
     }
 

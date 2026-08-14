@@ -72,7 +72,7 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     page.context.grant_permissions(
         ["clipboard-read", "clipboard-write"], origin=BASE_URL
     )
-    page.get_by_role("button", name="创建 50 人自助批次").click()
+    page.get_by_role("button", name="创建自助批次（单批最多 50）").click()
     batch_dialog = page.locator("#batch-dialog")
     batch_dialog.wait_for(state="visible")
     batch_dialog.locator('input[name="capacity"]').fill("2")
@@ -82,7 +82,7 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     batch_token_dialog.wait_for(state="visible")
     assert "invite=" not in batch_token_dialog.inner_text()
     batch_token_dialog.get_by_role(
-        "button", name="复制 50 人自助接入链接"
+        "button", name="复制本批次自助接入链接"
     ).click()
     batch_link = page.evaluate("navigator.clipboard.readText()")
     assert batch_link.startswith(f"{BASE_URL}/join/batch#invite=")

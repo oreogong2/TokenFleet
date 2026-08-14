@@ -415,6 +415,12 @@ def test_public_projection_exact_only_norm_cost_and_privacy_contract(harness) ->
     entry = payload["entries"][0]
     assert entry["nickname"] == "甲"
     assert entry["metric_value"] == "340"
+    assert entry["primary_tool"] == "Codex"
+    assert entry["primary_tool_tokens"] == "330"
+    assert entry["tool_count"] == 2
+    assert entry["primary_model"] == "public-model"
+    assert entry["primary_model_tokens"] == "330"
+    assert entry["model_count"] == 2
     assert entry["totals"] == {
         "input_tokens": "17",
         "output_tokens": "23",
@@ -545,6 +551,20 @@ def test_authenticated_device_reads_only_its_public_rank_context(harness) -> Non
         "rank": 2,
         "total_entries": 2,
         "metric_value": "300",
+        "primary_tool": "Codex",
+        "primary_model": "community-rank",
+        "totals": {
+            "input_tokens": "200",
+            "output_tokens": "100",
+            "cache_read_tokens": "0",
+            "cache_write_tokens": "0",
+            "norm_tokens": "300",
+            "total_tokens": "300",
+            "estimated_cost_microunits": None,
+            "cost_currency": None,
+            "unpriced": True,
+            "mixed_currency": False,
+        },
     }
     assert harness.client.get(
         "/api/v1/devices/me/community-rank"
@@ -573,7 +593,65 @@ def test_device_rank_context_does_not_rank_private_profile(harness) -> None:
         "rank": None,
         "total_entries": 0,
         "metric_value": None,
+        "primary_tool": None,
+        "primary_model": None,
+        "totals": None,
     }
+
+
+def test_device_rank_context_includes_own_public_summary_beyond_top_ten(harness) -> None:
+    _enable_alpha_public_board(harness)
+    target = _create_participant(harness, display_name="榜外本人")
+    target_device = _enroll_participant(harness, target)
+    assert harness.signed_post(
+        target_device,
+        harness.usage_payload(
+            buckets=[
+                _bucket(
+                    harness,
+                    tool="Codex",
+                    model="own-model",
+                    input_tokens=20,
+                    output_tokens=10,
+                    cache_read_tokens=5,
+                    cache_write_tokens=0,
+                )
+            ]
+        ),
+    ).status_code == 200
+
+    for index in range(11):
+        participant = _create_participant(harness, display_name=f"领先成员{index + 1}")
+        device = _enroll_participant(harness, participant)
+        assert harness.signed_post(
+            device,
+            harness.usage_payload(
+                buckets=[
+                    _bucket(
+                        harness,
+                        tool="Claude Code",
+                        model="leader-model",
+                        input_tokens=1_000 + index,
+                        output_tokens=500,
+                        cache_read_tokens=0,
+                        cache_write_tokens=0,
+                    )
+                ]
+            ),
+        ).status_code == 200
+
+    response = harness.signed_get(
+        target_device,
+        "/api/v1/devices/me/community-rank",
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["rank"] == 12
+    assert payload["total_entries"] == 12
+    assert payload["metric_value"] == "35"
+    assert payload["primary_tool"] == "Codex"
+    assert payload["primary_model"] == "own-model"
+    assert payload["totals"]["total_tokens"] == "35"
 
 
 def test_public_periods_filters_and_daily_trend(harness) -> None:
@@ -1213,6 +1291,83 @@ def test_public_projection_groups_in_sql_and_caches_by_ledger_version(
             "before_cursor_execute",
             capture_statement,
         )
+
+
+@pytest.mark.parametrize("member_count", [100, 200])
+def test_public_leaderboard_scales_to_one_hundred_and_two_hundred_members(
+    harness, member_count: int
+) -> None:
+    _enable_alpha_public_board(harness)
+    org_id = harness.users["a_admin"].org_id
+    usage_date = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    with harness.session_factory() as session:
+        users = [
+            User(
+                org_id=org_id,
+                email=None,
+                password_hash=None,
+                display_name=f"容量榜-{member_count}-{position:03d}",
+                public_profile_enabled=True,
+            )
+            for position in range(1, member_count + 1)
+        ]
+        session.add_all(users)
+        session.flush()
+        devices = [
+            Device(
+                org_id=org_id,
+                user_id=user.id,
+                device_public_id=str(uuid4()),
+                platform="test",
+                app_version="0.1.0-beta.8",
+                collector_version="0.1.0-beta.8",
+                signing_key="0" * 64,
+            )
+            for user in users
+        ]
+        session.add_all(devices)
+        session.flush()
+        session.add_all(
+            DailyUsage(
+                org_id=org_id,
+                user_id=user.id,
+                device_id=device.id,
+                usage_date=usage_date,
+                timezone="Asia/Shanghai",
+                tool="Codex" if position % 2 else "Claude Code",
+                model=f"scale-model-{position % 4}",
+                source="local",
+                completeness="exact",
+                input_tokens=position,
+                output_tokens=0,
+                cache_read_tokens=0,
+                cache_write_tokens=0,
+                report_schema_version=1,
+                collector_version="0.1.0-beta.8",
+                reported_generated_at=utcnow(),
+            )
+            for position, (user, device) in enumerate(
+                zip(users, devices, strict=True), start=1
+            )
+        )
+        session.commit()
+
+    response = harness.client.get(
+        "/api/v1/public/leaderboard",
+        params={"period": "today", "metric": "tokens", "limit": 100},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["total_entries"] == member_count
+    assert len(payload["entries"]) == min(member_count, 100)
+    assert [entry["rank"] for entry in payload["entries"]] == list(
+        range(1, min(member_count, 100) + 1)
+    )
+    assert payload["entries"][0]["metric_value"] == str(member_count)
+    assert payload["entries"][0]["primary_tool"] in {"Codex", "Claude Code"}
+    assert payload["entries"][0]["primary_model"].startswith("scale-model-")
+    assert set(payload["available_tools"]) == {"Codex", "Claude Code"}
+    assert len(payload["available_models"]) == 4
 
 
 def test_public_member_detail_rank_is_exact_beyond_leaderboard_limit(harness) -> None:

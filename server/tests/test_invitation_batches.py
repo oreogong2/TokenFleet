@@ -295,6 +295,77 @@ def test_admin_batch_rbac_lifecycle_and_raw_token_is_returned_once(harness) -> N
     assert closed.headers["Cache-Control"] == "no-store"
 
 
+@pytest.mark.parametrize("member_count", [100, 200])
+def test_multiple_fifty_member_batches_scale_one_community_without_global_cap(
+    harness, member_count: int
+) -> None:
+    assert member_count % 50 == 0
+    harness.app.state.claim_rate_limiter = PublicReadRateLimiter(
+        attempts=member_count + 10,
+        window_seconds=60,
+        max_keys=10,
+    )
+    rejected_oversized = harness.client.post(
+        "/api/v1/admin/invitation-batches",
+        headers=harness.auth("a_admin"),
+        json={"capacity": 51, "expires_in_hours": 24},
+    )
+    assert rejected_oversized.status_code == 422
+
+    with harness.session_factory() as session:
+        before_users = session.scalar(select(func.count()).select_from(User)) or 0
+        before_tokens = (
+            session.scalar(select(func.count()).select_from(EnrollmentToken)) or 0
+        )
+
+    batches = [_create_batch(harness) for _ in range(member_count // 50)]
+    nicknames: set[str] = set()
+    enrollment_tokens: set[str] = set()
+    for batch_index, batch in enumerate(batches):
+        for member_index in range(50):
+            claimed = _claim(
+                harness,
+                batch["invitation_token"],
+                f"容量-{member_count}-{batch_index:02d}-{member_index:02d}",
+            )
+            assert claimed.status_code == 201, claimed.text
+            body = claimed.json()
+            nicknames.add(body["nickname"])
+            enrollment_tokens.add(body["enrollment_token"])
+
+    assert len(nicknames) == member_count
+    assert len(enrollment_tokens) == member_count
+    assert _claim(
+        harness,
+        batches[0]["invitation_token"],
+        f"容量-{member_count}-超额",
+    ).status_code == 409
+
+    with harness.session_factory() as session:
+        stored_batches = list(
+            session.scalars(
+                select(InvitationBatch).where(
+                    InvitationBatch.id.in_([
+                        batch["batch"]["id"] for batch in batches
+                    ])
+                )
+            )
+        )
+        assert len(stored_batches) == member_count // 50
+        assert all(
+            batch.capacity == 50 and batch.claimed_count == 50
+            for batch in stored_batches
+        )
+        assert (
+            session.scalar(select(func.count()).select_from(User))
+            == before_users + member_count
+        )
+        assert (
+            session.scalar(select(func.count()).select_from(EnrollmentToken))
+            == before_tokens + member_count
+        )
+
+
 def test_anonymous_claim_is_atomic_and_response_is_public_field_whitelist(harness) -> None:
     created = _create_batch(harness, capacity=2)
     response = _claim(harness, created["invitation_token"], "  成员甲  ")

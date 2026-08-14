@@ -379,20 +379,20 @@ function renderPeople() {
   const people = normalizeCollection(state.pageData, ["items", "users"]);
   const batches = normalizeCollection(state.pageData, ["batches"]);
   const adminActions = state.me?.role === "admin"
-    ? `<div class="section-action-buttons"><a class="secondary-button small" href="#/rank">查看公开榜</a><button class="primary-button small" data-action="open-batch">${icon("plus", 17)} 创建 50 人自助批次</button><button class="secondary-button small" data-action="open-member">${icon("plus", 17)} 单独新建参赛者</button><button class="secondary-button small" data-action="open-enrollment">${icon("plus", 17)} 给已有成员补发设备码</button></div>`
+    ? `<div class="section-action-buttons"><a class="secondary-button small" href="#/rank">查看公开榜</a><button class="primary-button small" data-action="open-batch">${icon("plus", 17)} 创建自助批次（单批最多 50）</button><button class="secondary-button small" data-action="open-member">${icon("plus", 17)} 单独新建参赛者</button><button class="secondary-button small" data-action="open-enrollment">${icon("plus", 17)} 给已有成员补发设备码</button></div>`
     : "";
   const batchPanel = state.me?.role === "admin" ? invitationBatchPanel(batches) : "";
   return `<div class="section-actions"><div class="section-count"><strong>${people.length}</strong><span>名已登记成员</span></div>${adminActions}</div>${batchPanel}<article class="panel full-panel">${peopleTable(people)}</article><dialog id="batch-dialog">${batchDialog()}</dialog><dialog id="member-dialog">${memberDialog()}</dialog><dialog id="enrollment-dialog">${enrollmentDialog(people)}</dialog>`;
 }
 
 function invitationBatchPanel(batches) {
-  if (!batches.length) return `<article class="panel invitation-batch-panel"><div class="panel-head"><div><span class="panel-kicker">SELF-SERVICE BATCHES</span><h2>自助接入批次</h2></div></div><div class="empty-state compact"><span>50</span><p>还没有批次链接。创建后只需把同一个链接发到社群，成员自己登记唯一昵称并领取个人设备码。</p></div></article>`;
+  if (!batches.length) return `<article class="panel invitation-batch-panel"><div class="panel-head"><div><span class="panel-kicker">SELF-SERVICE BATCHES</span><h2>自助接入批次</h2></div></div><div class="empty-state compact"><span>50</span><p>还没有批次链接。单批最多 50，可创建多个批次进入同一社群；成员自己登记唯一昵称并领取个人设备码。</p></div></article>`;
   const statusLabels = { open: "开放中", full: "已满额", expired: "已过期", closed: "已关闭" };
   return `<article class="panel invitation-batch-panel"><div class="panel-head"><div><span class="panel-kicker">SELF-SERVICE BATCHES</span><h2>自助接入批次</h2></div><small>批次令牌只在创建时返回一次</small></div><div class="invitation-batch-list">${batches.map((batch) => `<div class="invitation-batch-row"><div><span class="status-badge ${batch.status === "open" ? "status-active" : "status-disabled"}">${escapeHTML(statusLabels[batch.status] || batch.status)}</span><strong>${Number(batch.claimed_count || 0)} / ${Number(batch.capacity || 0)} 人已领取</strong><small>有效期至 ${escapeHTML(formatExpiry(batch.expires_at))}</small></div>${batch.status === "open" ? `<button class="danger-button small" type="button" data-action="close-invitation-batch" data-batch-id="${escapeHTML(batch.id)}">关闭批次</button>` : ""}</div>`).join("")}</div></article>`;
 }
 
 function batchDialog() {
-  return `<form method="dialog" class="dialog-card" data-action="create-invitation-batch"><div class="dialog-head"><div><span class="panel-kicker">ONE LINK / MANY MEMBERS</span><h2>创建自助接入批次</h2></div><button class="icon-button" type="button" data-action="close-dialog" aria-label="关闭">×</button></div><p>生成一个可发到社群的链接。每人填写唯一公开昵称，系统再给他单独的 60 分钟一次性设备码。</p><label>最多人数<input name="capacity" type="number" min="1" max="50" value="50" required></label><label>批次有效期<select name="expires_in_hours" required><option value="1">1 小时</option><option value="6">6 小时</option><option value="12">12 小时</option><option value="24" selected>24 小时</option></select></label><div class="inline-alert">链接最多 50 人。关闭、过期或满额后，外部统一显示“批次不可用”，不会暴露具体原因。</div><div class="dialog-actions"><button class="text-button" type="button" data-action="close-dialog">取消</button><button class="primary-button small" type="submit" value="default">生成批次链接</button></div></form>`;
+  return `<form method="dialog" class="dialog-card" data-action="create-invitation-batch"><div class="dialog-head"><div><span class="panel-kicker">ONE LINK / MANY MEMBERS</span><h2>创建自助接入批次</h2></div><button class="icon-button" type="button" data-action="close-dialog" aria-label="关闭">×</button></div><p>生成一个可发到社群的链接。每人填写唯一公开昵称，系统再给他单独的 60 分钟一次性设备码。</p><label>单批人数<input name="capacity" type="number" min="1" max="50" value="50" required></label><label>批次有效期<select name="expires_in_hours" required><option value="1">1 小时</option><option value="6">6 小时</option><option value="12">12 小时</option><option value="24" selected>24 小时</option></select></label><div class="inline-alert"><strong>单批最多 50，可创建多个批次进入同一社群。</strong>关闭、过期或满额后，外部统一显示“批次不可用”，不会暴露具体原因。</div><div class="dialog-actions"><button class="text-button" type="button" data-action="close-dialog">取消</button><button class="primary-button small" type="submit" value="default">生成批次链接</button></div></form>`;
 }
 
 function memberDialog() {
@@ -1070,7 +1070,7 @@ function showOneTimeBatchInvite(result, generation = navigationGeneration) {
   const batch = result.batch || {};
   const dialog = document.createElement("dialog");
   dialog.className = "token-dialog";
-  dialog.innerHTML = `<div class="dialog-card"><div class="dialog-head"><div><span class="panel-kicker">COPY ONCE / SHARE PRIVATELY</span><h2>自助批次链接已生成</h2></div><button class="icon-button" type="button" data-dialog-close aria-label="关闭">×</button></div><div class="batch-link-summary"><strong>${Number(batch.claimed_count || 0)} / ${Number(batch.capacity || 50)}</strong><span>已领取 · 有效期至 ${escapeHTML(formatExpiry(batch.expires_at))}</span></div><button class="primary-button" type="button" data-copy-batch-link>复制 50 人自助接入链接</button><p>批次令牌不会显示在页面或写入浏览器存储。把同一个链接发到社群即可；每位成员必须填写唯一昵称，并只会拿到自己的个人设备码。</p><p class="form-note">若链接被外传，可在成员页立即关闭批次；系统对外不会区分已满、已关、过期或无效。</p></div>`;
+  dialog.innerHTML = `<div class="dialog-card"><div class="dialog-head"><div><span class="panel-kicker">COPY ONCE / SHARE PRIVATELY</span><h2>自助批次链接已生成</h2></div><button class="icon-button" type="button" data-dialog-close aria-label="关闭">×</button></div><div class="batch-link-summary"><strong>${Number(batch.claimed_count || 0)} / ${Number(batch.capacity || 50)}</strong><span>本批已领取 · 有效期至 ${escapeHTML(formatExpiry(batch.expires_at))}</span></div><button class="primary-button" type="button" data-copy-batch-link>复制本批次自助接入链接</button><p>批次令牌不会显示在页面或写入浏览器存储。单批最多 50，可继续创建多个批次进入同一社群；每位成员只会拿到自己的个人设备码。</p><p class="form-note">若链接被外传，可在成员页立即关闭批次；系统对外不会区分已满、已关、过期或无效。</p></div>`;
   if (!isCurrentNavigation(generation)) return;
   document.body.append(dialog);
   const batchLink = () => `${location.origin}/join/batch#invite=${encodeURIComponent(rawToken)}`;
@@ -1078,7 +1078,7 @@ function showOneTimeBatchInvite(result, generation = navigationGeneration) {
   dialog.querySelector("[data-copy-batch-link]").addEventListener("click", async () => {
     await navigator.clipboard.writeText(batchLink());
     if (!isCurrentNavigation(generation)) return;
-    toast("50 人自助接入链接已复制", "success", generation);
+    toast("本批次自助接入链接已复制", "success", generation);
   });
   dialog.addEventListener("close", () => {
     rawToken = "";

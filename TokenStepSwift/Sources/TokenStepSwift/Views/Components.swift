@@ -89,57 +89,41 @@ struct TokenFleetSignalMark: View {
     }
 }
 
-/// TokenFleet's daily-goal visualization: a segmented signal dial instead of
-/// the inherited multi-lap fitness ring. The dial fills once, while the center
-/// keeps showing the uncapped percentage when usage exceeds the daily goal.
+/// One clean ring keeps the confirmed "one hundred million per lap" memory
+/// without restoring the old multi-ring fitness skin.
 struct TokenFleetGoalDial: View {
     var tokens: Int
     var goal: Int
     var size: CGFloat = 168
 
-    private let segmentCount = 36
-
-    private var rawProgress: Double {
-        Double(max(tokens, 0)) / Double(max(goal, 1))
-    }
-
-    private var completedSegments: Int {
-        min(segmentCount, max(0, Int(ceil(min(rawProgress, 1) * Double(segmentCount)))))
+    private var lap: TokenStepLapProgress {
+        TokenStepLapProgress(tokens: tokens, goal: goal)
     }
 
     var body: some View {
         ZStack {
-            ForEach(0..<segmentCount, id: \.self) { index in
-                Capsule()
-                    .fill(segmentColor(index))
-                    .frame(width: max(3, size * 0.026), height: max(8, size * 0.075))
-                    .offset(y: -(size / 2 - size * 0.064))
-                    .rotationEffect(.degrees(Double(index) / Double(segmentCount) * 360))
-            }
-
             Circle()
-                .fill(Color.tokenSurface.opacity(0.92))
-                .frame(width: size * 0.73, height: size * 0.73)
-                .overlay(Circle().stroke(Color.tokenGreen.opacity(0.09), lineWidth: 1))
+                .stroke(Color.tokenTrack.opacity(0.9), lineWidth: size * 0.105)
+            Circle()
+                .trim(from: 0, to: min(max(lap.currentLapProgress, 0), 1))
+                .stroke(
+                    lap.color,
+                    style: StrokeStyle(lineWidth: size * 0.105, lineCap: .butt)
+                )
+                .rotationEffect(.degrees(-90))
 
-            VStack(spacing: max(3, size * 0.025)) {
-                HStack(alignment: .bottom, spacing: max(2, size * 0.014)) {
-                    signalBar(height: size * 0.075, opacity: 0.48)
-                    signalBar(height: size * 0.11, opacity: 0.72)
-                    signalBar(height: size * 0.15, opacity: 1)
-                }
-
+            VStack(spacing: max(4, size * 0.028)) {
                 Text(TokenStepFormat.tokens(tokens, compact: true))
-                    .font(.system(size: size * 0.15, weight: .heavy, design: .rounded))
+                    .font(.system(size: size * 0.17, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
                     .monospacedDigit()
                     .minimumScaleFactor(0.58)
                     .lineLimit(1)
                     .frame(maxWidth: size * 0.62)
 
-                Text(LFormat("目标 %@", TokenStepFormat.percent(rawProgress * 100)))
-                    .font(.system(size: max(9, size * 0.065), weight: .bold, design: .rounded))
-                    .foregroundStyle(rawProgress >= 1 ? Color.tokenGreenDark : .secondary)
+                Text(lap.lapTitle)
+                    .font(.system(size: max(10, size * 0.07), weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.tokenGreenDark)
                     .monospacedDigit()
             }
         }
@@ -147,23 +131,8 @@ struct TokenFleetGoalDial: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             "\(L("今日 Token 消耗")) \(TokenStepFormat.tokens(tokens)) · "
-                + "\(L("今日目标进度")) \(TokenStepFormat.percent(rawProgress * 100))"
+                + lap.lapStatusText
         )
-    }
-
-    private func signalBar(height: CGFloat, opacity: Double) -> some View {
-        Capsule()
-            .fill(Color.tokenGreenDark.opacity(opacity))
-            .frame(width: max(3, size * 0.024), height: height)
-    }
-
-    private func segmentColor(_ index: Int) -> Color {
-        if index < completedSegments {
-            return rawProgress >= 1 && index >= segmentCount - 3
-                ? Color.orange.opacity(0.92)
-                : Color.tokenGreenDark.opacity(0.92)
-        }
-        return Color.tokenTrack.opacity(0.78)
     }
 }
 
@@ -620,12 +589,24 @@ struct ContributionWallView: View {
     }
 
     var body: some View {
-        let calendar = Calendar(identifier: .gregorian)
+        let calendar: Calendar = {
+            var value = Calendar(identifier: .gregorian)
+            value.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+            return value
+        }()
         let today = calendar.startOfDay(for: Date())
-        let rawStart = calendar.date(byAdding: .day, value: -(weeks * 7 - 1), to: today) ?? today
-        let weekday = calendar.component(.weekday, from: rawStart)
-        let mondayOffset = (weekday + 5) % 7
-        let start = calendar.date(byAdding: .day, value: -mondayOffset, to: rawStart) ?? rawStart
+        let weekday = calendar.component(.weekday, from: today)
+        let daysSinceMonday = (weekday + 5) % 7
+        let currentWeekStart = calendar.date(
+            byAdding: .day,
+            value: -daysSinceMonday,
+            to: today
+        ) ?? today
+        let start = calendar.date(
+            byAdding: .day,
+            value: -(max(1, weeks) - 1) * 7,
+            to: currentWeekStart
+        ) ?? currentWeekStart
 
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 5) {

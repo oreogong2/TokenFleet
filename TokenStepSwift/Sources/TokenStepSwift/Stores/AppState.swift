@@ -26,6 +26,9 @@ final class AppState: ObservableObject {
     @Published private(set) var communityRank: TeamSyncCommunityRank?
     @Published private(set) var isRefreshingCommunityRank = false
     @Published private(set) var communityRankError: String?
+    @Published private(set) var communityLeaderboard: TeamSyncPublicLeaderboard?
+    @Published private(set) var isRefreshingCommunityLeaderboard = false
+    @Published private(set) var communityLeaderboardError: String?
     @Published var lastError: String?
 
     private var timer: Timer?
@@ -36,6 +39,7 @@ final class AppState: ObservableObject {
     private var pendingForcedRefresh = false
     private var lastQuotaRefreshAttemptAt: Date?
     private var lastCommunityRankRefreshAttemptAt: Date?
+    private var lastCommunityLeaderboardRefreshAttemptAt: Date?
     private var lastAutomaticUsageRefreshAttemptAt: Date?
     private var lastUsageObservedAt: Date?
     private let fixedCommunityServerOrigin: URL?
@@ -576,6 +580,8 @@ final class AppState: ObservableObject {
                 teamSyncState = nil
                 communityRank = nil
                 communityRankError = nil
+                communityLeaderboard = nil
+                communityLeaderboardError = nil
             } catch {
                 teamSyncActionError = error.localizedDescription
             }
@@ -585,6 +591,7 @@ final class AppState: ObservableObject {
     }
 
     func refreshCommunityRank(force: Bool = false, now: Date = Date()) {
+        refreshCommunityLeaderboard(force: force, now: now)
         guard let fixedCommunityServerOrigin,
               TeamSyncCredentialStorageAvailability.isAvailable,
               isCommunitySyncEnrollmentCompatible
@@ -624,6 +631,73 @@ final class AppState: ObservableObject {
             }
         }
     }
+
+    func refreshCommunityLeaderboard(force: Bool = false, now: Date = Date()) {
+        guard let fixedCommunityServerOrigin,
+              isCommunitySyncEnrollmentCompatible
+        else {
+            communityLeaderboard = nil
+            communityLeaderboardError = nil
+            isRefreshingCommunityLeaderboard = false
+            return
+        }
+        guard !isRefreshingCommunityLeaderboard else { return }
+        if !force,
+           EnergyRefreshPolicy.isFresh(
+               lastAttemptAt: lastCommunityLeaderboardRefreshAttemptAt,
+               ttl: EnergyRefreshPolicy.rankTTL,
+               now: now
+           ) {
+            return
+        }
+        lastCommunityLeaderboardRefreshAttemptAt = now
+        isRefreshingCommunityLeaderboard = true
+        Task {
+            defer { isRefreshingCommunityLeaderboard = false }
+            do {
+                let leaderboard = try await TeamSyncService.live.fetchPublicLeaderboard(
+                    serverURL: fixedCommunityServerOrigin.absoluteString
+                )
+                guard isCommunitySyncEnrollmentCompatible else { return }
+                communityLeaderboard = leaderboard
+                communityLeaderboardError = nil
+            } catch {
+                guard isCommunitySyncEnrollmentCompatible else { return }
+                communityLeaderboardError = L("暂时无法读取社群榜单")
+            }
+        }
+    }
+
+    #if TOKENSTEP_TESTING
+    /// Supplies deterministic, already-validated public community data to UI
+    /// render fixtures. This never exists in a production build and avoids
+    /// turning a screenshot gate into a live network request.
+    func applyCommunityRenderFixture(
+        rank: TeamSyncCommunityRank,
+        leaderboard: TeamSyncPublicLeaderboard
+    ) {
+        guard let fixedCommunityServerOrigin else {
+            preconditionFailure("Community render fixture requires a fixed server origin")
+        }
+        precondition(rank.isValid, "Community render fixture rank is invalid")
+        precondition(leaderboard.isValid, "Community render fixture leaderboard is invalid")
+
+        teamSyncState = TeamSyncPersistentState(
+            serverURL: fixedCommunityServerOrigin.absoluteString,
+            devicePublicID: "20000000-0000-4000-8000-000000000001",
+            deviceID: "beta8-render-device",
+            enrolledAt: Date(),
+            lastSyncAt: Date(),
+            lastLedgerVersion: 8
+        )
+        communityRank = rank
+        communityRankError = nil
+        isRefreshingCommunityRank = false
+        communityLeaderboard = leaderboard
+        communityLeaderboardError = nil
+        isRefreshingCommunityLeaderboard = false
+    }
+    #endif
 
     func setAutoUpdateEnabled(_ enabled: Bool) {
         settings.autoUpdateEnabled = enabled

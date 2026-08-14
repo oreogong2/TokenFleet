@@ -35,6 +35,12 @@ test("frozen public leaderboard contract stays lossless and drops private extras
         public_id: "safe-public-id",
         nickname: "公开昵称",
         metric_value: "900719925474099312376",
+        primary_tool: "Codex",
+        primary_tool_tokens: "800000000",
+        tool_count: 3,
+        primary_model: "gpt-5.6-sol",
+        primary_model_tokens: "700000000",
+        model_count: 5,
         totals: exactTotals,
         email: "must-not-survive@example.com",
         internal_id: "private-user-id",
@@ -68,6 +74,12 @@ test("frozen public leaderboard contract stays lossless and drops private extras
   assert.equal(board.timezoneWarning, "部分数据来自不同的设备本地时区。");
   assert.equal(board.participants[0].totalTokens, "900719925474099312376");
   assert.equal(board.participants[0].metricValue, "900719925474099312376");
+  assert.equal(board.participants[0].primaryTool, "Codex");
+  assert.equal(board.participants[0].primaryToolTokens, "800000000");
+  assert.equal(board.participants[0].toolCount, 3);
+  assert.equal(board.participants[0].primaryModel, "gpt-5.6-sol");
+  assert.equal(board.participants[0].primaryModelTokens, "700000000");
+  assert.equal(board.participants[0].modelCount, 5);
   assert.equal(board.participants[1].rank, null);
   assert.equal(formatPublicCost(board.participants[1].cost), "未定价");
   assert.equal("email" in board.participants[0], false);
@@ -116,6 +128,9 @@ test("/rank is canonical while /community stays a compatible read route", () => 
   assert.equal(parseCommunityRoute({ pathname: "/", search: "", hash: "#/rank/p/demo-1?period=3d" }).publicId, "demo-1");
   assert.equal(parseCommunityRoute({ pathname: "/join", search: "", hash: "" }).kind, "join");
   assert.equal(parseCommunityRoute({ pathname: "/join/batch", search: "", hash: "" }).kind, "batch");
+  assert.equal(parseCommunityRoute({ pathname: "/install", search: "", hash: "" }).kind, "install");
+  assert.equal(parseCommunityRoute({ pathname: "/", search: "", hash: "#/install" }).kind, "install");
+  assert.equal(communityHref({ kind: "install" }), "/install");
   assert.equal(
     communityHref({ kind: "profile", publicId: "demo-1", filters: { period: "30d", metric: "cost" } }),
     "/rank/p/demo-1?period=30d&metric=cost",

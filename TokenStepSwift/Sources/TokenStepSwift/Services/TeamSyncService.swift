@@ -240,6 +240,35 @@ actor TeamSyncService {
         return rank
     }
 
+    func fetchPublicLeaderboard(
+        serverURL rawServerURL: String
+    ) async throws -> TeamSyncPublicLeaderboard {
+        let normalizedServerURL = try TeamSyncProtocol.normalizedServerURL(
+            rawServerURL
+        ).absoluteString
+        let request = try TeamSyncProtocol.publicLeaderboardAPIURLRequest(
+            serverURL: normalizedServerURL
+        )
+        let response: TeamSyncHTTPResponse
+        do {
+            response = try await httpClient.send(request)
+        } catch let error as TeamSyncProtocolError {
+            throw error
+        } catch {
+            throw TeamSyncProtocolError.networkUnavailable
+        }
+        guard (200...299).contains(response.statusCode) else {
+            throw TeamSyncProtocolError.httpStatus(response.statusCode)
+        }
+        guard let leaderboard = try? JSONDecoder().decode(
+            TeamSyncPublicLeaderboard.self,
+            from: response.data
+        ), leaderboard.isValid else {
+            throw TeamSyncProtocolError.invalidCommunityRankResponse
+        }
+        return leaderboard
+    }
+
     func synchronize(
         snapshot: UsageSnapshot,
         serverURL rawServerURL: String,
