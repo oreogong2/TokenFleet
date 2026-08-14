@@ -584,46 +584,33 @@ struct ContributionWallView: View {
     var goal: Int
     var weeks: Int = 34
 
-    private var rowByDate: [String: DailyUsage] {
-        Dictionary(uniqueKeysWithValues: rows.map { ($0.date, $0) })
-    }
-
     var body: some View {
-        let calendar: Calendar = {
-            var value = Calendar(identifier: .gregorian)
-            value.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
-            return value
-        }()
-        let today = calendar.startOfDay(for: Date())
-        let weekday = calendar.component(.weekday, from: today)
-        let daysSinceMonday = (weekday + 5) % 7
-        let currentWeekStart = calendar.date(
-            byAdding: .day,
-            value: -daysSinceMonday,
-            to: today
-        ) ?? today
-        let start = calendar.date(
-            byAdding: .day,
-            value: -(max(1, weeks) - 1) * 7,
-            to: currentWeekStart
-        ) ?? currentWeekStart
+        let columnCount = max(1, weeks)
+        let visibleRows = UsageCalendarWindow.contributionRows(from: rows, weeks: columnCount)
+        let todayKey = DateFormatter.tokenStepDay.string(from: Date())
 
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 5) {
-                ForEach(0..<weeks, id: \.self) { week in
+                ForEach(0..<columnCount, id: \.self) { week in
                     VStack(spacing: 5) {
                         ForEach(0..<7, id: \.self) { dayIndex in
-                            let day = calendar.date(byAdding: .day, value: week * 7 + dayIndex, to: start) ?? today
-                            let key = DateFormatter.tokenStepDay.string(from: day)
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(day > today ? Color.clear : contributionColor(tokens: rowByDate[key]?.totalTokens ?? 0, goal: goal))
-                                .frame(width: 15, height: 15)
-                                .overlay {
-                                    if calendar.isDate(day, inSameDayAs: today) {
-                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                            .stroke(Color.tokenGreenDark, lineWidth: 1.5)
+                            let slot = week * 7 + dayIndex
+                            if visibleRows.indices.contains(slot) {
+                                let row = visibleRows[slot]
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(contributionColor(tokens: row.totalTokens, goal: goal))
+                                    .frame(width: 15, height: 15)
+                                    .overlay {
+                                        if row.date == todayKey {
+                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                .stroke(Color.tokenGreenDark, lineWidth: 1.5)
+                                        }
                                     }
-                                }
+                            } else {
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color.clear)
+                                    .frame(width: 15, height: 15)
+                            }
                         }
                     }
                 }

@@ -44,6 +44,40 @@ final class UsageCalendarWindowTests: XCTestCase {
         XCTAssertEqual(rows.map(\.totalTokens).reduce(0, +), 400)
     }
 
+    func testContributionWallKeepsFullSevenDayRangeAcrossWeekBoundary() throws {
+        let endingAt = try XCTUnwrap(DateFormatter.tokenStepDay.date(from: "2026-08-14"))
+        let selectedRows = UsageCalendarWindow.rows(
+            from: [
+                usage(date: "2026-08-08", tokens: 80),
+                usage(date: "2026-08-10", tokens: 100),
+                usage(date: "2026-08-14", tokens: 300),
+            ],
+            days: 7,
+            endingAt: endingAt
+        )
+
+        let wallRows = UsageCalendarWindow.contributionRows(from: selectedRows, weeks: 1)
+
+        XCTAssertEqual(wallRows.map(\.date), [
+            "2026-08-08", "2026-08-09", "2026-08-10", "2026-08-11",
+            "2026-08-12", "2026-08-13", "2026-08-14",
+        ])
+        XCTAssertEqual(wallRows.map(\.totalTokens).reduce(0, +), 480)
+    }
+
+    func testContributionWallCapsAllRangeAtGridCapacity() {
+        let rows = (1...10).map { day in
+            usage(date: String(format: "2026-08-%02d", day), tokens: day)
+        }
+
+        let wallRows = UsageCalendarWindow.contributionRows(from: rows, weeks: 1)
+
+        XCTAssertEqual(wallRows.map(\.date), [
+            "2026-08-04", "2026-08-05", "2026-08-06", "2026-08-07",
+            "2026-08-08", "2026-08-09", "2026-08-10",
+        ])
+    }
+
     private func usage(date: String, tokens: Int) -> DailyUsage {
         DailyUsage(
             date: date,

@@ -48,6 +48,18 @@ enum UsageCalendarWindow {
         }
     }
 
+    /// Returns the exact selected accounting-day rows that fit in the wall.
+    /// The grid is intentionally sequential rather than Monday-anchored: a
+    /// seven-day range must keep all seven selected days even when it crosses
+    /// a calendar-week boundary.
+    static func contributionRows(
+        from rows: [DailyUsage],
+        weeks: Int
+    ) -> [DailyUsage] {
+        let capacity = max(1, weeks) * 7
+        return Array(rows.sorted { $0.date < $1.date }.suffix(capacity))
+    }
+
     private static func emptyRow(for date: String) -> DailyUsage {
         DailyUsage(
             date: date,

@@ -551,8 +551,8 @@
       <div class="baselines">
         <span class="baseline">TokenStep v0.1.48</span>
         <span class="baseline">TokenFleet beta.7 · v0.1.0-beta.7</span>
-        <span class="baseline">beta.8 正式代码 · a0c0621</span>
-        <span class="baseline">视觉预览 ≠ 已开发完成</span>
+        <span class="baseline">beta.8 · Draft PR #4 当前 headRefOid</span>
+        <span class="baseline">能力状态以当前工作树验收为准</span>
       </div>
       <div class="progress-panel" aria-live="polite">
         <div class="metric"><small>清单总项</small><b id="totalCount">0</b></div>
@@ -605,7 +605,7 @@
       </div>
       <div class="legend">
         <div><b>正式已有</b>beta.8 代码已有</div>
-        <div><b>仅预览</b>页面确认了，App 未落地</div>
+        <div><b>仅预览</b>仅用于尚未进入当前工作树的后台或人工决策项</div>
         <div><b>旧能力待保全</b>正式代码有，改版不能丢</div>
         <div><b>发布门槛</b>需真实验收或发布条件</div>
         <div><b>有意替代</b>不是遗漏，是产品取舍</div>
@@ -636,21 +636,21 @@
     };
 
     const priorities = [
-      { id: "p-popover-tools", title: "把单屏入口的“工具 Top 3 + 展开全部”版式落入正式 Swift App", note: "入口看 Codex、Claude Code 等工具，不是模型；多工具时版式不能拥挤。", status: "preview" },
-      { id: "p-ring", title: "正式落地“圈数圆环 + 每天一个亿”", note: "保留圈数记忆点，但视觉不照搬 TokenStep 步数皮肤。", status: "preview" },
-      { id: "p-agent-chart", title: "Agent 工作强度改成单轴 Token 柱状图", note: "今日按小时，近 7 天按天；缓存命中率不再与 Token 共用一张折线图。", status: "preview" },
-      { id: "p-history-structure", title: "历史活动落地总览 / 按工具 / 按模型 / 每日明细", note: "总成本、消耗、活跃、峰值、覆盖率和分项明细都要看得到。", status: "preview" },
-      { id: "p-history-30", title: "历史改版保留近 30 天趋势", note: "已确认并补回最新预览；正式 Swift 落地时继续保全 beta.7 能力。", status: "preview" },
-      { id: "p-history-wall", title: "历史改版保留近 8 个月活动墙", note: "已按 238 天补回；固定 7 行、按周向右排列，90 天与全部已做无溢出验收。", status: "preview" },
-      { id: "p-history-range", title: "保留近 7 / 30 / 90 天 / 全部范围切换", note: "已在总览 / 工具 / 模型页签同行补回并真实联动；每日明细不显示全局范围。", status: "preview" },
+      { id: "p-popover-tools", title: "单屏入口的“工具 Top 3 + 展开全部”", note: "已落入正式 Swift App；入口看 Codex、Claude Code 等工具，不是模型，多工具可展开全部。", status: "done" },
+      { id: "p-ring", title: "“圈数圆环 + 每天一个亿”", note: "已正式落地，保留圈数记忆点，但不照搬 TokenStep 步数皮肤。", status: "done" },
+      { id: "p-agent-chart", title: "Agent 工作强度单轴 Token 图", note: "已正式落地：今日按小时、近 7 天按天；缓存命中率不与 Token 共用主图。", status: "done" },
+      { id: "p-history-structure", title: "历史总览 / 按工具 / 按模型 / 每日明细", note: "已正式落地：总成本、消耗、活跃、峰值、覆盖率和分项明细均可查看。", status: "done" },
+      { id: "p-history-30", title: "近 30 天完整趋势", note: "已正式落地，并与 7 / 30 / 90 天 / 全部范围联动。", status: "done" },
+      { id: "p-history-wall", title: "历史活动墙", note: "已正式落地：按所选日历窗口日期顺序连续填充，固定 7 行按周排列，跨周的 7 天不漏。", status: "done" },
+      { id: "p-history-range", title: "近 7 / 30 / 90 天 / 全部范围切换", note: "已在总览 / 工具 / 模型页签同行落地并真实联动；每日明细不显示全局范围。", status: "done" },
       { id: "p-personal-share", title: "保留今日、昨日、昨日节奏三种个人分享和当前页截图", note: "排行榜分享是新增，不应覆盖原有个人分享。", status: "preserve" },
-      { id: "p-app-top10", title: "App 社群榜显示 Top 10、主力工具/模型和“分享排名”", note: "正式 App 当前只有本人排名上下文和打开网页。", status: "preview" },
-      { id: "p-rank-poster", title: "统一 App / Web 排名海报：主指标 Token + 本人 #x / y", note: "Web 已本地落地并生成真实 PNG；按钮统一叫“分享排名”，金额只作辅助信息。App 待落地。", status: "preview" },
-      { id: "p-rank-poster-context", title: "排名海报补充主力工具、主力模型、估算费用和 slogan", note: "Web 已本地落地并通过浏览器回归；榜单二维码只进入同一口径排行榜。App 待落地。", status: "preview" },
-      { id: "p-install-join", title: "排行榜网页增加“安装与参与”及联系二维码", note: "正式 Web 本地工作树已落地公开入口、纯二维码和必需邀请码说明；后台复制链接、邀请海报和更换二维码仍待实现。", status: "preview" },
-      { id: "p-settings", title: "设置页采用单层导航并完整保留旧设置项", note: "语言、每日目标、刷新、入口、额度、隐私、更新和版本信息不能漏。", status: "preview" },
+      { id: "p-app-top10", title: "App 社群榜 Top 10、主力工具/模型和“分享排名”", note: "已正式落地；App 同时提供本人排名上下文。", status: "done" },
+      { id: "p-rank-poster", title: "统一 App / Web 排名海报：主指标 Token + 本人 #x / y", note: "已正式落地并生成真实 1200 × 1600 PNG；按钮统一为“分享排名”，金额仅作辅助信息。", status: "done" },
+      { id: "p-rank-poster-context", title: "排名海报的主力工具、主力模型、估算费用和 slogan", note: "已正式落地并通过回归；二维码仅跳转同源公开排行榜，不携带设备码或其他设备权限。", status: "done" },
+      { id: "p-install-join", title: "排行榜网页“安装与参与”及联系二维码", note: "已正式落地：公开安装入口、纯二维码和必需邀请码说明齐备；后台复制链接、邀请海报和二维码管理另列 gate。", status: "done" },
+      { id: "p-settings", title: "设置页保留旧设置项", note: "已正式落地：语言、每日目标、刷新、入口、额度、隐私、更新和版本信息均保留。", status: "done" },
       { id: "p-cache", title: "决定缓存命中率放哪里", note: "建议从 Agent 主图移除，只在详情或悬停里保留，底层数据不删除。", status: "preserve" },
-      { id: "p-platform-e2e", title: "完成真实 Intel Mac 界面与 Windows 10/11 端到端验收", note: "CI 已通过，但发布前仍要在真实可见界面实际操作。", status: "gate" },
+      { id: "p-platform-e2e", title: "完成真实 Intel Mac 界面与 Windows 10/11 端到端验收", note: "本地门禁与历史平台自动化不能替代真实可见界面；发布前仍需实际操作。", status: "gate" },
       { id: "p-release", title: "闭环签名、公证、可信更新源和 beta.7 用户迁移", note: "此前不能说 beta.7 成员已经可以自动收到 beta.8。", status: "gate" }
     ];
 
@@ -665,16 +665,16 @@
           ["main-reopen", "单屏主窗口找回", "部分", "部分", "可从应用程序或 Spotlight 再打开；仍需真实单屏回归。", "gate"],
           ["daily-goal", "每日目标可配置", "有", "有", "正式代码已有；最新设置稿也已补回。", "done"],
           ["percent-real", "超过 100% 后显示真实百分比", "有", "有", "正式代码已有，保持。", "done"],
-          ["one-billion", "“每天一个亿”", "类似目标叙事", "有", "已确认保留，但最终样式只在预览。", "preview"],
-          ["round-ring", "圈数圆环", "原版记忆点", "表达不同", "已决定保留圈数感；正式代码仍是早期目标盘。", "preview"],
-          ["tool-distribution", "今日工具分布", "有", "有", "数据已有；Top 3 + 展开全部的稳定多工具版式仅在预览。", "preview"],
+          ["one-billion", "“每天一个亿”", "类似目标叙事", "有", "beta.8 正式代码已落地。", "done"],
+          ["round-ring", "圈数圆环", "原版记忆点", "表达不同", "beta.8 已落地圈数感，不照搬 TokenStep 步数皮肤。", "done"],
+          ["tool-distribution", "今日工具分布", "有", "有", "正式代码已落地 Top 3 + 展开全部；显示真实总数，不静默并入“其他”。", "done"],
           ["model-distribution", "今日模型分布", "有", "有", "正式代码已有，只展示真实本地字段。", "done"],
           ["cost-estimate", "API 费用估算", "有", "有但准确性不足", "已增强精确模型、四类 Token、价格版本与覆盖率；始终明确是估算。", "done"],
           ["streak", "连续活跃天数", "非独立基线", "没有", "beta.8 正式代码已有。", "done"],
           ["relative-rhythm", "相对近 7 个活跃日节奏", "部分", "有", "正式代码已有准确口径，样本不足时隐藏。", "done"],
           ["agent-toggle", "Agent 今日 / 近 7 天切换", "有", "有", "正式代码已有，保持。", "done"],
           ["agent-filter", "Agent 按工具来源筛选", "有", "有", "正式代码已有，保持。", "done"],
-          ["agent-chart", "Agent 活动图", "24 小时", "24 小时", "数据能力已有；更易懂的小时 / 每日柱图仍仅预览。", "preview"],
+          ["agent-chart", "Agent 活动图", "24 小时", "24 小时", "正式代码已落地：今日按小时、近 7 天按天的 Token 强度图。", "done"],
           ["cache-line", "缓存命中率折线", "有", "有", "正式代码仍有；建议移出主图并保留为详情指标。", "preserve"],
           ["quota", "Codex / Claude Code 剩余额度", "有", "有，默认关闭", "正式代码已有，读取到真实窗口才展示；最终稿还需补开启态。", "preserve"]
         ]
@@ -683,16 +683,16 @@
         id: "history",
         title: "2. 历史、统计与明细",
         rows: [
-          ["history-range", "近 7 / 30 / 90 天 / 全部", "支持多时间范围", "完整支持", "最新预览已补回并联动总览 / 工具 / 模型；每日明细不显示全局范围。", "preview"],
-          ["history-30", "最近 30 天趋势", "30 天趋势", "30 天趋势", "正式代码保留；最新预览已由 14 天恢复为完整 30 天。", "preview"],
-          ["history-wall", "近 8 个月活动墙", "约 8 个月热力图", "约 8 个月热力图", "最新预览已恢复 238 天；固定 7 行，90 天约 13 周、全部约 34 周。", "preview"],
+          ["history-range", "近 7 / 30 / 90 天 / 全部", "支持多时间范围", "完整支持", "正式代码已落地并联动总览 / 工具 / 模型；每日明细不显示全局范围。", "done"],
+          ["history-30", "最近 30 天趋势", "30 天趋势", "30 天趋势", "正式代码已落地完整趋势，并随所选范围联动。", "done"],
+          ["history-wall", "近 8 个月活动墙", "约 8 个月热力图", "约 8 个月热力图", "正式代码已落地：按所选日历窗口日期顺序连续填充，固定 7 行按周排列，跨周的 7 天不漏；90 天约 13 周、全部约 34 周。", "done"],
           ["history-core", "累计 Token / 活跃天数 / 达标天数", "有", "有", "正式代码已有，保持。", "done"],
-          ["history-cost", "累计费用 / 覆盖率 / 日均 / 峰值", "部分", "部分", "最新预览已设计，正式历史页仍需重新排版落地。", "preview"],
-          ["history-tools", "按工具汇总", "有", "有", "数据已有，独立页签只在预览。", "preview"],
-          ["history-models", "按模型汇总", "有", "有", "数据已有，独立页签只在预览。", "preview"],
+          ["history-cost", "累计费用 / 覆盖率 / 日均 / 峰值", "部分", "部分", "正式历史页已落地；费用始终按“估算”口径显示，并提供覆盖率。", "done"],
+          ["history-tools", "按工具汇总", "有", "有", "正式代码已落地独立页签、完整列表、总数和排序。", "done"],
+          ["history-models", "按模型汇总", "有", "有", "正式代码已落地独立页签、完整列表、总数和排序。", "done"],
           ["history-drilldown", "每日展开到工具 → 模型", "有", "有", "正式代码已有，改版必须保留。", "preserve"],
           ["history-token-types", "输入 / 输出 / 缓存读 / 缓存写", "有", "有", "正式代码已有，不得因简化 UI 删除。", "preserve"],
-          ["history-legacy", "旧数据分项不完整提示", "旧数据来源", "有", "正式代码已有；最新预览已补回明确提示，不伪造工具×模型交叉值。", "preview"]
+          ["history-legacy", "旧数据分项不完整提示", "旧数据来源", "有", "正式代码已落地明确提示，不伪造工具 × 模型交叉值。", "done"]
         ]
       },
       {
@@ -721,12 +721,12 @@
           ["today-card", "今日成绩分享卡", "有", "有", "正式代码已有，最终 UI 要保留入口。", "preserve"],
           ["yesterday-card", "昨日成绩分享卡", "有", "有", "正式代码已有，最终 UI 要保留入口。", "preserve"],
           ["rhythm-card", "昨日节奏分享卡", "有", "有", "正式代码已有，最终 UI 要保留入口。", "preserve"],
-          ["png-save", "复制 PNG / 保存图片", "有", "有", "beta.8 已补分阶段错误；安装后还要真实点击回归。", "gate"],
-          ["web-poster", "Web 排行榜 Top 10 海报", "没有", "有", "beta.7 能力仍在，保持现有榜单版式。", "preserve"],
-          ["poster-self", "海报突出本人位置", "外部排行能力", "成员详情可突出", "固定显示本人 #x / y 的统一海报仍只在预览。", "preview"],
-          ["poster-token", "分享主指标为 Token", "部分", "可按口径", "已确认，正式 Web / App 仍需统一。", "preview"],
-          ["poster-context", "海报展示工具 / 模型 / 估算与 slogan", "部分", "网页有分项", "最新预览已补齐，费用只作解释层；榜单二维码进入同一口径排行榜。", "preview"],
-          ["share-label", "统一叫“分享排名”", "没有", "仍有“生成分享图片”", "正式 Web 按钮与真实 PNG 海报已统一并通过测试；App 待落地。", "preview"]
+          ["png-save", "复制 PNG / 保存图片", "有", "有", "beta.8 已完成真实渲染、编码、剪贴板和写文件流程，并覆盖分阶段错误。", "done"],
+          ["web-poster", "Web 排行榜 Top 10 海报", "没有", "有", "已落地真实 1200 × 1600 海报。", "done"],
+          ["poster-self", "海报突出本人位置", "外部排行能力", "成员详情可突出", "Swift / Web 统一海报均固定显示本人 #x / y。", "done"],
+          ["poster-token", "分享主指标为 Token", "部分", "可按口径", "Swift / Web 已统一以 Token 为主指标，金额仅作辅助信息。", "done"],
+          ["poster-context", "海报展示工具 / 模型 / 估算与 slogan", "部分", "网页有分项", "已落地；费用为解释层，二维码仅进入同源公开排行榜，不携带设备码或其他设备权限。", "done"],
+          ["share-label", "统一叫“分享排名”", "没有", "仍有“生成分享图片”", "Swift / Web 已统一命名并通过测试。", "done"]
         ]
       },
       {
@@ -734,9 +734,9 @@
         title: "5. 设置与系统",
         rows: [
           ["goal-settings", "每日目标加减与预设", "有", "有", "正式代码已有；最新设置稿已补回。", "done"],
-          ["themes", "主题配色", "有", "有", "扩展为 9 套；还需逐套检查对比度。", "gate"],
+          ["themes", "主题配色", "有", "有", "已扩展为 9 套；正式代码已落地。", "done"],
           ["languages", "跟随系统 / 简中 / English / 繁中", "有", "有", "正式代码已有；最新预览已补回。", "done"],
-          ["entry-setting", "自动 / 刘海左 / 刘海右 / 菜单栏", "有", "有", "正式代码已有；需真实单屏 / 双屏回归。", "gate"],
+          ["entry-setting", "自动 / 刘海左 / 刘海右 / 菜单栏", "有", "有", "正式代码已落地；真实 Intel 与 Windows 可见界面 E2E 另列发布门槛。", "done"],
           ["menu-token", "菜单栏显示 Token", "部分", "部分", "beta.8 新增显式开关，默认关闭。", "done"],
           ["quota-setting", "Agent 额度显示开关", "有", "有", "正式代码已有，默认关闭。", "done"],
           ["launch", "开机启动", "有", "有", "正式代码已有。", "done"],
@@ -753,16 +753,17 @@
           ["community-sync", "可选社群连接与日汇总同步", "没有", "有", "正式代码已有。", "done"],
           ["sync-retry", "手动 / 后台同步、离线重试、最后状态", "没有", "有", "正式代码已有。", "done"],
           ["my-rank", "App 显示本人第 x / y 名与超过比例", "外部 Token Rank", "原生未实现", "beta.8 正式代码已有安全只读接口。", "done"],
-          ["app-top10", "App 内显性 Top 10", "外部排行榜卡", "没有", "最新预览已设计，正式 App 尚未实现。", "preview"],
+          ["app-top10", "App 内显性 Top 10", "外部排行榜卡", "没有", "beta.8 正式 App 已落地。", "done"],
           ["public-filters", "公榜日期 / 口径 / 工具 / 模型筛选", "外部服务", "TokenFleet Web 有", "现版网页已有，保持，不重做布局。", "preserve"],
-          ["public-primary-model", "公榜每行显示主力模型与该模型 Token", "外部服务", "没有", "正式服务端 / Web 本地工作树已实现并通过完整服务端、Web 与三尺寸浏览器测试；尚未提交 / CI。", "preview"],
+          ["public-primary-model", "公榜每行显示主力模型与该模型 Token", "外部服务", "没有", "正式服务端 / Web 当前工作树已实现，并通过完整服务端、Web 与三尺寸浏览器测试；当前提交推送后的 CI 仍待验证。", "done"],
           ["member-detail", "公开成员详情与日趋势", "外部服务", "有", "现版网页已有，保持。", "preserve"],
           ["admin-overview", "管理员成员 / 设备 / 工具 / 模型 / 成本", "没有", "有", "正式 Web 已有，保持。", "done"],
           ["invites", "批次邀请与单次设备码", "没有", "有", "正式 Web 已有，保持安全边界。", "done"],
           ["reissue", "既有未绑定成员安全补发设备码", "没有", "流程不足", "beta.8 代码已闭环旧未用码失效；尚未部署生产。", "gate"],
           ["windows", "Windows Codex / Claude 采集与同步", "没有", "成员反馈可用", "自动化已回归；仍需真实 Win10/11 人工 E2E。", "gate"],
           ["intel", "Intel Mac", "发行包证据未核实", "未正式保证", "universal 已过；另有历史 Intel 自动化 runner 证据，但不代表当前 CI 或真实 GUI E2E。", "gate"],
-          ["install-join", "排行榜“安装与参与”与管理员邀请工具", "没有", "只有持码后的 /join 说明", "正式 Web 本地工作树已有公开安装页、纯二维码和必需邀请码说明；后台分享工具仍待实现。", "preview"]
+          ["install-join", "排行榜“安装与参与”公开入口", "没有", "只有持码后的 /join 说明", "正式 Web 当前工作树已落地公开安装页、纯二维码和必需邀请码说明；二维码不携带设备权限。", "done"],
+          ["admin-invite-tools", "后台邀请辅助（复制公开链接 / 邀请海报 / 更换二维码）", "没有", "没有", "不属于已落地的公开安装页；仍待后台产品决策、实现与生产授权。", "gate"]
         ]
       },
       {

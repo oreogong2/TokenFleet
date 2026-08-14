@@ -2,7 +2,7 @@
 
 验收日期：2026-08-14
 
-验收对象：`/Users/oreo/Desktop/code/TokenFleet/release/public-source/TokenFleet-beta` 中经固定、提交并推送到 Draft PR #4 的 beta.8 候选
+验收对象：`/Users/oreo/Desktop/code/TokenFleet/release/public-source/TokenFleet-beta` 中经固定并用于 Draft PR #4 的 beta.8 候选
 工作分支：`codex/tokenfleet-beta8`
 
 ## 验收结论
@@ -17,7 +17,7 @@ beta.8 的本地构建、源码门禁、服务端、Web、浏览器联调、迁�
 | --- | --- | --- |
 | Swift 完整门禁 | 通过 | 网络供应链、Keychain、离线恢复、累计采集、迁移、分享卡，以及 beta.8 真实 Swift 入口、稀疏日历补零、榜外本人、社群海报渲染／复制／保存均已覆盖。 |
 | App 海报与二维码 | 通过 | 实际海报精确为 `1200 × 1600`，二维码像素存在；不依赖外部 QR 库的实现与 Nayuki QR Code generator v6、v15、v40 基准输出均完全匹配。 |
-| macOS universal 产物 | 通过 | `TokenFleet.app` 与 `Contents/Helpers/TokenFleetHelper` 均为 `x86_64 arm64`；版本均为 `0.1.0-beta.8`。 |
+| macOS universal 产物 | 通过 | `TokenFleet.app` 与 `Contents/Helpers/TokenFleetHelper` 均为 `x86_64 arm64`；App 的 `TokenFleetReleaseVersion` 为 `0.1.0-beta.8`，Apple 要求的 `CFBundleShortVersionString` / `CFBundleVersion` 为去除预发布后缀的 `0.1.0`。 |
 | Web 单元 | 通过 | `50 / 50`。 |
 | 服务端 SQLite | 通过 | `155 passed, 16 skipped`。 |
 | 服务端 PostgreSQL 17 专属项 | 通过 | `16 / 16`。 |
@@ -30,7 +30,7 @@ beta.8 的本地构建、源码门禁、服务端、Web、浏览器联调、迁�
 
 - TokenFleet 分段信号环和真实超额百分比；系统右侧紧凑菜单栏入口默认启用，Token Island 仍由用户显式选择。
 - 快览、主窗口社群页和分享内容可显示本人排名、参榜人数、超过成员比例、最近同步时间、连续活跃与相对近 7 个活跃日节奏；本人在 Top 10 外仍从签名只读响应取得自己的公开主力工具、模型与估算字段。样本不足及本地留存边界使用非误导性文案。
-- 历史 7 / 30 / 90 天按 Asia/Shanghai 连续日历桶计算，采集器省略的零用量日会补零而不会向更早活跃日扩张；活动墙分别使用 1 / 5 / 13 周，“全部”使用 34 周。
+- 历史 7 / 30 / 90 天按 Asia/Shanghai 连续日历桶计算，采集器省略的零用量日会补零而不会向更早活跃日扩张；活动墙分别使用 1 / 5 / 13 列，“全部”使用 34 列，并按所选日历窗口顺序填充，跨周的近 7 天不会漏掉窗口起点。
 - 九套主题、版本化 API 标准价估算与覆盖率／未计价状态、分享卡渲染、复制 PNG、保存 JPEG 的错误边界均已纳入验证。
 - 管理员可对既有成员补发 60 分钟一次性设备码；同一事务失效旧的未使用有效码，不新增重复成员、不占批次名额，也不更改已使用码与审计记录。
 - 采集侧遵循安全样本和隐私边界；仅成功且确有用量记录的来源计入“已采集客户端”。
