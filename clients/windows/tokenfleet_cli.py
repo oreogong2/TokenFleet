@@ -18,7 +18,14 @@ from tokenfleet.installation import (
 )
 from tokenfleet.paths import ClientPaths, default_source_home
 from tokenfleet.protocol import ProtocolError
-from tokenfleet.scheduler import SchedulerError, is_registered, register, unregister
+from tokenfleet.scheduler import (
+    SchedulerError,
+    is_registered,
+    register,
+    run_startup_loop,
+    scheduler_backend,
+    unregister,
+)
 from tokenfleet.state import StateError, StateStore
 
 
@@ -43,6 +50,8 @@ def _parser() -> argparse.ArgumentParser:
     sync = commands.add_parser("sync", help="立即同步一次")
     sync.add_argument("--json", action="store_true", dest="as_json")
     sync.add_argument("--quiet", action="store_true", help=argparse.SUPPRESS)
+
+    commands.add_parser("scheduled-loop", help=argparse.SUPPRESS)
 
     status = commands.add_parser("status", help="查看连接和自动同步状态")
     status.add_argument("--json", action="store_true", dest="as_json")
@@ -106,25 +115,11 @@ def _connect(args: argparse.Namespace, paths: ClientPaths) -> int:
         credential = client.connect(enrollment_token=code)
     finally:
         code = ""  # do not retain the one-time code beyond enrollment
-    schedule_warning = False
-    try:
-        register(Path(__file__))
-    except SchedulerError:
-        schedule_warning = True
     print(f"设备已连接：{credential.device_public_id}")
     if not args.no_initial_sync:
         summary = client.sync()
         print(f"首次同步完成：{summary.buckets} 个日聚合，{summary.total_tokens} Token")
-    if schedule_warning:
-        warning = (
-            "设备已连接，但自动同步任务创建失败；请运行 tokenfleet sync。"
-            if args.no_initial_sync
-            else "设备和数据已同步，但自动同步任务创建失败；请定期运行 tokenfleet sync。"
-        )
-        print(
-            warning,
-            file=sys.stderr,
-        )
+    _register_schedule_with_notice(Path(__file__))
     return 0
 
 
@@ -135,12 +130,6 @@ def _preview(args: argparse.Namespace, paths: ClientPaths) -> int:
 
 
 def _sync(args: argparse.Namespace, paths: ClientPaths) -> int:
-    schedule_warning = False
-    if not is_registered():
-        try:
-            register(Path(__file__))
-        except SchedulerError:
-            schedule_warning = True
     summary = _client(paths).sync()
     value = {
         "bucket_count": summary.buckets,
@@ -153,11 +142,29 @@ def _sync(args: argparse.Namespace, paths: ClientPaths) -> int:
     }
     if not args.quiet:
         _print_value(value, as_json=args.as_json)
-    if schedule_warning:
+    if not is_registered(Path(__file__)):
+        _register_schedule_with_notice(Path(__file__))
+    return 0
+
+
+def _register_schedule_with_notice(script_path: Path) -> None:
+    try:
+        backend = register(script_path)
+    except SchedulerError:
         print(
-            "数据已同步，但自动同步任务仍未创建；请定期手动运行 tokenfleet sync。",
+            "数据可手动同步，但自动同步注册失败；请定期运行 tokenfleet sync。",
             file=sys.stderr,
         )
+        return
+    if backend == "startup_loop":
+        print(
+            "Windows 计划任务不可用，已启用当前用户登录后后台同步。",
+            file=sys.stderr,
+        )
+
+
+def _scheduled_loop(_args: argparse.Namespace, paths: ClientPaths) -> int:
+    run_startup_loop(Path(__file__), lambda: _client(paths).sync())
     return 0
 
 
@@ -178,12 +185,14 @@ def _status(args: argparse.Namespace, paths: ClientPaths) -> int:
             )
         public_id = credential.device_public_id
     state = StateStore(paths.state).load()
+    backend = scheduler_backend(Path(__file__))
     value = {
         "connected": connected,
         "server": origin,
         "device_public_id": public_id or state.device_public_id,
-        "scheduled_sync": is_registered(),
-        "scheduled_task": TASK_NAME,
+        "scheduled_sync": backend is not None,
+        "scheduled_backend": backend,
+        "scheduled_task": TASK_NAME if backend == "task_scheduler" else None,
         "last_sync_at": state.last_sync_at,
         "last_bucket_count": state.last_bucket_count,
         "last_uploaded_tokens": state.last_uploaded_tokens,
@@ -241,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
             "connect": _connect,
             "preview": _preview,
             "sync": _sync,
+            "scheduled-loop": _scheduled_loop,
             "status": _status,
             "open-rank": lambda _args, selected: _open_rank(selected),
             "uninstall": _uninstall,

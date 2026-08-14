@@ -28,6 +28,13 @@ if ($LASTEXITCODE -eq 0) {
     }
 }
 
+$runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+$runValueName = "TokenFleet Community Sync"
+$runValue = Get-ItemProperty -LiteralPath $runKey -Name $runValueName -ErrorAction SilentlyContinue
+if ($null -ne $runValue) {
+    Remove-ItemProperty -LiteralPath $runKey -Name $runValueName -ErrorAction Stop
+}
+
 $binRoot = Join-Path $installRoot "bin"
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 $remaining = @(
@@ -42,4 +49,4 @@ if ($FromClient) {
 if (Test-Path -LiteralPath $installRoot) {
     Remove-Item -LiteralPath $installRoot -Recurse -Force
 }
-Write-Output "TokenFleet Windows client removed. Server-side history is unchanged."
+Write-Output "TokenFleet Windows client, scheduled task, and startup entry removed. Server-side history is unchanged."
