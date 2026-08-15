@@ -2,7 +2,7 @@
 
 验收日期：2026-08-15
 
-验收对象：正式仓库本地 beta.8 候选提交及其发布前修复；Draft PR #4 尚未推送到同一 head
+验收对象：正式仓库当前本地 beta.8 HEAD；Draft PR #4 尚未推送到同一 head
 工作分支：`codex/tokenfleet-beta8`
 
 ## 验收结论
