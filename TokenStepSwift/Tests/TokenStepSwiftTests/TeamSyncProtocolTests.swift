@@ -212,6 +212,25 @@ final class TeamSyncProtocolTests: XCTestCase {
         XCTAssertFalse(invalid.isValid)
     }
 
+    func testPublicLeaderboardAcceptsBeta7RowsWithoutPrimaryDimensions() throws {
+        let data = Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":["gpt-5"],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"奥哥","metric_value":"704000000","totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false}}]}"#.utf8)
+        let board = try JSONDecoder().decode(TeamSyncPublicLeaderboard.self, from: data)
+
+        XCTAssertTrue(board.isValid)
+        XCTAssertEqual(board.entries.first?.nickname, "奥哥")
+        XCTAssertEqual(board.entries.first?.toolCount, 0)
+        XCTAssertNil(board.entries.first?.primaryTool)
+        XCTAssertEqual(board.entries.first?.modelCount, 0)
+        XCTAssertNil(board.entries.first?.primaryModel)
+    }
+
+    func testPublicLeaderboardStillRejectsPartialPrimaryDimension() throws {
+        let data = Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":[],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"奥哥","metric_value":"704000000","primary_tool":"Codex","totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false}}]}"#.utf8)
+        let board = try JSONDecoder().decode(TeamSyncPublicLeaderboard.self, from: data)
+
+        XCTAssertFalse(board.isValid)
+    }
+
     func testCrossPlatformGoldenHMACVector() {
         let body = Data(#"{"schema_version":1,"collector_version":"0.2.0","generated_at":"2026-08-09T01:30:00Z","buckets":[{"date":"2026-08-09","timezone":"Asia/Shanghai","tool":"Codex","model":"gpt-5","source":"local","input_tokens":120,"output_tokens":80,"cache_read_tokens":1000,"cache_write_tokens":50,"completeness":"exact"}]}"#.utf8)
         let bodyHash = Data(SHA256.hash(data: body)).map { String(format: "%02x", $0) }.joined()

@@ -172,6 +172,11 @@ struct CommunityView: View {
     }
 
     private var rankHeadline: String {
+        if appState.communityRankError != nil,
+           appState.communityLeaderboard != nil,
+           appState.communityLeaderboardError == nil {
+            return L("已进入社群 · 个人排名暂不可用")
+        }
         guard let rank = appState.communityRank?.rank,
               let total = appState.communityRank?.totalEntries,
               appState.communityRank?.publicProfileEnabled == true
@@ -180,6 +185,11 @@ struct CommunityView: View {
     }
 
     private var rankDetail: String {
+        if appState.communityRankError != nil,
+           appState.communityLeaderboard != nil,
+           appState.communityLeaderboardError == nil {
+            return L("公开榜可正常查看；个人排名暂时无法读取，请稍后重试")
+        }
         let exceeded = appState.communityRank?.exceededPercentage.map { LFormat("超过 %d%% 参榜用户", $0) }
         let tool = currentUserEntry?.primaryTool ?? appState.communityRank?.primaryTool
         var parts = [String]()

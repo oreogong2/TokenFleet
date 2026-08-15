@@ -438,6 +438,27 @@ struct TeamSyncPublicLeaderboardEntry: Decodable, Equatable, Identifiable {
     }
 }
 
+extension TeamSyncPublicLeaderboardEntry {
+    /// beta.7 public leaderboard responses predate the optional primary
+    /// tool/model summary. Keep those rows readable during a client-first
+    /// beta.8 rollout; any partially supplied beta.8 dimension still fails
+    /// `isValid` instead of being silently accepted.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        rank = try container.decodeIfPresent(Int.self, forKey: .rank)
+        publicID = try container.decode(String.self, forKey: .publicID)
+        nickname = try container.decode(String.self, forKey: .nickname)
+        metricValue = try container.decodeIfPresent(String.self, forKey: .metricValue)
+        primaryTool = try container.decodeIfPresent(String.self, forKey: .primaryTool)
+        primaryToolTokens = try container.decodeIfPresent(String.self, forKey: .primaryToolTokens)
+        toolCount = try container.decodeIfPresent(Int.self, forKey: .toolCount) ?? 0
+        primaryModel = try container.decodeIfPresent(String.self, forKey: .primaryModel)
+        primaryModelTokens = try container.decodeIfPresent(String.self, forKey: .primaryModelTokens)
+        modelCount = try container.decodeIfPresent(Int.self, forKey: .modelCount) ?? 0
+        totals = try container.decode(TeamSyncPublicUsageTotals.self, forKey: .totals)
+    }
+}
+
 struct TeamSyncPublicLeaderboard: Decodable, Equatable {
     var period: String
     var metric: String

@@ -21,6 +21,11 @@
   single main window from Applications or Spotlight when macOS hides the native
   menu-bar ring on a crowded built-in display. Early reopen requests are held
   until app state binds, and a minimized main window is explicitly restored.
+- Kept client-first upgrades compatible with beta.7's production public-board
+  rows, which do not yet include beta.8's derived primary tool/model fields.
+  The App still rejects partial or malformed beta.8 dimensions, shows the real
+  public board without inventing missing fields, and neutrally reports personal
+  rank as temporarily unavailable when that separate signed read fails.
 - Added a versioned public API price catalog with model- and component-specific
   rates, source-cost priority, pricing coverage, and explicit unpriced handling.
   Ambiguous Anthropic cache-write TTLs no longer erase the known cost components.
