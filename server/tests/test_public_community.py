@@ -15,7 +15,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy import event, func, select, text
 from sqlalchemy.exc import IntegrityError
 
-from app.models import DailyUsage, Device, EnrollmentToken, PriceVersion, User, utcnow
+from app.models import (
+    CommunityShareGrant,
+    DailyUsage,
+    Device,
+    EnrollmentToken,
+    PriceVersion,
+    User,
+    utcnow,
+)
 from app.middleware import parse_trusted_proxy_cidrs
 from app.rate_limit import PublicReadRateLimiter
 from app.schemas import PublicUsageTotals, TOKEN_MAX, UsageTotals
@@ -75,6 +83,14 @@ def _enroll_participant(harness, created):
         public_id=body["device_public_id"],
         secret=body["device_secret"],
         user_id=created["participant"]["id"],
+    )
+
+
+def _issue_share_grant(harness, device):
+    return harness.signed_post(
+        device,
+        {},
+        path="/api/v1/devices/me/community-share-grants",
     )
 
 
@@ -597,6 +613,121 @@ def test_device_rank_context_does_not_rank_private_profile(harness) -> None:
         "primary_model": None,
         "totals": None,
     }
+
+
+def test_public_member_can_issue_and_redeem_one_time_share_grant(harness) -> None:
+    _enable_alpha_public_board(harness)
+    created = _create_participant(harness, display_name="海报成员")
+    device = _enroll_participant(harness, created)
+    assert harness.signed_post(device, harness.usage_payload()).status_code == 200
+
+    issued = _issue_share_grant(harness, device)
+    assert issued.status_code == 201, issued.text
+    assert issued.headers["cache-control"] == "no-store"
+    body = issued.json()
+    assert len(body["grant"]) >= 43
+    assert body["public_id"] == created["participant"]["public_id"]
+    with harness.session_factory() as session:
+        grant = session.scalar(select(CommunityShareGrant))
+        assert grant is not None
+        assert grant.grant_hash == opaque_token_hash(body["grant"])
+        assert grant.grant_hash != body["grant"]
+        assert grant.consumed_at is None
+
+    redeemed = harness.client.post(
+        "/api/v1/public/community-share-grants/redeem",
+        json={"grant": body["grant"]},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    assert redeemed.headers["cache-control"] == "no-store"
+    assert redeemed.json() == {"public_id": created["participant"]["public_id"]}
+    assert harness.client.post(
+        "/api/v1/public/community-share-grants/redeem",
+        json={"grant": body["grant"]},
+    ).status_code == 403
+    assert harness.client.post(
+        "/api/v1/devices/me/community-share-grants", json={}
+    ).status_code == 401
+
+
+def test_reissuing_a_share_grant_revokes_the_same_devices_unused_grant(harness) -> None:
+    _enable_alpha_public_board(harness)
+    created = _create_participant(harness, display_name="重发海报成员")
+    device = _enroll_participant(harness, created)
+    assert harness.signed_post(device, harness.usage_payload()).status_code == 200
+
+    first = _issue_share_grant(harness, device)
+    second = _issue_share_grant(harness, device)
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["grant"] != second.json()["grant"]
+
+    assert harness.client.post(
+        "/api/v1/public/community-share-grants/redeem",
+        json={"grant": first.json()["grant"]},
+    ).status_code == 403
+    assert harness.client.post(
+        "/api/v1/public/community-share-grants/redeem",
+        json={"grant": second.json()["grant"]},
+    ).status_code == 200
+
+
+def test_expired_share_grant_cannot_be_redeemed(harness) -> None:
+    _enable_alpha_public_board(harness)
+    created = _create_participant(harness, display_name="过期海报成员")
+    device = _enroll_participant(harness, created)
+    assert harness.signed_post(device, harness.usage_payload()).status_code == 200
+    issued = _issue_share_grant(harness, device)
+    assert issued.status_code == 201
+
+    with harness.session_factory() as session:
+        grant = session.scalar(select(CommunityShareGrant))
+        assert grant is not None
+        grant.expires_at = utcnow() - timedelta(seconds=1)
+        session.commit()
+
+    assert harness.client.post(
+        "/api/v1/public/community-share-grants/redeem",
+        json={"grant": issued.json()["grant"]},
+    ).status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("change", "payload"),
+    [
+        ("public-profile", {"public_profile_enabled": False}),
+        ("device", {"is_active": False}),
+    ],
+)
+def test_share_grant_redeem_rechecks_current_public_membership(
+    harness, change: str, payload: dict[str, bool]
+) -> None:
+    _enable_alpha_public_board(harness)
+    created = _create_participant(harness, display_name=f"二次校验-{change}")
+    device = _enroll_participant(harness, created)
+    assert harness.signed_post(device, harness.usage_payload()).status_code == 200
+    issued = _issue_share_grant(harness, device)
+    assert issued.status_code == 201
+    grant = issued.json()["grant"]
+
+    if change == "public-profile":
+        changed = harness.client.patch(
+            f"/api/v1/users/{created['participant']['id']}",
+            headers=harness.auth("a_admin"),
+            json=payload,
+        )
+    else:
+        changed = harness.client.patch(
+            f"/api/v1/devices/{device.id}",
+            headers=harness.auth("a_admin"),
+            json=payload,
+        )
+    assert changed.status_code == 200, changed.text
+    denied = harness.client.post(
+        "/api/v1/public/community-share-grants/redeem",
+        json={"grant": grant},
+    )
+    assert denied.status_code == 403
 
 
 def test_device_rank_context_includes_own_public_summary_beyond_top_ten(harness) -> None:
@@ -1713,6 +1844,15 @@ def test_sqlite_migration_backfills_safe_defaults_and_allows_null_login_pair(
         "ix_usage_public_org_tool_date",
         "ix_usage_public_org_model_date",
     } <= usage_indexes
+    assert "community_share_grants" in inspect(engine).get_table_names()
+    assert {
+        "uq_community_share_grant_hash",
+        "ix_community_share_grant_expires",
+        "ix_community_share_grant_device_consumed",
+    } <= {
+        item["name"]
+        for item in inspect(engine).get_indexes("community_share_grants")
+    }
     with engine.begin() as connection:
         migrated = connection.execute(
             text(
@@ -1817,6 +1957,77 @@ def test_sqlite_public_migration_downgrades_without_participants(
         )
         assert connection.scalar(text("SELECT count(*) FROM users")) == 1
         assert connection.scalar(text("SELECT count(*) FROM price_versions")) == 1
+    engine.dispose()
+
+
+def test_sqlite_share_grant_migration_refuses_to_drop_existing_grants(
+    tmp_path: Path,
+) -> None:
+    from sqlalchemy import create_engine, inspect
+
+    database_path = tmp_path / "community-share-grant-downgrade.db"
+    database_url = f"sqlite:///{database_path}"
+    config = Config(str(SERVER_ROOT / "alembic.ini"))
+    config.attributes["database_url"] = database_url
+    command.upgrade(config, "head")
+    now = datetime.now(timezone.utc)
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO organizations "
+                "(id, slug, name, default_timezone, retention_days, ledger_version, created_at) "
+                "VALUES ('org', 'share-downgrade', 'Share downgrade', 'UTC', 395, 0, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO users "
+                "(id, org_id, email, display_name, password_hash, public_id, "
+                "public_profile_enabled, role, is_active, created_at) VALUES "
+                "('member', 'org', NULL, 'Member', NULL, :public_id, "
+                "1, 'MEMBER', 1, :now)"
+            ),
+            {"public_id": str(uuid4()), "now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO devices "
+                "(id, org_id, user_id, device_public_id, platform, app_version, "
+                "collector_version, signing_key, is_active, created_at) VALUES "
+                "('device', 'org', 'member', :public_id, 'test', '1.0.0', "
+                "'1.0.0', 'signing-key', 1, :now)"
+            ),
+            {"public_id": str(uuid4()), "now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO community_share_grants "
+                "(id, org_id, user_id, device_id, grant_hash, expires_at, created_at) "
+                "VALUES ('grant', 'org', 'member', 'device', :grant_hash, :expires_at, :now)"
+            ),
+            {
+                "grant_hash": "a" * 64,
+                "expires_at": now + timedelta(minutes=2),
+                "now": now,
+            },
+        )
+    engine.dispose()
+
+    with pytest.raises(
+        RuntimeError,
+        match="cannot downgrade community share grants while grant records exist",
+    ):
+        command.downgrade(config, "c7b4e2a91d35")
+
+    engine = create_engine(database_url)
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+            "9a342e52bb08"
+        )
+        assert connection.scalar(text("SELECT count(*) FROM community_share_grants")) == 1
+    assert "community_share_grants" in inspect(engine).get_table_names()
     engine.dispose()
 
 

@@ -23,6 +23,10 @@ const DEMO_COMBINATIONS = [
 ];
 const TOOLS = [...new Set(DEMO_COMBINATIONS.map(({ tool }) => tool))];
 const MODELS = [...new Set(DEMO_COMBINATIONS.map(({ model }) => model))];
+// This exists solely for the local, clearly labelled demo.  Production never
+// accepts a front-end value as proof of membership; it redeems a one-time
+// server-issued grant.
+export const DEMO_COMMUNITY_SHARE_GRANT = "demo_community_share_grant_0123456789_abcdefghijklmnop";
 
 function pause(milliseconds) {
   return milliseconds > 0
@@ -283,6 +287,14 @@ export function createCommunityDemoApi({ empty = false, locationRef = globalThis
         enrollment_token: "demo_batch_once_7Yp4_K2m9_A8q6_H3v5_N1s7",
         expires_at: "2026-08-10T13:00:00Z",
       };
+    },
+    async redeemCommunityShareGrant(grant) {
+      if (String(grant || "") !== DEMO_COMMUNITY_SHARE_GRANT) {
+        const error = new Error("分享凭证已失效，请返回 App 重新打开排行榜");
+        error.status = 403;
+        throw error;
+      }
+      return { public_id: "demo-1" };
     },
   };
 }

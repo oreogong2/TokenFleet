@@ -288,6 +288,30 @@ class DeviceCommunityRankResponse(StrictModel):
     totals: PublicUsageTotals | None = None
 
 
+class CommunityShareGrantIssueRequest(StrictModel):
+    """The signed route intentionally accepts only an empty JSON object."""
+
+
+class CommunityShareGrantResponse(StrictModel):
+    grant: Annotated[
+        str,
+        Field(min_length=43, max_length=128, pattern=r"^[A-Za-z0-9_-]+$"),
+    ]
+    expires_at: datetime
+    public_id: str
+
+
+class CommunityShareGrantRedeemRequest(StrictModel):
+    grant: Annotated[
+        str,
+        Field(min_length=43, max_length=128, pattern=r"^[A-Za-z0-9_-]+$"),
+    ]
+
+
+class CommunityShareGrantRedeemResponse(StrictModel):
+    public_id: str
+
+
 class DeviceStatusUpdate(StrictModel):
     is_active: Annotated[bool, Field(strict=True)]
 

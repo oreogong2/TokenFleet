@@ -60,6 +60,9 @@ PRIVACY_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/Settings/SettingsUpdateA
 APP_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/App/TokenStepApp.swift"
 LIFECYCLE_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Support/LifecycleLogger.swift"
 MAIN_WINDOW_PRESENTER_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Support/MainWindowPresenter.swift"
+APP_STATE_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Stores/AppState.swift"
+TEAM_SYNC_PROTOCOL_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Services/TeamSyncProtocol.swift"
+TEAM_SYNC_SERVICE_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Services/TeamSyncService.swift"
 
 rg -Fq 'func applicationShouldHandleReopen(' "$APP_SOURCE" \
   || { echo "Applications/Spotlight reopen callback is missing" >&2; exit 1; }
@@ -77,6 +80,21 @@ rg -Fq 'MainWindowPresenter.shared.show(appState: appState)' "$LIFECYCLE_SOURCE"
   || { echo "reopen handler does not show the main window" >&2; exit 1; }
 rg -Fq 'window.deminiaturize(nil)' "$MAIN_WINDOW_PRESENTER_SOURCE" \
   || { echo "reopen cannot restore a minimized main window" >&2; exit 1; }
+
+rg -Fq 'communityShareGrantURLRequest(' "$TEAM_SYNC_PROTOCOL_SOURCE" \
+  || { echo "signed community-share-grant request is missing" >&2; exit 1; }
+rg -Fq 'personalCommunityShareURL(' "$TEAM_SYNC_PROTOCOL_SOURCE" \
+  || { echo "fragment-only personal community share URL is missing" >&2; exit 1; }
+rg -Fq 'components.percentEncodedFragment = "/rank?share_grant=\(grant)"' "$TEAM_SYNC_PROTOCOL_SOURCE" \
+  || { echo "personal community share URL does not keep the grant in the fragment" >&2; exit 1; }
+rg -Fq 'issueCommunityShareGrant(' "$TEAM_SYNC_SERVICE_SOURCE" \
+  || { echo "signed community share grant service is missing" >&2; exit 1; }
+if rg -n 'LifecycleLogger\.log.*(grant|shareURL|shareURL)' "$TEAM_SYNC_SERVICE_SOURCE" >/dev/null; then
+  echo "community share grant must not be written to LifecycleLogger" >&2
+  exit 1
+fi
+rg -Fq 'TeamSyncProtocol.personalCommunityShareURL(' "$APP_STATE_SOURCE" \
+  || { echo "AppState does not build the App-only personal sharing bridge" >&2; exit 1; }
 
 rg -Fq 'MainWindowPresenter.shared.showTodayTools(appState: appState)' "$POPOVER_TODAY_SOURCE" \
   || { echo "today-all-tools action is not wired to the expansion presenter" >&2; exit 1; }

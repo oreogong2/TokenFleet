@@ -19,6 +19,7 @@ VALID_CODE = "Abcd_0123456789-abcdefghijklmnop"
 SECOND_VALID_CODE = "Zyxw_9876543210-ponmlkjihgfedcba"
 BATCH_INVITATION = "Batch_0123456789-abcdefghijklmnop"
 PERSONAL_DEVICE_CODE = "Personal_0123456789-abcdefghijklmnop"
+DEMO_COMMUNITY_SHARE_GRANT = "demo_community_share_grant_0123456789_abcdefghijklmnop"
 ARTIFACT_DIR = Path(os.environ.get("TOKENFLEET_BROWSER_ARTIFACTS", "/tmp"))
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
 WEB_ROOT = Path(__file__).resolve().parents[1]
@@ -258,24 +259,40 @@ def main():
         page.locator(".install-contact").wait_for()
         assert resource_status.get("/tokenfleet-contact-wechat-qr.jpg") == 200
 
-        # The anonymous board is shareable, but must label itself as the board;
-        # only a disclosed member profile may render a personal ranking card.
+        # Anonymous visitors may browse, but they cannot create a generic board
+        # image or a personal image for somebody else.
         page.goto(f"{base}/?demo=1#/rank", wait_until="networkidle")
         share_hint = page.locator(".community-share-hint")
         share_hint.wait_for()
-        assert page.locator('[data-community-action="share-leaderboard"]').count() == 1
-        assert share_hint.inner_text() == "可分享当前筛选口径的公开排行榜；成员页的“分享排名”才会展示该成员的个人成绩。"
-        page.locator('[data-community-action="share-leaderboard"]').click()
+        assert page.locator('[data-community-action^="share"]').count() == 0
+        assert share_hint.inner_text() == "公开榜可自由浏览；个人排名海报仅会在已接入成员从 TokenFleet App 打开时出现。"
+
+        # A valid App bridge is fragment-only and unlocks exactly one member's
+        # personal poster. The fragment is scrubbed before the page renders.
+        page.goto(
+            f"{base}/?demo=1#/rank?share_grant={DEMO_COMMUNITY_SHARE_GRANT}",
+            wait_until="networkidle",
+        )
+        own_share = page.locator('[data-community-action="share-own-rank"]')
+        own_share.wait_for()
+        assert DEMO_COMMUNITY_SHARE_GRANT not in page.url
+        assert DEMO_COMMUNITY_SHARE_GRANT not in page.content()
+        assert page.evaluate(
+            "secret => !Object.values(localStorage).concat(Object.values(sessionStorage)).some(value => String(value).includes(secret))",
+            DEMO_COMMUNITY_SHARE_GRANT,
+        )
+        own_share.click()
         board_preview = page.locator(".community-poster-modal canvas")
         board_preview.wait_for()
         assert board_preview.evaluate("canvas => [canvas.width, canvas.height]") == [1200, 1600]
-        assert page.get_by_role("heading", name="当前 Token 排行榜", exact=True).count() == 1
+        assert page.get_by_role("heading", name="Token 消耗排名", exact=True).count() == 1
         page.get_by_role("button", name="关闭", exact=True).click()
         assert page.locator(".community-poster-modal").count() == 0
 
         # The server fixture has nested totals for distributions; these must not normalize to zero.
-        page.goto(f"{base}/?demo=1#/rank/p/demo-1?period=7d", wait_until="networkidle")
+        page.evaluate("location.hash = '#/rank/p/demo-1?period=7d'")
         page.locator(".community-detail-grid").wait_for()
+        assert page.locator('[data-community-action="share-own-rank"]').count() == 1
         assert page.locator(".community-distribution").count() == 2
         assert page.locator(".community-distribution em").first.inner_text() not in {"0", "—"}
         assert page.locator(".community-trend svg").count() == 1
@@ -308,13 +325,22 @@ def main():
         assert page.get_by_role("link", name="管理员后台").evaluate("link => link.href") == f"{base}/"
         assert page.get_by_text("演示数据 · 不是真实排名或真实成员数据", exact=True).count() == 1
 
-        # A public profile outside the leaderboard API limit is appended to its share poster.
+        # A manual visit to either another member or this member's public page
+        # never gains a share capability after a reload/new page.
         page.goto(
             f"{base}/?demo=1#/rank/p/outside-100?period=30d&metric=norm&tool=CC+Switch&model=kimi-k2",
             wait_until="networkidle",
         )
         page.get_by_text("Top 100 之外", exact=False).wait_for()
-        page.locator('[data-community-action="share"]').click()
+        assert page.locator('[data-community-action^="share"]').count() == 0
+
+        # Reopen through the valid App bridge, then create the same personal
+        # format from the member profile rather than a generic leaderboard.
+        page.goto(
+            f"{base}/?demo=1#/rank/p/demo-1?period=30d&metric=norm&tool=CC+Switch&model=kimi-k2&share_grant={DEMO_COMMUNITY_SHARE_GRANT}",
+            wait_until="networkidle",
+        )
+        page.locator('[data-community-action="share-own-rank"]').click()
         preview = page.locator(".community-poster-modal canvas")
         save_button = page.get_by_role("button", name="保存图片", exact=True)
         preview.wait_for(state="visible")
@@ -648,10 +674,10 @@ def main():
 
         # In-progress poster generation cannot open a modal or download after route disposal.
         page.goto(
-            f"{base}/?demo=1&scenario=slow-share#/rank/p/demo-1",
+            f"{base}/?demo=1&scenario=slow-share#/rank/p/demo-1?share_grant={DEMO_COMMUNITY_SHARE_GRANT}",
             wait_until="networkidle",
         )
-        share = page.locator('[data-community-action="share"]')
+        share = page.locator('[data-community-action="share-own-rank"]')
         assert share.count() == 1
         stale_downloads = []
         page.on("download", lambda download: stale_downloads.append(download.suggested_filename))

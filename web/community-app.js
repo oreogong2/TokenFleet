@@ -14,6 +14,46 @@ import { createCommunityDemoApi } from "./community-demo-data.js";
 import { buildCommunityPosterModel, createCommunityPosterArtifact } from "./community-poster.js?v=beta8-canvas-preview-copy";
 import { formatTokenCount, toTokenBigInt, tokenRatio } from "./server-adapter.js";
 
+const COMMUNITY_SHARE_GRANT = /^[A-Za-z0-9_-]{43,128}$/;
+const COMMUNITY_PUBLIC_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+// This is intentionally module-memory only.  A valid bridge may survive SPA
+// hash navigation so a member can move from the board to their own profile,
+// but it disappears on refresh, a new tab, or pagehide.  Do not persist it in
+// browser storage or cookies: the App must mint a fresh,
+// one-time bridge for every browser page.
+let communityShareViewerPublicId = "";
+
+function clearCommunityShareViewer() {
+  communityShareViewerPublicId = "";
+}
+
+if (typeof globalThis.addEventListener === "function") {
+  globalThis.addEventListener("pagehide", clearCommunityShareViewer, { capture: true });
+}
+
+/**
+ * Consume a bridge value from a #/rank fragment without letting it reach
+ * analytics, browser history, the referrer, or UI state.  Invalid values are
+ * scrubbed too, but never submitted to the server.
+ */
+export function takeCommunityShareGrant(locationRef = location, historyRef = history) {
+  const hash = String(locationRef?.hash || "");
+  if (!hash.startsWith("#/")) return "";
+  const rawRoute = hash.slice(1);
+  const [routePath, rawQuery = ""] = rawRoute.split("?", 2);
+  if (!/^\/(?:rank|community)(?:\/p\/[A-Za-z0-9_-]{1,128})?$/.test(routePath)) return "";
+  const params = new URLSearchParams(rawQuery);
+  if (!params.has("share_grant")) return "";
+  const candidate = String(params.get("share_grant") || "");
+  params.delete("share_grant");
+  const safeHash = `#${routePath}${params.size ? `?${params}` : ""}`;
+  const pathname = String(locationRef?.pathname || "/");
+  const search = String(locationRef?.search || "");
+  historyRef?.replaceState?.(null, "", `${pathname}${search}${safeHash}`);
+  return COMMUNITY_SHARE_GRANT.test(candidate) ? candidate : "";
+}
+
 function escapeHTML(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -116,14 +156,9 @@ function timezoneNotice(value) {
   return `<aside class="community-timezone-notice" role="note"><strong>日趋势口径提示</strong><p>数据来自多个设备本地时区，按各设备的本地日期桶合计，未跨时区重新归日。</p></aside>`;
 }
 
-function shareButton({ publicId, displayName = "", enabled }) {
-  if (!publicId) return "";
-  const label = `分享 ${displayName || "这位成员"} 的排名`;
-  return `<button class="secondary-button small" type="button" data-community-action="share" aria-label="${escapeHTML(label)}" data-public-id="${escapeHTML(publicId)}" ${enabled ? "" : 'disabled title="部署 HTTPS 公开地址后可生成二维码海报"'}>分享排名</button>`;
-}
-
-function leaderboardShareButton({ enabled }) {
-  return `<button class="secondary-button small" type="button" data-community-action="share-leaderboard" aria-label="分享当前排行榜" ${enabled ? "" : 'disabled title="部署 HTTPS 公开地址后可生成二维码海报"'}>分享排行榜</button>`;
+function ownRankingShareButton({ viewerPublicId, enabled }) {
+  if (!COMMUNITY_PUBLIC_ID.test(String(viewerPublicId || ""))) return "";
+  return `<button class="secondary-button small" type="button" data-community-action="share-own-rank" aria-label="分享我的排名" data-viewer-public-id="${escapeHTML(viewerPublicId)}" ${enabled ? "" : 'disabled title="部署 HTTPS 公开地址后可生成二维码海报"'}>分享我的排名</button>`;
 }
 
 function primaryModelSummary(person) {
@@ -146,8 +181,12 @@ function leaderboardRows(data) {
   return data.participants.map((person) => `<article class="community-rank-row"><span class="community-rank ${person.rank && person.rank <= 3 ? "is-top" : ""}">${person.rank && person.rank <= 3 ? `<i aria-hidden="true">${medals[person.rank]}</i>` : ""}<b>${person.rank ? String(person.rank).padStart(2, "0") : "—"}</b></span><a class="community-person" href="${localHref({ kind: "profile", publicId: person.publicId, filters: data })}"><span><strong title="${escapeHTML(person.displayName)}">${escapeHTML(person.displayName)}</strong><small>查看全部工具、模型与趋势</small></span></a>${primaryModelSummary(person)}${totalsCells(person)}<div class="community-primary"><span>${escapeHTML(metricLabel(data.metric))}</span><strong title="${escapeHTML(metricDisplay(person, data.metric, false))}">${escapeHTML(metricDisplay(person, data.metric))}</strong><small>${escapeHTML(formatPublicCost(person.cost))}</small></div></article>`).join("");
 }
 
-function renderLeaderboard({ data, filters, canonicalUrl }) {
-  return `<main id="main-content" class="community-shell">${publicHeader({ title: "让自己 AI Native 化，Learn in Public.", description: "只记录 AI 用量，不查看任何对话内容。和一群人一起，看见进步的速度。" })}${filterForm(filters, { kind: "leaderboard" }, { tools: data.availableTools, models: data.availableModels })}<section class="community-summary"><div><span>参与人数</span><strong>${data.totalEntries}</strong></div><div><span>日期</span><strong>${escapeHTML(periodLabel(data.period))}</strong></div><div><span>当前口径</span><strong>${escapeHTML(metricLabel(data.metric))}</strong></div><div class="community-summary-share"><span>当前榜单</span>${leaderboardShareButton({ enabled: Boolean(canonicalUrl) })}</div></section><p class="community-share-hint" role="note">可分享当前筛选口径的公开排行榜；成员页的“分享排名”才会展示该成员的个人成绩。</p>${timezoneNotice(data)}<section class="community-board" aria-labelledby="leaderboard-title"><div class="community-board-head"><div><span class="panel-kicker">TOKEN USAGE / COMMUNITY</span><h2 id="leaderboard-title">Token 消耗排行榜</h2></div>${data.generatedAt ? `<small>更新于 ${escapeHTML(data.generatedAt)}</small>` : ""}</div>${data.participants.length ? leaderboardRows(data) : `<div class="community-empty"><span>∅</span><h2>这个筛选下还没有参与者</h2><p>换一个日期、工具或模型再看看。</p></div>`}</section>${privacyNotice()}<footer class="community-footer">TokenFleet · 看见 AI 使用进步</footer><div class="community-toast" aria-live="polite"></div></main>`;
+function renderLeaderboard({ data, filters, canonicalUrl, viewerPublicId = "" }) {
+  const ownShare = ownRankingShareButton({ viewerPublicId, enabled: Boolean(canonicalUrl) });
+  const shareSummary = ownShare
+    ? `<div class="community-summary-share"><span>我的排名</span>${ownShare}</div>`
+    : "";
+  return `<main id="main-content" class="community-shell">${publicHeader({ title: "让自己 AI Native 化，Learn in Public.", description: "只记录 AI 用量，不查看任何对话内容。和一群人一起，看见进步的速度。" })}${filterForm(filters, { kind: "leaderboard" }, { tools: data.availableTools, models: data.availableModels })}<section class="community-summary"><div><span>参与人数</span><strong>${data.totalEntries}</strong></div><div><span>日期</span><strong>${escapeHTML(periodLabel(data.period))}</strong></div><div><span>当前口径</span><strong>${escapeHTML(metricLabel(data.metric))}</strong></div>${shareSummary}</section><p class="community-share-hint" role="note">公开榜可自由浏览；个人排名海报仅会在已接入成员从 TokenFleet App 打开时出现。</p>${timezoneNotice(data)}<section class="community-board" aria-labelledby="leaderboard-title"><div class="community-board-head"><div><span class="panel-kicker">TOKEN USAGE / COMMUNITY</span><h2 id="leaderboard-title">Token 消耗排行榜</h2></div>${data.generatedAt ? `<small>更新于 ${escapeHTML(data.generatedAt)}</small>` : ""}</div>${data.participants.length ? leaderboardRows(data) : `<div class="community-empty"><span>∅</span><h2>这个筛选下还没有参与者</h2><p>换一个日期、工具或模型再看看。</p></div>`}</section>${privacyNotice()}<footer class="community-footer">TokenFleet · 看见 AI 使用进步</footer><div class="community-toast" aria-live="polite"></div></main>`;
 }
 
 function breakdownValue(item, metric) {
@@ -232,9 +271,11 @@ export function publicTrend(items, metric, parentCost = {}) {
   return `<div class="community-trend"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${items.length} 天${escapeHTML(metricLabel(metric))}趋势"><line x1="${inset}" y1="${height * .5}" x2="${width - inset}" y2="${height * .5}"/><polyline points="${line}"/>${observations}</svg><div><span>${escapeHTML(items[0]?.date || "")}</span><strong>峰值 ${escapeHTML(metric === "cost" ? "按公开标准价" : formatTokens(maximum))}</strong><span>${escapeHTML(items.at(-1)?.date || "")}</span></div></div>`;
 }
 
-function renderProfile({ person, leaderboard, filters, canonicalUrl }) {
-  const canShare = Boolean(canonicalUrl);
-  return `<main id="main-content" class="community-shell"><header class="community-header"><a class="community-brand" href="#/rank"><span>TF</span><strong>TokenFleet</strong><small>COMMUNITY LEDGER</small></a><nav aria-label="公开页面导航"><a href="${localHref({ filters })}">返回社群榜</a><a class="community-install-link" href="#/install">安装与参与</a><a href="/">管理员后台</a></nav></header><a class="community-back" href="${localHref({ filters })}">← 返回社群榜</a><section class="community-profile-hero"><span class="community-profile-rank">${person.rank ? `#${person.rank}` : "未上榜"}</span><div><span class="panel-kicker">PUBLIC MEMBER</span><h1 title="${escapeHTML(person.displayName)}">${escapeHTML(person.displayName)}</h1><p>${escapeHTML(periodLabel(filters.period))} · ${escapeHTML(metricLabel(filters.metric))}</p></div><div><strong>${escapeHTML(metricDisplay(person, filters.metric))}</strong><span>${escapeHTML(metricLabel(filters.metric))}</span></div>${shareButton({ publicId: person.publicId, displayName: person.displayName, enabled: canShare })}</section>${filterForm(filters, { kind: "profile", publicId: person.publicId }, { tools: leaderboard.availableTools, models: leaderboard.availableModels })}${timezoneNotice(person)}<section class="community-total-panel"><div class="community-total-title"><span class="panel-kicker">TOKEN COMPOSITION</span><h2>四类 Token 构成</h2></div>${totalsCells(person)}<dl class="community-extra-totals"><div><dt>不含缓存</dt><dd title="${escapeHTML(formatTokens(person.normTokens, false))}">${escapeHTML(formatTokens(person.normTokens))}</dd></div><div><dt>含缓存合计</dt><dd title="${escapeHTML(formatTokens(person.totalTokens, false))}">${escapeHTML(formatTokens(person.totalTokens))}</dd></div><div><dt>API 等价估算</dt><dd>${escapeHTML(formatPublicCost(person.cost))}</dd></div></dl></section><section class="community-detail-grid"><article><div class="community-board-head"><div><span class="panel-kicker">BY TOOL</span><h2>工具分布</h2></div></div>${breakdownList(person.tools, filters.metric, person.cost)}</article><article><div class="community-board-head"><div><span class="panel-kicker">BY MODEL</span><h2>模型分布</h2></div></div>${breakdownList(person.models, filters.metric, person.cost)}</article><article class="wide"><div class="community-board-head"><div><span class="panel-kicker">DAILY TREND</span><h2>日趋势</h2></div></div>${publicTrend(person.dailyTrend, filters.metric, person.cost)}</article></section>${person.rank && person.rank > 100 ? '<p class="community-rank-note">该参赛者当前在榜单接口 Top 100 之外；分享图会单独附上其公开位置。</p>' : ""}${privacyNotice()}<footer class="community-footer">TokenFleet · 只记数量，不看内容</footer><div class="community-toast" aria-live="polite"></div></main>`;
+function renderProfile({ person, leaderboard, filters, canonicalUrl, viewerPublicId = "" }) {
+  const ownShare = viewerPublicId === person.publicId
+    ? ownRankingShareButton({ viewerPublicId, enabled: Boolean(canonicalUrl) })
+    : "";
+  return `<main id="main-content" class="community-shell"><header class="community-header"><a class="community-brand" href="#/rank"><span>TF</span><strong>TokenFleet</strong><small>COMMUNITY LEDGER</small></a><nav aria-label="公开页面导航"><a href="${localHref({ filters })}">返回社群榜</a><a class="community-install-link" href="#/install">安装与参与</a><a href="/">管理员后台</a></nav></header><a class="community-back" href="${localHref({ filters })}">← 返回社群榜</a><section class="community-profile-hero"><span class="community-profile-rank">${person.rank ? `#${person.rank}` : "未上榜"}</span><div><span class="panel-kicker">PUBLIC MEMBER</span><h1 title="${escapeHTML(person.displayName)}">${escapeHTML(person.displayName)}</h1><p>${escapeHTML(periodLabel(filters.period))} · ${escapeHTML(metricLabel(filters.metric))}</p></div><div><strong>${escapeHTML(metricDisplay(person, filters.metric))}</strong><span>${escapeHTML(metricLabel(filters.metric))}</span></div>${ownShare}</section>${filterForm(filters, { kind: "profile", publicId: person.publicId }, { tools: leaderboard.availableTools, models: leaderboard.availableModels })}${timezoneNotice(person)}<section class="community-total-panel"><div class="community-total-title"><span class="panel-kicker">TOKEN COMPOSITION</span><h2>四类 Token 构成</h2></div>${totalsCells(person)}<dl class="community-extra-totals"><div><dt>不含缓存</dt><dd title="${escapeHTML(formatTokens(person.normTokens, false))}">${escapeHTML(formatTokens(person.normTokens))}</dd></div><div><dt>含缓存合计</dt><dd title="${escapeHTML(formatTokens(person.totalTokens, false))}">${escapeHTML(formatTokens(person.totalTokens))}</dd></div><div><dt>API 等价估算</dt><dd>${escapeHTML(formatPublicCost(person.cost))}</dd></div></dl></section><section class="community-detail-grid"><article><div class="community-board-head"><div><span class="panel-kicker">BY TOOL</span><h2>工具分布</h2></div></div>${breakdownList(person.tools, filters.metric, person.cost)}</article><article><div class="community-board-head"><div><span class="panel-kicker">BY MODEL</span><h2>模型分布</h2></div></div>${breakdownList(person.models, filters.metric, person.cost)}</article><article class="wide"><div class="community-board-head"><div><span class="panel-kicker">DAILY TREND</span><h2>日趋势</h2></div></div>${publicTrend(person.dailyTrend, filters.metric, person.cost)}</article></section>${person.rank && person.rank > 100 ? '<p class="community-rank-note">该参赛者当前在榜单接口 Top 100 之外；分享图会单独附上其公开位置。</p>' : ""}${privacyNotice()}<footer class="community-footer">TokenFleet · 只记数量，不看内容</footer><div class="community-toast" aria-live="polite"></div></main>`;
 }
 
 function renderInstall() {
@@ -293,6 +334,7 @@ export function mountCommunityApp({
   batchInvitationToken = "",
   documentRef = document,
   locationRef = location,
+  historyRef = documentRef.defaultView?.history || globalThis.history,
   isCurrent = () => true,
 } = {}) {
   const controller = new AbortController();
@@ -305,7 +347,12 @@ export function mountCommunityApp({
   let posterObjectUrl = "";
   let posterBlob = null;
   let posterPreviewReady = false;
+  let bridgeNotice = "";
+  let initialShareGrantHandled = false;
   const filters = sanitizePublicFilters(route.filters || {});
+  // Must happen before any rendering or public API request.  The raw bridge
+  // never enters a component state, a link, a log, or a referrer.
+  const initialShareGrant = takeCommunityShareGrant(locationRef, historyRef);
   const canonicalUrl = publicShareUrl({ route, filters, documentRef, locationRef, demoMode });
   const api = demoMode
     ? createCommunityDemoApi({
@@ -328,7 +375,7 @@ export function mountCommunityApp({
     posterBlob = null;
     posterPreviewReady = false;
   };
-  const showPosterPreview = ({ blob, canvas }, { personal = false } = {}) => {
+  const showPosterPreview = ({ blob, canvas }) => {
     closePoster();
     posterBlob = blob;
     posterObjectUrl = posterUrlApi.createObjectURL(blob);
@@ -337,7 +384,7 @@ export function mountCommunityApp({
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-modal", "true");
     overlay.setAttribute("aria-labelledby", "community-poster-title");
-    const previewTitle = personal ? "Token 消耗排名" : "当前 Token 排行榜";
+    const previewTitle = "Token 消耗排名";
     overlay.innerHTML = `<section><header><div><span>分享预览</span><h2 id="community-poster-title">${previewTitle}</h2></div><button type="button" data-community-action="close-poster" aria-label="关闭分享预览">×</button></header><div class="community-poster-preview-frame" aria-label="${previewTitle}图片预览"></div><footer><button class="primary-button" type="button" data-community-action="copy-poster">复制图片</button><button class="secondary-button" type="button" data-community-action="save-poster">保存图片</button><button class="secondary-button" type="button" data-community-action="close-poster">关闭</button><p>可直接粘贴到聊天工具；手机端也可长按图片保存或转发</p></footer></section>`;
     const previewFrame = overlay.querySelector(".community-poster-preview-frame");
     canvas.setAttribute("role", "img");
@@ -356,6 +403,24 @@ export function mountCommunityApp({
         ? "安全接入 · TokenFleet"
         : "社群榜 · TokenFleet";
   }
+
+  const redeemInitialShareGrant = async () => {
+    if (!initialShareGrant || initialShareGrantHandled) return;
+    initialShareGrantHandled = true;
+    // A new fragment must not inherit a previous page's membership proof if
+    // redemption fails or is replayed.
+    clearCommunityShareViewer();
+    try {
+      const result = await api.redeemCommunityShareGrant(initialShareGrant);
+      const publicId = String(result?.public_id || "");
+      if (!COMMUNITY_PUBLIC_ID.test(publicId)) throw new Error("invalid-share-viewer");
+      communityShareViewerPublicId = publicId;
+    } catch {
+      // Do not surface a server response that could contain sensitive
+      // diagnostics.  The ordinary public board remains safe to browse.
+      bridgeNotice = "本次分享凭证已失效或暂不可用；你仍可查看公开榜，请返回 App 后重新打开。";
+    }
+  };
 
   const load = async () => {
     if (!active()) return;
@@ -386,6 +451,7 @@ export function mountCommunityApp({
       root.querySelector("#main-content")?.focus({ preventScroll: true });
       return;
     }
+    await redeemInitialShareGrant();
     if (!active()) return;
     renderLoading(root);
     try {
@@ -405,17 +471,32 @@ export function mountCommunityApp({
         if (!active()) return;
         leaderboard = nextLeaderboard;
         focus = nextFocus;
-        root.innerHTML = renderProfile({ person: focus, leaderboard, filters, canonicalUrl });
+        root.innerHTML = renderProfile({
+          person: focus,
+          leaderboard,
+          filters,
+          canonicalUrl,
+          viewerPublicId: communityShareViewerPublicId,
+        });
       } else {
         const rawLeaderboard = await api.leaderboard(filters);
         if (!active()) return;
         const nextLeaderboard = normalizePublicLeaderboard(rawLeaderboard, filters);
         if (!active()) return;
         leaderboard = nextLeaderboard;
-        root.innerHTML = renderLeaderboard({ data: leaderboard, filters, canonicalUrl });
+        root.innerHTML = renderLeaderboard({
+          data: leaderboard,
+          filters,
+          canonicalUrl,
+          viewerPublicId: communityShareViewerPublicId,
+        });
       }
       if (!active()) return;
       applyCommunityDemoBanner(root, demoMode, documentRef);
+      if (bridgeNotice) {
+        showToast(root, bridgeNotice, true, active);
+        bridgeNotice = "";
+      }
       root.querySelector("#main-content")?.setAttribute("tabindex", "-1");
       root.querySelector("#main-content")?.focus({ preventScroll: true });
     } catch (error) {
@@ -549,10 +630,9 @@ export function mountCommunityApp({
       }
     }
     if (action === "retry") void load();
-    if (action === "share" || action === "share-leaderboard") {
-      const publicId = action === "share" ? target.dataset.publicId : "";
-      const personalShare = action === "share";
-      if (!active() || !canonicalUrl || !leaderboard || (personalShare && !publicId) || target.dataset.pending === "true") return;
+    if (action === "share-own-rank") {
+      const publicId = String(target.dataset.viewerPublicId || "");
+      if (!active() || !canonicalUrl || !leaderboard || !COMMUNITY_PUBLIC_ID.test(publicId) || publicId !== communityShareViewerPublicId || target.dataset.pending === "true") return;
       target.dataset.pending = "true";
       target.disabled = true;
       target.setAttribute("aria-busy", "true");
@@ -570,14 +650,13 @@ export function mountCommunityApp({
           );
           if (!active()) return;
         }
-        let selected = personalShare ? focus : null;
-        if (personalShare && (selected?.publicId !== publicId || filters.metric !== "tokens" || filters.tool || filters.model)) {
-          selected = normalizePublicMemberDetail(await api.member(publicId, posterFilters));
-          if (!active()) return;
-        }
-        if (personalShare && !selected) throw new Error("这个成员的公开资料已不可分享");
+        // Never allow a DOM row or profile route to decide who is shared. The
+        // server-redeemed viewer identity is the sole source of the target.
+        const selected = normalizePublicMemberDetail(await api.member(publicId, posterFilters));
+        if (!active()) return;
+        if (!selected || selected.publicId !== publicId) throw new Error("你的公开资料暂时无法生成排名海报");
         const posterUrl = publicShareUrl({
-          route: personalShare ? { kind: "profile", publicId } : { kind: "leaderboard" },
+          route: { kind: "profile", publicId },
           filters: posterFilters,
           documentRef,
           locationRef,
@@ -593,7 +672,7 @@ export function mountCommunityApp({
         });
         const poster = await createCommunityPosterArtifact(model, { documentRef });
         if (!active()) return;
-        showPosterPreview(poster, { personal: personalShare });
+        showPosterPreview(poster);
       } catch (error) {
         if (!active()) return;
         showToast(root, error?.message || "分享图片生成失败", true, active);

@@ -128,6 +128,49 @@ final class TeamSyncServiceTests: XCTestCase {
         XCTAssertNotNil(request.value(forHTTPHeaderField: "X-Signature"))
     }
 
+    func testCommunityShareGrantUsesOnlyStoredDeviceCredentialAndRejectsInvalidResponse() async throws {
+        let origin = "https://team.example.com"
+        let deviceID = "server-device-42"
+        let rawGrant = "demo_community_share_grant_0123456789_abcdefghijklmnop"
+        let http = RecordingTeamSyncHTTPClient(
+            responses: [
+                TeamSyncHTTPResponse(
+                    data: Data(#"{"grant":"demo_community_share_grant_0123456789_abcdefghijklmnop","public_id":"123e4567-e89b-12d3-a456-426614174000"}"#.utf8),
+                    statusCode: 201
+                )
+            ]
+        )
+        let service = TeamSyncService(
+            httpClient: http,
+            credentialStore: MemoryTeamSyncCredentialStore(
+                values: [deviceID: "test-device-secret-0123456789"]
+            ),
+            stateStore: MemoryTeamSyncStateStore(
+                state: TeamSyncPersistentState(
+                    serverURL: origin,
+                    devicePublicID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                    deviceID: deviceID
+                )
+            )
+        )
+
+        let grant = try await service.issueCommunityShareGrant(
+            serverURL: origin,
+            now: Date(timeIntervalSince1970: 1_786_240_000)
+        )
+
+        XCTAssertEqual(grant.grant, rawGrant)
+        XCTAssertEqual(grant.publicID, "123e4567-e89b-12d3-a456-426614174000")
+        let recordedRequests = await http.requests
+        let request = try XCTUnwrap(recordedRequests.first)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/api/v1/devices/me/community-share-grants")
+        XCTAssertEqual(request.httpBody, Data("{}".utf8))
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertNotNil(request.value(forHTTPHeaderField: "X-Signature"))
+        XCTAssertFalse(String(data: request.httpBody ?? Data(), encoding: .utf8)?.contains(rawGrant) == true)
+    }
+
     func testPublicLeaderboardUsesNoCredentialOrEnrollmentState() async throws {
         let http = RecordingTeamSyncHTTPClient(
             responses: [

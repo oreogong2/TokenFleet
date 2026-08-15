@@ -9,7 +9,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from .dependencies import (
 )
 from .models import (
     DailyUsage,
+    CommunityShareGrant,
     Device,
     EnrollmentToken,
     InvitationBatch,
@@ -35,6 +36,10 @@ from .middleware import trusted_client_ip
 from .schemas import (
     DailyUsageIngestResponse,
     DailyUsageReport,
+    CommunityShareGrantIssueRequest,
+    CommunityShareGrantRedeemRequest,
+    CommunityShareGrantRedeemResponse,
+    CommunityShareGrantResponse,
     DeviceCommunityRankResponse,
     DeviceEnrollRequest,
     DeviceEnrollResponse,
@@ -81,6 +86,7 @@ from .security import (
     DevicePrincipal,
     create_access_token,
     derive_device_signing_key,
+    generate_community_share_grant,
     generate_device_secret,
     generate_enrollment_token,
     hash_password,
@@ -125,11 +131,13 @@ def readiness(
                 User.normalized_display_name,
                 PriceVersion.public_estimate,
                 InvitationBatch.claimed_count,
+                CommunityShareGrant.expires_at,
             )
             .select_from(DailyUsage)
             .outerjoin(User, User.id == DailyUsage.user_id)
             .outerjoin(PriceVersion, PriceVersion.id == DailyUsage.price_version_id)
             .outerjoin(InvitationBatch, InvitationBatch.org_id == DailyUsage.org_id)
+            .outerjoin(CommunityShareGrant, CommunityShareGrant.org_id == DailyUsage.org_id)
             .limit(1)
         )
     except Exception as exc:  # pragma: no cover - backend-specific failure path
@@ -192,6 +200,39 @@ def _consume_public_read_limit(request: Request) -> None:
         raise HTTPException(
             status_code=429,
             detail="too many public leaderboard requests",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+def _consume_community_share_grant_issue_limit(
+    request: Request, principal: DevicePrincipal
+) -> None:
+    # Device-authenticated issuance is additionally bounded per device.  The
+    # limiter key contains only a SHA-256 digest, never an enrollment secret or
+    # a browser bridge grant.
+    limiter_key = "device:" + hashlib.sha256(
+        principal.device.id.encode("utf-8")
+    ).hexdigest()
+    retry_after = request.app.state.community_share_grant_issue_rate_limiter.consume(
+        limiter_key
+    )
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="too many community share-grant attempts",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+def _consume_community_share_grant_redeem_limit(request: Request) -> None:
+    limiter_key = _client_rate_key(request)
+    retry_after = request.app.state.community_share_grant_redeem_rate_limiter.consume(
+        limiter_key
+    )
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="too many community share-grant redemptions",
             headers={"Retry-After": str(retry_after)},
         )
 
@@ -1052,6 +1093,176 @@ def device_community_rank(
         user=principal.user,
         max_scan_rows=settings.public_max_scan_rows,
     )
+
+
+@router.post(
+    "/api/v1/devices/me/community-share-grants",
+    response_model=CommunityShareGrantResponse,
+    status_code=201,
+)
+def issue_community_share_grant(
+    _payload: CommunityShareGrantIssueRequest,
+    request: Request,
+    response: Response,
+    principal: DevicePrincipal = Depends(get_device_principal),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> CommunityShareGrantResponse:
+    """Mint a one-time bridge for this device's already-public rank only."""
+
+    _consume_community_share_grant_issue_limit(request, principal)
+    organization = resolve_public_organization(session, settings.public_org_slug)
+    if principal.user.org_id != organization.id:
+        raise HTTPException(status_code=404, detail="public leaderboard not found")
+
+    # Device authentication consumed its nonce in a separate transaction. Lock
+    # current rows again so disable/public-profile changes between auth and
+    # issuance cannot receive a fresh bridge.
+    device = session.scalar(
+        select(Device)
+        .where(Device.id == principal.device.id, Device.org_id == organization.id)
+        .with_for_update()
+    )
+    user = session.scalar(
+        select(User)
+        .where(User.id == principal.user.id, User.org_id == organization.id)
+        .with_for_update()
+    )
+    if (
+        device is None
+        or user is None
+        or device.user_id != user.id
+        or not device.is_active
+        or not user.is_active
+        or not user.public_profile_enabled
+    ):
+        session.rollback()
+        raise HTTPException(status_code=403, detail="community share is unavailable")
+
+    rank = build_device_community_rank(
+        session,
+        organization=organization,
+        user=user,
+        max_scan_rows=settings.public_max_scan_rows,
+    )
+    if not rank.public_profile_enabled or rank.rank is None or rank.nickname is None:
+        session.rollback()
+        raise HTTPException(status_code=403, detail="community share is unavailable")
+
+    now = utcnow()
+    # Retain a small, bounded audit window while allowing lazy cleanup without
+    # a separate scheduler. Expired raw values can never be reconstructed from
+    # the stored hashes.
+    session.execute(
+        delete(CommunityShareGrant).where(
+            CommunityShareGrant.expires_at < now - timedelta(days=1)
+        )
+    )
+    session.execute(
+        update(CommunityShareGrant)
+        .where(
+            CommunityShareGrant.device_id == device.id,
+            CommunityShareGrant.consumed_at.is_(None),
+            CommunityShareGrant.expires_at > now,
+        )
+        .values(consumed_at=now)
+    )
+
+    expires_at = now + timedelta(seconds=settings.community_share_grant_ttl_seconds)
+    # Hash collisions from 32 CSPRNG bytes are astronomically unlikely; the
+    # bounded retry still turns the uniqueness constraint into a fail-closed
+    # guarantee rather than an accidental 500.
+    for _ in range(settings.community_share_grant_issue_attempts):
+        raw_grant = generate_community_share_grant()
+        grant = CommunityShareGrant(
+            org_id=organization.id,
+            user_id=user.id,
+            device_id=device.id,
+            grant_hash=opaque_token_hash(raw_grant),
+            expires_at=expires_at,
+        )
+        session.add(grant)
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            continue
+        response.headers["Cache-Control"] = "no-store"
+        return CommunityShareGrantResponse(
+            grant=raw_grant,
+            expires_at=expires_at,
+            public_id=rank.public_id,
+        )
+    raise HTTPException(status_code=503, detail="community share is temporarily unavailable")
+
+
+@router.post(
+    "/api/v1/public/community-share-grants/redeem",
+    response_model=CommunityShareGrantRedeemResponse,
+)
+def redeem_community_share_grant(
+    payload: CommunityShareGrantRedeemRequest,
+    request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> CommunityShareGrantRedeemResponse:
+    """Consume an opaque bridge without creating a browser login session."""
+
+    _consume_community_share_grant_redeem_limit(request)
+    organization = resolve_public_organization(session, settings.public_org_slug)
+    now = utcnow()
+    grant_hash = opaque_token_hash(payload.grant)
+    eligible_device_ids = (
+        select(Device.id)
+        .join(
+            User,
+            (User.id == Device.user_id) & (User.org_id == Device.org_id),
+        )
+        .where(
+            Device.org_id == organization.id,
+            Device.is_active.is_(True),
+            User.org_id == organization.id,
+            User.role == UserRole.MEMBER,
+            User.is_active.is_(True),
+            User.public_profile_enabled.is_(True),
+            User.display_name.is_not(None),
+        )
+    )
+    consumed = session.execute(
+        update(CommunityShareGrant)
+        .where(
+            CommunityShareGrant.grant_hash == grant_hash,
+            CommunityShareGrant.org_id == organization.id,
+            CommunityShareGrant.consumed_at.is_(None),
+            CommunityShareGrant.expires_at > now,
+            CommunityShareGrant.device_id.in_(eligible_device_ids),
+        )
+        .values(consumed_at=now)
+        .returning(CommunityShareGrant.user_id)
+    ).scalar_one_or_none()
+    if consumed is None:
+        session.rollback()
+        raise HTTPException(status_code=403, detail="community share is unavailable")
+
+    user = session.scalar(
+        select(User).where(User.id == consumed, User.org_id == organization.id)
+    )
+    if user is None:
+        session.rollback()
+        raise HTTPException(status_code=403, detail="community share is unavailable")
+    rank = build_device_community_rank(
+        session,
+        organization=organization,
+        user=user,
+        max_scan_rows=settings.public_max_scan_rows,
+    )
+    if not rank.public_profile_enabled or rank.rank is None or rank.nickname is None:
+        session.rollback()
+        raise HTTPException(status_code=403, detail="community share is unavailable")
+    session.commit()
+    response.headers["Cache-Control"] = "no-store"
+    return CommunityShareGrantRedeemResponse(public_id=rank.public_id)
 
 
 def _set_device_status(

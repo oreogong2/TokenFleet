@@ -94,13 +94,14 @@ struct SettingsTeamSyncCard: View {
                     .buttonStyle(SettingsPrimaryButtonStyle())
                     .disabled(appState.isTeamSyncing || !effectiveSyncEnabled || !canManuallySync)
                     Button {
-                        guard let publicLeaderboardURL else { return }
-                        NSWorkspace.shared.open(publicLeaderboardURL)
+                        appState.openCommunityLeaderboard(
+                            isScreenshotRendering: isScreenshotRendering
+                        )
                     } label: {
                         Text(L("打开排行榜")).font(.system(size: 8, weight: .heavy)).frame(width: 86, height: 28)
                     }
                     .buttonStyle(SettingsSecondaryButtonStyle())
-                    .disabled(publicLeaderboardURL == nil)
+                    .disabled(publicLeaderboardURL == nil || appState.isOpeningCommunityLeaderboard)
                 }
                 .padding(.top, 7)
             }
@@ -245,8 +246,9 @@ struct SettingsTeamSyncCard: View {
                     )
 
                     Button {
-                        guard let publicLeaderboardURL else { return }
-                        NSWorkspace.shared.open(publicLeaderboardURL)
+                        appState.openCommunityLeaderboard(
+                            isScreenshotRendering: isScreenshotRendering
+                        )
                     } label: {
                         Text(L("打开排行榜"))
                             .font(.caption.weight(.heavy))
@@ -255,7 +257,7 @@ struct SettingsTeamSyncCard: View {
                             .frame(width: 104, height: 34)
                     }
                     .buttonStyle(SettingsSecondaryButtonStyle())
-                    .disabled(publicLeaderboardURL == nil)
+                    .disabled(publicLeaderboardURL == nil || appState.isOpeningCommunityLeaderboard)
 
                     Button(role: .destructive) {
                         showsClearConfirmation = true

@@ -29,6 +29,7 @@ final class AppState: ObservableObject {
     @Published private(set) var communityLeaderboard: TeamSyncPublicLeaderboard?
     @Published private(set) var isRefreshingCommunityLeaderboard = false
     @Published private(set) var communityLeaderboardError: String?
+    @Published private(set) var isOpeningCommunityLeaderboard = false
     @Published var lastError: String?
 
     private var timer: Timer?
@@ -234,12 +235,47 @@ final class AppState: ObservableObject {
     }
 
     func openCommunityLeaderboard(isScreenshotRendering: Bool) {
-        guard let url = communityLeaderboardURL(
-            isScreenshotRendering: isScreenshotRendering
-        ) else {
+        guard !isScreenshotRendering,
+              !isOpeningCommunityLeaderboard,
+              let normalPublicURL = communityLeaderboardURL(
+                  isScreenshotRendering: isScreenshotRendering
+              ),
+              let fixedCommunityServerOrigin
+        else {
             return
         }
-        NSWorkspace.shared.open(url)
+        isOpeningCommunityLeaderboard = true
+        teamSyncActionError = nil
+        Task {
+            defer { isOpeningCommunityLeaderboard = false }
+            do {
+                let grant = try await TeamSyncService.live.issueCommunityShareGrant(
+                    serverURL: fixedCommunityServerOrigin.absoluteString
+                )
+                guard isCommunitySyncEnrollmentCompatible,
+                      let shareURL = TeamSyncProtocol.personalCommunityShareURL(
+                          serverURL: fixedCommunityServerOrigin.absoluteString,
+                          isEnrolled: true,
+                          isScreenshotRendering: false,
+                          grant: grant.grant
+                      )
+                else {
+                    throw TeamSyncProtocolError.operationCancelled
+                }
+                // The fragment contains an opaque one-time value. Never log
+                // this URL, pass it through UI state, or persist it locally.
+                NSWorkspace.shared.open(shareURL)
+            } catch let error as TeamSyncProtocolError where error == .httpStatus(404) {
+                // During a staged rollout an older server can still serve the
+                // anonymous board. It must not be presented as verified share
+                // access, but browsing remains useful and safe.
+                NSWorkspace.shared.open(normalPublicURL)
+                teamSyncActionError = L("当前服务器暂不支持网页个人排名分享，已打开公开榜。")
+            } catch {
+                NSWorkspace.shared.open(normalPublicURL)
+                teamSyncActionError = L("暂时无法验证网页个人排名分享，已打开公开榜。")
+            }
+        }
     }
 
     func load() {

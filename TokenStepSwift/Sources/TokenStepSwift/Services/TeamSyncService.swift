@@ -269,6 +269,76 @@ actor TeamSyncService {
         return leaderboard
     }
 
+    /// Requests a one-time browser bridge for the existing device binding.
+    /// The returned opaque value deliberately stays only in the caller's
+    /// short-lived stack frame; this service does not log or persist it.
+    func issueCommunityShareGrant(
+        serverURL rawServerURL: String,
+        now: Date = Date()
+    ) async throws -> TeamSyncCommunityShareGrant {
+        guard credentialStore.isAvailable else {
+            throw TeamSyncProtocolError.secureCredentialStorageUnavailable
+        }
+        guard let state = stateStore.load(),
+              state.isEnrolled,
+              let deviceID = state.deviceID
+        else {
+            throw TeamSyncProtocolError.notEnrolled
+        }
+        let normalizedServerURL = try TeamSyncProtocol.normalizedServerURL(
+            rawServerURL
+        ).absoluteString
+        guard state.serverURL == normalizedServerURL else {
+            throw TeamSyncProtocolError.reconnectRequired
+        }
+        let deviceSecret: String
+        do {
+            guard let storedSecret = try credentialStore.loadDeviceSecret(
+                serverURL: normalizedServerURL,
+                deviceID: deviceID
+            ) else {
+                throw TeamSyncProtocolError.credentialsUnavailable
+            }
+            deviceSecret = storedSecret
+        } catch let error as TeamSyncProtocolError {
+            throw error
+        } catch {
+            throw TeamSyncProtocolError.credentialStoreTemporarilyUnavailable
+        }
+        let request = try TeamSyncProtocol.communityShareGrantURLRequest(
+            serverURL: normalizedServerURL,
+            deviceID: deviceID,
+            deviceSecret: deviceSecret,
+            timestamp: Int(now.timeIntervalSince1970),
+            nonce: UUID().uuidString.lowercased()
+        )
+        let response: TeamSyncHTTPResponse
+        do {
+            response = try await httpClient.send(request)
+        } catch let error as TeamSyncProtocolError {
+            throw error
+        } catch {
+            throw TeamSyncProtocolError.networkUnavailable
+        }
+        guard let currentState = stateStore.load(),
+              currentState.serverURL == normalizedServerURL,
+              currentState.deviceID == deviceID,
+              currentState.isEnrolled
+        else {
+            throw TeamSyncProtocolError.operationCancelled
+        }
+        guard (200...299).contains(response.statusCode) else {
+            throw TeamSyncProtocolError.httpStatus(response.statusCode)
+        }
+        guard let grant = try? JSONDecoder().decode(
+            TeamSyncCommunityShareGrant.self,
+            from: response.data
+        ), grant.isValid else {
+            throw TeamSyncProtocolError.invalidCommunityShareGrantResponse
+        }
+        return grant
+    }
+
     func synchronize(
         snapshot: UsageSnapshot,
         serverURL rawServerURL: String,

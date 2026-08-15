@@ -30,10 +30,12 @@ test("anonymous public API uses frozen paths/query and never sends credentials",
     display_name: "  昵称  ",
     public_profile_enabled: true,
   });
+  await client.redeemCommunityShareGrant("demo_community_share_grant_0123456789_abcdefghijklmnop");
 
   assert.equal(PUBLIC_API_PATHS.leaderboard, "/api/v1/public/leaderboard");
   assert.equal(PUBLIC_API_PATHS.member, "/api/v1/public/members");
   assert.equal(PUBLIC_API_PATHS.batchClaim, "/api/v1/public/invitation-batches/claim");
+  assert.equal(PUBLIC_API_PATHS.shareGrantRedeem, "/api/v1/public/community-share-grants/redeem");
   assert.equal(
     requests[0].url,
     "https://team.example/api/v1/public/leaderboard?period=90d&metric=norm&tool=Kimi+CLI&model=kimi-k2&limit=100",
@@ -48,6 +50,11 @@ test("anonymous public API uses frozen paths/query and never sends credentials",
     invitation_token: "Batch_0123456789-abcdefghijklmnop",
     display_name: "昵称",
     public_profile_enabled: true,
+  });
+  assert.equal(requests[3].url, "https://team.example/api/v1/public/community-share-grants/redeem");
+  assert.equal(requests[3].options.method, "POST");
+  assert.deepEqual(JSON.parse(requests[3].options.body), {
+    grant: "demo_community_share_grant_0123456789_abcdefghijklmnop",
   });
   requests.forEach(({ options }) => {
     assert.equal(options.credentials, "omit");

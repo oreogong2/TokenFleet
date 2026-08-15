@@ -10,6 +10,7 @@ export const PUBLIC_API_PATHS = Object.freeze({
   leaderboard: "/api/v1/public/leaderboard",
   member: "/api/v1/public/members",
   batchClaim: "/api/v1/public/invitation-batches/claim",
+  shareGrantRedeem: "/api/v1/public/community-share-grants/redeem",
 });
 
 async function parsePublicResponse(response) {
@@ -89,6 +90,15 @@ export function createCommunityApiClient({
           display_name: String(payload.display_name || "").trim(),
           public_profile_enabled: payload.public_profile_enabled === true,
         }),
+      });
+    },
+    redeemCommunityShareGrant(grant) {
+      return request(PUBLIC_API_PATHS.shareGrantRedeem, {
+        method: "POST",
+        // The caller only ever obtains this value from the URL fragment.  The
+        // fragment is scrubbed before this request, and this anonymous request
+        // deliberately creates no browser session or persistent viewer state.
+        body: JSON.stringify({ grant: String(grant || "") }),
       });
     },
   };

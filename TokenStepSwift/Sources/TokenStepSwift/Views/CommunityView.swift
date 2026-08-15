@@ -133,7 +133,10 @@ struct CommunityView: View {
                         .background(Color.tokenGreen, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .disabled(appState.communityLeaderboardURL(isScreenshotRendering: isScreenshotRendering) == nil)
+                .disabled(
+                    appState.communityLeaderboardURL(isScreenshotRendering: isScreenshotRendering) == nil
+                        || appState.isOpeningCommunityLeaderboard
+                )
             }
         }
         .padding(.horizontal, 12)

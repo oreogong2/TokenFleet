@@ -14,9 +14,15 @@ import {
   takeBatchInvitationToken,
   takeJoinCode,
 } from "../join-secret.js";
-import { breakdownList, publicShareUrl, publicTrend } from "../community-app.js";
+import {
+  breakdownList,
+  publicShareUrl,
+  publicTrend,
+  takeCommunityShareGrant,
+} from "../community-app.js";
 
 const validCode = "Abcd_0123456789-abcdefghijklmnop";
+const validShareGrant = "demo_community_share_grant_0123456789_abcdefghijklmnop";
 
 test("all navigation shapes scrub codes while only join fragments are captured", () => {
   const cases = [
@@ -162,21 +168,28 @@ test("poster model contains only public display fields and appends a rank beyond
   assert.throws(() => buildCommunityPosterModel({ leaderboard: board, publicUrl: "http://localhost/rank" }), /HTTPS/);
 });
 
-test("anonymous leaderboard poster is explicitly a board, never a fabricated personal ranking", async () => {
+test("poster creation rejects anonymous board-only data instead of fabricating a generic share card", async () => {
   const api = createCommunityDemoApi();
   const board = normalizePublicLeaderboard(await api.leaderboard({ metric: "tokens" }));
-  const model = buildCommunityPosterModel({
+  assert.throws(() => buildCommunityPosterModel({
     leaderboard: board,
     filters: { metric: "tokens" },
     publicUrl: "https://tokenfleet.example/rank",
-  });
-  assert.equal(model.shareKind, "leaderboard");
-  assert.equal(model.focus, null);
-  assert.equal(model.hero.kind, "leaderboard");
-  assert.equal(model.hero.label, "当前榜单");
-  assert.equal(model.hero.totalEntries, board.totalEntries);
-  assert.match(model.footer, /当前公开排行榜/);
-  assert.equal(JSON.stringify(model).includes("我的成绩"), false);
+  }), /已验证成员/);
+});
+
+test("share grant stays in the fragment only, is scrubbed before redemption, and has no persistent viewer state", () => {
+  const grant = validShareGrant;
+  const calls = [];
+  const locationRef = { pathname: "/", search: "?demo=1", hash: `#/rank/p/demo-1?period=7d&share_grant=${grant}` };
+  const historyRef = { replaceState: (...args) => calls.push(args) };
+  assert.equal(takeCommunityShareGrant(locationRef, historyRef), grant);
+  assert.deepEqual(calls, [[null, "", "/?demo=1#/rank/p/demo-1?period=7d"]]);
+  assert.equal(JSON.stringify(calls).includes(grant), false);
+  assert.equal(takeCommunityShareGrant(
+    { pathname: "/", search: "", hash: `#/rank?share_grant=!${"x".repeat(43)}` },
+    { replaceState: () => {} },
+  ), "");
 });
 
 test("unpriced entries stay explicit in posters and QR generation is deterministic", async () => {

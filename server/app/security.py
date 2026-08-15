@@ -105,6 +105,12 @@ def generate_enrollment_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def generate_community_share_grant() -> str:
+    """Return at least 32 CSPRNG bytes as an opaque base64url bridge token."""
+
+    return secrets.token_urlsafe(32)
+
+
 def opaque_token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 

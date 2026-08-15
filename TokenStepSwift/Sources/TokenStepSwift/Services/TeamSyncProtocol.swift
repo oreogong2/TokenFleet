@@ -7,6 +7,7 @@ enum TeamSyncProtocolConfiguration {
     static let enrollmentPath = "/api/v1/devices/enroll"
     static let dailyUsagePath = "/api/v1/usage/daily"
     static let communityRankPath = "/api/v1/devices/me/community-rank"
+    static let communityShareGrantPath = "/api/v1/devices/me/community-share-grants"
     static let publicLeaderboardPath = "/rank"
     static let publicLeaderboardAPIPath = "/api/v1/public/leaderboard"
     static let maxBucketsPerRequest = 2_000
@@ -319,6 +320,35 @@ struct TeamSyncCommunityRank: Decodable, Equatable {
         !value.isEmpty
             && value.count <= 128
             && value.unicodeScalars.allSatisfy({ $0.value >= 32 && $0.value != 127 })
+    }
+}
+
+/// A short-lived bridge authorizes exactly one browser page to render this
+/// already-public member's personal poster.  It is not an account session and
+/// must never be logged or persisted by the client.
+struct TeamSyncCommunityShareGrant: Decodable, Equatable {
+    var grant: String
+    var publicID: String
+
+    enum CodingKeys: String, CodingKey {
+        case grant
+        case publicID = "public_id"
+    }
+
+    var isValid: Bool {
+        UUID(uuidString: publicID) != nil
+            && Self.isValidGrant(grant)
+    }
+
+    static func isValidGrant(_ grant: String) -> Bool {
+        grant.count >= 43
+            && grant.count <= 128
+            && grant.unicodeScalars.allSatisfy { scalar in
+                (65...90).contains(scalar.value)
+                    || (97...122).contains(scalar.value)
+                    || (48...57).contains(scalar.value)
+                    || scalar.value == 45 || scalar.value == 95
+            }
     }
 }
 
@@ -660,6 +690,7 @@ enum TeamSyncProtocolError: LocalizedError, Equatable {
     case invalidEnrollmentResponse
     case invalidIngestResponse
     case invalidCommunityRankResponse
+    case invalidCommunityShareGrantResponse
     case invalidBucket
     case duplicateBucket
     case notEnrolled
@@ -688,6 +719,8 @@ enum TeamSyncProtocolError: LocalizedError, Equatable {
             return L("社群榜服务器未确认完整接收本次日汇总，已停止自动重试。")
         case .invalidCommunityRankResponse:
             return L("社群榜服务器返回了无效的排名信息。")
+        case .invalidCommunityShareGrantResponse:
+            return L("社群榜服务器未能安全创建网页分享凭证。")
         case .invalidBucket, .duplicateBucket:
             return L("本地日汇总未通过同步校验。")
         case .notEnrolled:
@@ -745,6 +778,29 @@ enum TeamSyncProtocol {
             serverURL: origin,
             path: TeamSyncProtocolConfiguration.publicLeaderboardPath
         )
+    }
+
+    /// Builds an App-only browser bridge.  The opaque value lives only in the
+    /// fragment, so it never appears in HTTP requests or referrers.  Callers
+    /// must never log the returned URL.
+    static func personalCommunityShareURL(
+        serverURL rawValue: String,
+        isEnrolled: Bool,
+        isScreenshotRendering: Bool,
+        grant: String
+    ) -> URL? {
+        guard TeamSyncCommunityShareGrant.isValidGrant(grant),
+              let base = publicLeaderboardURL(
+                  serverURL: rawValue,
+                  isEnrolled: isEnrolled,
+                  isScreenshotRendering: isScreenshotRendering
+              ),
+              var components = URLComponents(url: base, resolvingAgainstBaseURL: false)
+        else {
+            return nil
+        }
+        components.percentEncodedFragment = "/rank?share_grant=\(grant)"
+        return components.url
     }
 
     static func normalizedServerURL(_ rawValue: String) throws -> URL {
@@ -864,6 +920,42 @@ enum TeamSyncProtocol {
         request.setValue(headers.timestamp, forHTTPHeaderField: "X-Timestamp")
         request.setValue(headers.nonce, forHTTPHeaderField: "X-Nonce")
         request.setValue(headers.signature, forHTTPHeaderField: "X-Signature")
+        return request
+    }
+
+    /// Mints a server-tracked, one-time browser bridge for the current signed
+    /// device.  The only request body is `{}`; the opaque response is never
+    /// stored by this layer.
+    static func communityShareGrantURLRequest(
+        serverURL rawServerURL: String,
+        deviceID: String,
+        deviceSecret: String,
+        timestamp: Int,
+        nonce: String
+    ) throws -> URLRequest {
+        let serverURL = try normalizedServerURL(rawServerURL)
+        let endpoint = try endpointURL(
+            serverURL: serverURL,
+            path: TeamSyncProtocolConfiguration.communityShareGrantPath
+        )
+        let body = Data("{}".utf8)
+        let headers = signedHeaders(
+            deviceID: deviceID,
+            deviceSecret: deviceSecret,
+            timestamp: timestamp,
+            nonce: nonce,
+            method: "POST",
+            path: TeamSyncProtocolConfiguration.communityShareGrantPath,
+            body: body
+        )
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(headers.deviceID, forHTTPHeaderField: "X-Device-ID")
+        request.setValue(headers.timestamp, forHTTPHeaderField: "X-Timestamp")
+        request.setValue(headers.nonce, forHTTPHeaderField: "X-Nonce")
+        request.setValue(headers.signature, forHTTPHeaderField: "X-Signature")
+        request.httpBody = body
         return request
     }
 

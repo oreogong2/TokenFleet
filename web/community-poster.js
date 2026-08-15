@@ -76,44 +76,32 @@ function posterRow(person, focus) {
   };
 }
 
-export function buildCommunityPosterModel({ leaderboard, focus = null, filters = {}, publicUrl, demo = false }) {
+export function buildCommunityPosterModel({ leaderboard, focus, filters = {}, publicUrl, demo = false }) {
   if (!isHttpsPublicUrl(publicUrl)) throw new TypeError("分享海报需要公开 HTTPS 榜单地址");
+  if (!focus || typeof focus !== "object") {
+    throw new TypeError("分享海报必须绑定已验证成员的公开个人成绩");
+  }
   const safeFilters = sanitizePublicFilters({ ...filters, metric: "tokens" });
   const periodLabel = PUBLIC_PERIODS.find(([key]) => key === safeFilters.period)?.[1] || "今天";
   const topPeople = (leaderboard?.participants || []).slice(0, 10);
   const reportedTotal = Number(leaderboard?.totalEntries) || 0;
   const totalEntries = reportedTotal || Number(focus?.rank) || 0;
   const top = topPeople.map((person) => posterRow(person, focus));
-  const focusRow = focus ? posterRow(focus, focus) : null;
-  if (focusRow) {
-    focusRow.totalEntries = totalEntries;
-    focusRow.hasConsistentRankTotal = Boolean(
-      focusRow.rank && totalEntries && Number(focusRow.rank) <= totalEntries,
-    );
-    focusRow.exceededPercent = focusRow.hasConsistentRankTotal
-      ? Math.max(0, Math.min(100, Math.round(((totalEntries - focusRow.rank) / totalEntries) * 100)))
-      : null;
-  }
-  // The public board has no viewer identity.  It may still be shared, but its
-  // hero must describe the board itself rather than fabricate a "my ranking"
-  // card or silently select the first participant as the viewer.
-  const hero = focusRow
-    ? {
-      ...focusRow,
-      kind: "personal",
-      label: "个人成绩",
-    }
-    : {
-      kind: "leaderboard",
-      label: "当前榜单",
-      periodLabel,
-      totalEntries,
-      detail: safeFilters.tool || safeFilters.model
-        ? [safeFilters.tool, safeFilters.model].filter(Boolean).join(" · ")
-        : "全部工具 · 全部模型",
-    };
+  const focusRow = posterRow(focus, focus);
+  focusRow.totalEntries = totalEntries;
+  focusRow.hasConsistentRankTotal = Boolean(
+    focusRow.rank && totalEntries && Number(focusRow.rank) <= totalEntries,
+  );
+  focusRow.exceededPercent = focusRow.hasConsistentRankTotal
+    ? Math.max(0, Math.min(100, Math.round(((totalEntries - focusRow.rank) / totalEntries) * 100)))
+    : null;
+  const hero = {
+    ...focusRow,
+    kind: "personal",
+    label: "个人成绩",
+  };
   return Object.freeze({
-    shareKind: focusRow ? "personal" : "leaderboard",
+    shareKind: "personal",
     title: "Token 消耗排行榜",
     subtitle: `${periodLabel} · 含缓存 Token · API 公开标准价估算`,
     filters: Object.freeze([
@@ -121,10 +109,10 @@ export function buildCommunityPosterModel({ leaderboard, focus = null, filters =
       safeFilters.model ? `模型：${cleanText(safeFilters.model, 42)}` : "全部模型",
     ]),
     rows: Object.freeze(top),
-    focus: focusRow ? Object.freeze(focusRow) : null,
+    focus: Object.freeze(focusRow),
     hero: Object.freeze(hero),
     publicUrl: new URL(publicUrl).href,
-    footer: focusRow ? "扫码查看同一口径的完整排行榜" : "扫码查看当前公开排行榜",
+    footer: "扫码查看同一口径的完整排行榜",
     slogan: "让自己 AI Native 化，Learn in Public.",
     demoLabel: demo === true ? "演示数据 · 非真实排名" : "",
   });

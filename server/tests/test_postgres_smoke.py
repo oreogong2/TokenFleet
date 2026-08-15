@@ -357,6 +357,7 @@ def test_postgres_migration_starts_from_fresh_database(
         "enrollment_tokens",
         "device_nonces",
         "invitation_batches",
+        "community_share_grants",
         "price_versions",
         "daily_usage",
     }
@@ -380,6 +381,15 @@ def test_postgres_migration_starts_from_fresh_database(
         for column in inspect(postgres_runtime.engine).get_columns("price_versions")
     }
     assert "public_estimate" in price_columns
+    share_grant_indexes = {
+        item["name"]
+        for item in inspect(postgres_runtime.engine).get_indexes("community_share_grants")
+    }
+    assert {
+        "uq_community_share_grant_hash",
+        "ix_community_share_grant_expires",
+        "ix_community_share_grant_device_consumed",
+    } <= share_grant_indexes
     usage_indexes = {
         item["name"]
         for item in inspect(postgres_runtime.engine).get_indexes("daily_usage")

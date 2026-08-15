@@ -26,3 +26,4 @@ TokenStepSwift/.build/
 TokenStepSwift/dist/
 release/
 output/playwright/
+.playwright-cli/
