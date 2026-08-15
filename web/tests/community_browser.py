@@ -319,6 +319,32 @@ def main():
         save_button = page.get_by_role("button", name="保存图片", exact=True)
         preview.wait_for(state="visible")
         assert preview.evaluate("canvas => [canvas.width, canvas.height]") == [1200, 1600]
+        preview_layout = preview.evaluate("""canvas => {
+          const overlay = canvas.closest('.community-poster-modal');
+          const section = overlay.querySelector('section');
+          const frame = canvas.parentElement;
+          const footer = overlay.querySelector('footer');
+          const canvasRect = canvas.getBoundingClientRect();
+          const sectionRect = section.getBoundingClientRect();
+          const frameRect = frame.getBoundingClientRect();
+          const footerRect = footer.getBoundingClientRect();
+          return {
+            canvasWidth: canvasRect.width,
+            canvasHeight: canvasRect.height,
+            frameWidth: frameRect.width,
+            frameHeight: frameRect.height,
+            sectionTop: sectionRect.top,
+            sectionBottom: sectionRect.bottom,
+            footerTop: footerRect.top,
+            frameBottom: frameRect.bottom,
+            viewportHeight: window.innerHeight,
+          };
+        }""")
+        assert preview_layout["canvasWidth"] <= preview_layout["frameWidth"] + 1
+        assert preview_layout["canvasHeight"] <= preview_layout["frameHeight"] + 1
+        assert preview_layout["sectionTop"] >= -1
+        assert preview_layout["sectionBottom"] <= preview_layout["viewportHeight"] + 1
+        assert preview_layout["footerTop"] >= preview_layout["frameBottom"] - 1
         assert save_button.is_enabled() is True
         context.grant_permissions(["clipboard-write"], origin=base)
         page.get_by_role("button", name="复制图片", exact=True).click()

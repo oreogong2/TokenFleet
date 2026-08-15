@@ -319,7 +319,7 @@ test("join security order, deep-link assets, demo labels and license boundaries 
   assert.match(communitySource, /持续在后台同步/);
   assert.match(communitySource, /演示数据 · 不是真实排名或真实成员数据/);
   assert.match(communitySource, /未跨时区重新归日/);
-  assert.match(indexSource, /href="\/styles\.css"/);
+  assert.match(indexSource, /href="\/styles\.css\?v=beta8-canvas-preview-copy"/);
   assert.match(indexSource, /src="\/app\.js(?:\?[^\"]*)?"/);
   assert.match(qrSource, /The above copyright notice and this permission notice/);
   assert.match(qrSource, /AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM/);
