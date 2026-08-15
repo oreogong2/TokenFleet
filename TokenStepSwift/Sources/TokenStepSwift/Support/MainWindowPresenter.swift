@@ -3,6 +3,7 @@ import SwiftUI
 
 final class MainWindowNavigation: ObservableObject {
     @Published private(set) var section: AppSection
+    @Published private(set) var todayToolExpansionRequest = 0
     var onSectionChange: ((AppSection) -> Void)?
 
     init(section: AppSection = .today) {
@@ -12,6 +13,11 @@ final class MainWindowNavigation: ObservableObject {
     func select(_ section: AppSection) {
         self.section = section
         onSectionChange?(section)
+    }
+
+    func requestTodayToolExpansion() {
+        select(.today)
+        todayToolExpansionRequest &+= 1
     }
 }
 
@@ -36,6 +42,11 @@ final class MainWindowPresenter: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
         appState.setForegroundRefreshSurface("main-window", visible: true)
+    }
+
+    func showTodayTools(appState: AppState) {
+        show(appState: appState, section: .today)
+        navigation.requestTodayToolExpansion()
     }
 
     private func makeWindow(appState: AppState) -> NSWindow {

@@ -171,10 +171,10 @@ struct SettingsPrivacyCard: View {
                         .background(Color.tokenMint.opacity(0.30), in: Circle())
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(L("本机历史与用量数字"))
+                        Text(L("本机处理用量记录"))
                             .font(.headline.weight(.heavy))
                             .foregroundStyle(Color.tokenInk)
-                        Text(L("只读本地已记录的聚合用量"))
+                        Text(L("仅汇总 Token；内容字段不上传、不进入统计"))
                             .font(.caption.weight(.heavy))
                             .foregroundStyle(Color.tokenGreenDark)
                     }
@@ -185,17 +185,17 @@ struct SettingsPrivacyCard: View {
 
                 if compact {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 7) {
-                        SettingsPrivacyCompactRow(title: L("本机仅保留聚合 Token"))
-                        SettingsPrivacyCompactRow(title: L("只读用量，不改原记录"))
-                        SettingsPrivacyCompactRow(title: L("不读 prompt、回复或代码"))
-                        SettingsPrivacyCompactRow(title: L("不读路径，不默认上传"))
+                        SettingsPrivacyCompactRow(title: L("保留聚合与去重元数据"))
+                        SettingsPrivacyCompactRow(title: L("原始日志仅在本机只读处理"))
+                        SettingsPrivacyCompactRow(title: L("内容字段不进入统计或上传"))
+                        SettingsPrivacyCompactRow(title: L("路径仅作本机增量定位"))
                     }
                 } else {
                     VStack(spacing: 8) {
-                        PrivacyCheckRow(title: L("本机历史仅保留聚合 Token 数字"))
-                        PrivacyCheckRow(title: L("只读本地用量数字，不修改原始记录"))
-                        PrivacyCheckRow(title: L("绝不读取 prompt、回复、代码或路径"))
-                        PrivacyCheckRow(title: L("不默认上传数据"))
+                        PrivacyCheckRow(title: L("本机结果保留聚合 Token 与必要去重元数据"))
+                        PrivacyCheckRow(title: L("原始日志在本机只读处理，不修改"))
+                        PrivacyCheckRow(title: L("prompt、回复和代码不进入统计或上传"))
+                        PrivacyCheckRow(title: L("本地路径仅用于增量定位，不默认上传"))
                     }
 
                     HStack(spacing: 8) {

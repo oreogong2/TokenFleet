@@ -53,6 +53,28 @@ fi
 
 mkdir -p "$MODULE_CACHE"
 
+POPOVER_TODAY_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/Popover/PopoverTodayRingCard.swift"
+MAIN_WINDOW_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/MainWindowView.swift"
+TODAY_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/TodayView.swift"
+PRIVACY_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/Settings/SettingsUpdateAutostartPrivacyCards.swift"
+
+rg -Fq 'MainWindowPresenter.shared.showTodayTools(appState: appState)' "$POPOVER_TODAY_SOURCE" \
+  || { echo "today-all-tools action is not wired to the expansion presenter" >&2; exit 1; }
+rg -Fq 'TodayView(toolExpansionRequest: navigation.todayToolExpansionRequest)' "$MAIN_WINDOW_SOURCE" \
+  || { echo "main window does not pass the today tool expansion signal" >&2; exit 1; }
+rg -Fq 'expansionRequest: toolExpansionRequest' "$TODAY_SOURCE" \
+  || { echo "today tool card does not consume the expansion signal" >&2; exit 1; }
+
+if rg -Fq '绝不读取 prompt、回复、代码或路径' "$PRIVACY_SOURCE" \
+    || rg -Fq '本机仅保留聚合 Token' "$PRIVACY_SOURCE"; then
+  echo "privacy card contains an absolute claim that exceeds collector behavior" >&2
+  exit 1
+fi
+rg -Fq '内容字段不进入统计或上传' "$PRIVACY_SOURCE" \
+  || { echo "privacy card does not state the content-field boundary" >&2; exit 1; }
+rg -Fq '路径仅作本机增量定位' "$PRIVACY_SOURCE" \
+  || { echo "privacy card does not disclose local path metadata" >&2; exit 1; }
+
 SOURCE_LIST="$BUILD_DIR/sources.list"
 if ! rg --files "$SWIFT_DIR/Sources/TokenStepSwift" -g '*.swift' >"$SOURCE_LIST"; then
   echo "ripgrep failed while collecting TokenFleet Swift sources" >&2

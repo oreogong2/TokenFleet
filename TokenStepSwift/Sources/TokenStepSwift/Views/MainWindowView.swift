@@ -219,7 +219,7 @@ struct MainWindowView: View {
     private var detailView: some View {
         switch navigation.section {
         case .today:
-            TodayView()
+            TodayView(toolExpansionRequest: navigation.todayToolExpansionRequest)
         case .history:
             HistoryView(
                 presentation: historyPresentation

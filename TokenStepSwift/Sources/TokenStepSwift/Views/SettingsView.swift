@@ -227,7 +227,12 @@ private struct SettingsPricingSummaryCard: View {
         SettingsCard(title: L("费用估算"), symbol: "dollarsign.circle.fill", height: 150) {
             VStack(spacing: 0) {
                 SettingsVisualRow(label: L("价格口径"), detail: L("公开 API 标准价，不等于实际账单"), value: "USD")
-                SettingsVisualRow(label: L("价格目录"), detail: appState.today.pricingVersion ?? L("等待价格目录"), value: L("已加载"), tint: .tokenGreenDark)
+                SettingsVisualRow(
+                    label: L("价格目录"),
+                    detail: appState.today.pricingVersion ?? L("等待价格目录"),
+                    value: appState.today.pricingVersion == nil ? "—" : L("已加载"),
+                    tint: appState.today.pricingVersion == nil ? .secondary : .tokenGreenDark
+                )
                 SettingsVisualRow(label: L("今日可估价 Token"), detail: L("未定价部分不按 0 元处理"), value: TokenStepFormat.pricingCoverage(appState.today.pricingCoverage))
             }
         }
@@ -246,7 +251,9 @@ private struct SettingsCollectorStatusCard: View {
                 SettingsCollectorItem(
                     name: L("上次刷新"),
                     detail: TokenStepFormat.generatedTime(appState.snapshot.generatedAt),
-                    status: appState.isRefreshing ? L("刷新中") : L("已完成"),
+                    status: appState.isRefreshing
+                        ? L("刷新中")
+                        : (appState.snapshot.generatedAt == nil ? L("等待刷新") : L("已完成")),
                     tint: .secondary
                 )
             }

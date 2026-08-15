@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TodayView: View {
     @EnvironmentObject private var appState: AppState
+    var toolExpansionRequest: Int = 0
 
     var body: some View {
         VStack(spacing: 16) {
@@ -95,7 +96,11 @@ struct TodayView: View {
     private var todayBreakdownStrip: some View {
         HStack(alignment: .top, spacing: 12) {
             TodayBreakdownCard(title: L("今日模型消耗"), rows: todayModelRows)
-            TodayBreakdownCard(title: L("今日工具消耗"), rows: todayToolRows)
+            TodayBreakdownCard(
+                title: L("今日工具消耗"),
+                rows: todayToolRows,
+                expansionRequest: toolExpansionRequest
+            )
         }
     }
 

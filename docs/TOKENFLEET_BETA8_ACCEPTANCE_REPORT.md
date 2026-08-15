@@ -2,12 +2,12 @@
 
 验收日期：2026-08-15
 
-验收对象：正式仓库当前**未提交** beta.8 工作树；它以 Draft PR #4 当前 head 为基线，但尚未固定为提交，也尚未包含在 PR #4 head 中
+验收对象：正式仓库本地 beta.8 候选提交及其发布前修复；Draft PR #4 尚未推送到同一 head
 工作分支：`codex/tokenfleet-beta8`
 
 ## 验收结论
 
-beta.8 当前未提交工作树已经完成 Swift 分享卡与最终页面真实渲染、服务端 SQLite／PostgreSQL、Web、浏览器联调、Windows 跨平台、universal 构建与安装失败自动回滚门禁。奥哥已完成主要视觉审核，并接受设置通用页的信息层级作为 beta.9 视觉债。当前仍未固定为最终提交，也尚未取得对应精确提交的 GitHub Actions 结果，因此不得把本文当作 PR #4 当前 CI 结论或生产发布授权。
+beta.8 本地候选已经完成 Swift 分享卡与最终页面真实渲染、服务端 SQLite／PostgreSQL、Web、浏览器联调、Windows 跨平台、universal 构建与安装失败自动回滚门禁。奥哥已完成主要视觉审核，并接受设置通用页的信息层级作为 beta.9 视觉债。当前仍未推送到 Draft PR #4，也尚未取得对应精确提交的 GitHub Actions 结果，因此不得把本文当作 PR #4 当前 CI 结论或生产发布授权。
 
 本机对现有 `0.1.0-source.1` 的真实原地替换已先完成独立备份；首次安装在签名 Helper 时被 macOS Keychain 拒绝（`errSecInternalComponent`），安装器自动回滚，旧 App、生产 origin、本地 usage／settings／team sync 与 SQLite 均经哈希或完整性检查确认未变。此问题与 Apple Developer 账号无关，仍需在可见终端由用户亲自授权本机自签私钥后重试。
 

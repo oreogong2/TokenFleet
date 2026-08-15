@@ -41,9 +41,12 @@
   Apple runner instead of being silently skipped.
 - Documented strict feasibility and privacy boundaries for Kimi Code, DeepSeek,
   Cursor, and Gemini CLI; only observed CC Switch proxy rows are labeled as
-  experimental support, and no conversation, code, prompt, response, or path is
-  parsed. The privacy card counts only sources that actually contributed usage,
-  not disabled, missing, or deliberately unsupported collectors.
+  experimental support. Supported source logs are processed read-only on the
+  device; prompt, response, and code fields are not included in statistics or
+  uploaded, while local paths and request/session identifiers may be retained
+  only as incremental and deduplication metadata. The privacy card counts only
+  sources that actually contributed usage, not disabled, missing, or deliberately
+  unsupported collectors.
 - Added prerelease-channel rules and an explicit beta.7 migration plan. Existing
   source installs can manually upgrade from a reviewed, pinned commit while
   retaining the same per-Mac source-signing identity; this path does not require

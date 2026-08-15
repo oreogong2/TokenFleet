@@ -101,7 +101,7 @@ struct PopoverTodayRingCard: View {
                 Spacer()
                 if toolRows.count > 3 {
                     Button {
-                        MainWindowPresenter.shared.show(appState: appState, section: .today)
+                        MainWindowPresenter.shared.showTodayTools(appState: appState)
                     } label: {
                         Text(L("查看今日全部工具 →"))
                             .foregroundStyle(Color.tokenGreenDark)

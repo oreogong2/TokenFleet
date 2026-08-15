@@ -4,6 +4,7 @@ struct TodayBreakdownCard: View {
     var title: String
     var rows: [TodayBreakdownRow]
     var maxRows: Int = 3
+    var expansionRequest: Int = 0
     @State private var isExpanded = false
 
     var body: some View {
@@ -63,6 +64,10 @@ struct TodayBreakdownCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.black.opacity(0.07)))
+        .onAppear(perform: expandIfRequested)
+        .onChange(of: expansionRequest) { _ in
+            expandIfRequested()
+        }
     }
 
     private var visibleRows: [TodayBreakdownRow] {
@@ -75,6 +80,13 @@ struct TodayBreakdownCard: View {
         case 1: return .tokenGreen
         case 2: return TokenStepThemeRuntime.palette.activity3.color
         default: return TokenStepThemeRuntime.palette.activity2.color
+        }
+    }
+
+    private func expandIfRequested() {
+        guard expansionRequest > 0, rows.count > maxRows else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            isExpanded = true
         }
     }
 }
