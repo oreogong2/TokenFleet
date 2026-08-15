@@ -24,8 +24,8 @@ final class DailyUsageSchemaTests: XCTestCase {
     }
 
     func testLegacyMissingPricingCoverageDoesNotPresentZeroCostAsPriced() {
-        XCTAssertEqual(TokenStepFormat.estimatedMoney(0, coverage: nil), "未计价")
-        XCTAssertEqual(TokenStepFormat.estimatedMoney(0, coverage: 0), "未计价")
+        XCTAssertEqual(TokenStepFormat.estimatedMoney(0, coverage: nil), L("未计价"))
+        XCTAssertEqual(TokenStepFormat.estimatedMoney(0, coverage: 0), L("未计价"))
     }
 
     func testExactAtomicUsageRoundTripsAllTokenComponents() throws {
