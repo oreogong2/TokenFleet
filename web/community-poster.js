@@ -405,6 +405,11 @@ export async function createCommunityPosterBlob(model, { documentRef = document 
   return canvasBlob(renderCommunityPosterCanvas(model, documentRef));
 }
 
+export async function createCommunityPosterArtifact(model, { documentRef = document } = {}) {
+  const canvas = renderCommunityPosterCanvas(model, documentRef);
+  return Object.freeze({ canvas, blob: await canvasBlob(canvas) });
+}
+
 export async function downloadCommunityPoster(model, {
   documentRef = document,
   urlRef = URL,

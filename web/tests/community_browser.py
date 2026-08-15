@@ -306,26 +306,6 @@ def main():
         assert page.get_by_role("link", name="管理员后台").evaluate("link => link.href") == f"{base}/"
         assert page.get_by_text("演示数据 · 不是真实排名或真实成员数据", exact=True).count() == 1
 
-        # Delay the first blob URL assignment so the real loading state is tested.
-        # A preview must never expose the browser's broken-image fallback while
-        # the browser is still decoding the 1200×1600 PNG.
-        page.add_init_script(
-            """(() => {
-              const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
-              Object.defineProperty(HTMLImageElement.prototype, 'src', {
-                configurable: true,
-                get() { return descriptor.get.call(this); },
-                set(value) {
-                  if (this.closest('.community-poster-modal') && String(value).startsWith('blob:') && !window.__tokenfleetPosterBlobDeferred) {
-                    window.__tokenfleetPosterBlobDeferred = String(value);
-                    return;
-                  }
-                  descriptor.set.call(this, value);
-                },
-              });
-            })()"""
-        )
-
         # A public profile outside the leaderboard API limit is appended to its share poster.
         page.goto(
             f"{base}/?demo=1#/rank/p/outside-100?period=30d&metric=norm&tool=CC+Switch&model=kimi-k2",
@@ -333,33 +313,14 @@ def main():
         )
         page.get_by_text("Top 100 之外", exact=False).wait_for()
         page.locator('[data-community-action="share"]').click()
-        preview = page.locator(".community-poster-modal img")
-        preview_state = page.locator(".community-poster-preview-state")
+        preview = page.locator(".community-poster-modal canvas")
         save_button = page.get_by_role("button", name="保存图片", exact=True)
-        preview_state.wait_for()
-        assert preview_state.inner_text() == "正在载入图片预览…"
-        assert preview.is_visible() is False
-        assert save_button.is_enabled() is False
-        page.evaluate(
-            """() => {
-              document.querySelector('.community-poster-modal img').src = 'data:image/png;base64,not-a-png';
-            }"""
-        )
-        page.get_by_text("图片预览加载失败，请关闭后重新生成", exact=True).wait_for()
-        assert preview.is_visible() is False
-        assert save_button.is_enabled() is False
-        assert page.locator(".community-poster-modal").evaluate(
-            "overlay => overlay.classList.contains('is-error')"
-        ) is True
-        page.evaluate(
-            """() => {
-              document.querySelector('.community-poster-modal img').src = window.__tokenfleetPosterBlobDeferred;
-            }"""
-        )
         preview.wait_for(state="visible")
-        preview_state.wait_for(state="detached")
-        assert preview.evaluate("image => [image.naturalWidth, image.naturalHeight]") == [1200, 1600]
+        assert preview.evaluate("canvas => [canvas.width, canvas.height]") == [1200, 1600]
         assert save_button.is_enabled() is True
+        context.grant_permissions(["clipboard-write"], origin=base)
+        page.get_by_role("button", name="复制图片", exact=True).click()
+        page.get_by_text("排名图片已复制，可直接粘贴到聊天工具", exact=True).wait_for()
         assert page.get_by_role("button", name="关闭", exact=True).count() == 1
         with page.expect_download() as download_info:
             save_button.click()

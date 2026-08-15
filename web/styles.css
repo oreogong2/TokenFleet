@@ -1036,9 +1036,8 @@ body.community-mode :focus-visible { outline-color: rgba(29,119,79,.48); }
 .community-poster-preview-frame { position: relative; display: grid; min-height: 0; overflow: auto; background: #f4f0e6; }
 .community-poster-preview-state { display: grid; min-height: 180px; margin: 0; place-items: center; padding: 24px; color: #526158; font-size: 13px; font-weight: 700; text-align: center; }
 .community-poster-preview-state.is-error { color: #b54f2c; }
-.community-poster-preview-frame img { display: block; width: auto; max-width: 100%; min-height: 0; max-height: calc(100vh - 230px); justify-self: center; object-fit: contain; background: #f4f0e6; }
-.community-poster-preview-frame img[hidden] { display: none; }
-.community-poster-modal footer { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 16px 16px; }
+.community-poster-preview-frame canvas { display: block; width: auto; max-width: 100%; min-height: 0; max-height: calc(100vh - 230px); justify-self: center; background: #f4f0e6; }
+.community-poster-modal footer { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 14px 16px 16px; }
 .community-poster-modal footer button { min-height: 44px; }
 .community-poster-modal footer button:disabled { cursor: wait; opacity: .55; }
 .community-poster-modal.is-error footer button:disabled { cursor: not-allowed; }
@@ -1124,5 +1123,5 @@ body.community-mode :focus-visible { outline-color: rgba(29,119,79,.48); }
   .community-token-grid { grid-template-columns: 1fr 1fr; }
   .community-poster-modal { padding: 10px; }
   .community-poster-modal > section { max-height: calc(100vh - 20px); }
-  .community-poster-preview-frame img { max-height: calc(100vh - 205px); }
+  .community-poster-preview-frame canvas { max-height: calc(100vh - 205px); }
 }

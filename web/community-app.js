@@ -11,7 +11,7 @@ import {
   sanitizePublicFilters,
 } from "./community-contract.js";
 import { createCommunityDemoApi } from "./community-demo-data.js";
-import { buildCommunityPosterModel, createCommunityPosterBlob } from "./community-poster.js?v=beta8-unified-ranking-share";
+import { buildCommunityPosterModel, createCommunityPosterArtifact } from "./community-poster.js?v=beta8-canvas-preview-copy";
 import { formatTokenCount, toTokenBigInt, tokenRatio } from "./server-adapter.js";
 
 function escapeHTML(value) {
@@ -303,6 +303,7 @@ export function mountCommunityApp({
   let leaderboard = null;
   let focus = null;
   let posterObjectUrl = "";
+  let posterBlob = null;
   let posterPreviewReady = false;
   const filters = sanitizePublicFilters(route.filters || {});
   const canonicalUrl = publicShareUrl({ route, filters, documentRef, locationRef, demoMode });
@@ -324,50 +325,27 @@ export function mountCommunityApp({
     root.querySelector(".community-poster-modal")?.remove();
     if (posterObjectUrl) posterUrlApi.revokeObjectURL(posterObjectUrl);
     posterObjectUrl = "";
+    posterBlob = null;
     posterPreviewReady = false;
   };
-  const showPosterPreview = (blob, { personal = false } = {}) => {
+  const showPosterPreview = ({ blob, canvas }, { personal = false } = {}) => {
     closePoster();
+    posterBlob = blob;
     posterObjectUrl = posterUrlApi.createObjectURL(blob);
-    posterPreviewReady = false;
     const overlay = documentRef.createElement("div");
     overlay.className = "community-poster-modal";
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-modal", "true");
     overlay.setAttribute("aria-labelledby", "community-poster-title");
     const previewTitle = personal ? "Token 消耗排名" : "当前 Token 排行榜";
-    overlay.innerHTML = `<section><header><div><span>分享预览</span><h2 id="community-poster-title">${previewTitle}</h2></div><button type="button" data-community-action="close-poster" aria-label="关闭分享预览">×</button></header><div class="community-poster-preview-frame"><p class="community-poster-preview-state" role="status" aria-live="polite">正在载入图片预览…</p><img hidden alt="${previewTitle}分享图片预览" aria-busy="true"></div><footer><button class="primary-button" type="button" data-community-action="save-poster" disabled aria-disabled="true">保存图片</button><button class="secondary-button" type="button" data-community-action="close-poster">关闭</button><p>手机端可长按图片保存或转发给朋友</p></footer></section>`;
-    const preview = overlay.querySelector("img");
-    const status = overlay.querySelector(".community-poster-preview-state");
-    const saveButton = overlay.querySelector('[data-community-action="save-poster"]');
-    const showReadyPreview = () => {
-      if (!overlay.isConnected || !preview?.naturalWidth || !preview?.naturalHeight) return;
-      overlay.classList.remove("is-error");
-      preview.hidden = false;
-      preview.removeAttribute("aria-busy");
-      status?.remove();
-      if (saveButton) {
-        saveButton.disabled = false;
-        saveButton.removeAttribute("aria-disabled");
-      }
-      posterPreviewReady = true;
-    };
-    const showPreviewError = () => {
-      if (!overlay.isConnected || !status) return;
-      overlay.classList.add("is-error");
-      status.textContent = "图片预览加载失败，请关闭后重新生成";
-      status.classList.add("is-error");
-      preview.hidden = true;
-      preview.removeAttribute("aria-busy");
-      const footerNote = overlay.querySelector("footer p");
-      if (footerNote) footerNote.textContent = "请关闭此预览后重新生成图片";
-      posterPreviewReady = false;
-    };
-    preview?.addEventListener("load", showReadyPreview, { once: true });
-    preview?.addEventListener("error", showPreviewError, { once: true });
+    overlay.innerHTML = `<section><header><div><span>分享预览</span><h2 id="community-poster-title">${previewTitle}</h2></div><button type="button" data-community-action="close-poster" aria-label="关闭分享预览">×</button></header><div class="community-poster-preview-frame" aria-label="${previewTitle}图片预览"></div><footer><button class="primary-button" type="button" data-community-action="copy-poster">复制图片</button><button class="secondary-button" type="button" data-community-action="save-poster">保存图片</button><button class="secondary-button" type="button" data-community-action="close-poster">关闭</button><p>可直接粘贴到聊天工具；手机端也可长按图片保存或转发</p></footer></section>`;
+    const previewFrame = overlay.querySelector(".community-poster-preview-frame");
+    canvas.setAttribute("role", "img");
+    canvas.setAttribute("aria-label", `${previewTitle}图片预览`);
+    previewFrame?.append(canvas);
+    posterPreviewReady = true;
     root.append(overlay);
     overlay.querySelector('[data-community-action="close-poster"]')?.focus({ preventScroll: true });
-    if (preview) preview.src = posterObjectUrl;
   };
   globalThis.addEventListener?.("pagehide", clearSecret, { signal: controller.signal });
   if (active()) {
@@ -526,6 +504,23 @@ export function mountCommunityApp({
       }
       return;
     }
+    if (action === "copy-poster") {
+      if (!posterBlob || !posterPreviewReady) {
+        showToast(root, "图片尚未生成，请重新打开分享预览", true, active);
+        return;
+      }
+      try {
+        const ClipboardImage = documentRef.defaultView?.ClipboardItem || globalThis.ClipboardItem;
+        if (!ClipboardImage || !navigator.clipboard?.write) throw new Error("clipboard-image-unsupported");
+        await navigator.clipboard.write([new ClipboardImage({ "image/png": posterBlob })]);
+        if (!active()) return;
+        showToast(root, "排名图片已复制，可直接粘贴到聊天工具", false, active);
+      } catch {
+        if (!active()) return;
+        showToast(root, "当前浏览器不能直接复制图片，请使用“保存图片”", true, active);
+      }
+      return;
+    }
     if (action === "copy-join-code") {
       if (!secret) return;
       const currentSecret = secret;
@@ -596,9 +591,9 @@ export function mountCommunityApp({
           publicUrl: posterUrl,
           demo: demoMode,
         });
-        const blob = await createCommunityPosterBlob(model, { documentRef });
+        const poster = await createCommunityPosterArtifact(model, { documentRef });
         if (!active()) return;
-        showPosterPreview(blob, { personal: personalShare });
+        showPosterPreview(poster, { personal: personalShare });
       } catch (error) {
         if (!active()) return;
         showToast(root, error?.message || "分享图片生成失败", true, active);
