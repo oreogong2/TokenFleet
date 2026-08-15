@@ -57,6 +57,26 @@ POPOVER_TODAY_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/Popover/PopoverTod
 MAIN_WINDOW_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/MainWindowView.swift"
 TODAY_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/TodayView.swift"
 PRIVACY_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/Settings/SettingsUpdateAutostartPrivacyCards.swift"
+APP_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/App/TokenStepApp.swift"
+LIFECYCLE_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Support/LifecycleLogger.swift"
+MAIN_WINDOW_PRESENTER_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Support/MainWindowPresenter.swift"
+
+rg -Fq 'func applicationShouldHandleReopen(' "$APP_SOURCE" \
+  || { echo "Applications/Spotlight reopen callback is missing" >&2; exit 1; }
+rg -Fq 'TokenStepReopenObserver.shared.request(reason: reason)' "$APP_SOURCE" \
+  || { echo "default app delegate reopen handler is not wired to the observer" >&2; exit 1; }
+rg -Fq 'reopenHandler("application_reopen")' "$APP_SOURCE" \
+  || { echo "Applications/Spotlight reopen is not wired to the main-window request" >&2; exit 1; }
+rg -Fq 'return false' "$APP_SOURCE" \
+  || { echo "custom Applications/Spotlight reopen must suppress AppKit default handling" >&2; exit 1; }
+rg -Fq 'func request(reason: String)' "$LIFECYCLE_SOURCE" \
+  || { echo "in-process reopen request handler is missing" >&2; exit 1; }
+rg -Fq 'pendingReason = reason' "$LIFECYCLE_SOURCE" \
+  || { echo "early reopen requests are not preserved until AppState binds" >&2; exit 1; }
+rg -Fq 'MainWindowPresenter.shared.show(appState: appState)' "$LIFECYCLE_SOURCE" \
+  || { echo "reopen handler does not show the main window" >&2; exit 1; }
+rg -Fq 'window.deminiaturize(nil)' "$MAIN_WINDOW_PRESENTER_SOURCE" \
+  || { echo "reopen cannot restore a minimized main window" >&2; exit 1; }
 
 rg -Fq 'MainWindowPresenter.shared.showTodayTools(appState: appState)' "$POPOVER_TODAY_SOURCE" \
   || { echo "today-all-tools action is not wired to the expansion presenter" >&2; exit 1; }

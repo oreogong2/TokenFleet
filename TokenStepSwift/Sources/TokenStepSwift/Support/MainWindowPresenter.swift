@@ -39,6 +39,9 @@ final class MainWindowPresenter: NSObject, NSWindowDelegate {
 
         NSApp.activate(ignoringOtherApps: true)
         closeTransientPanels(except: window)
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
         appState.setForegroundRefreshSurface("main-window", visible: true)

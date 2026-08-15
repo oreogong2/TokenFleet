@@ -66,22 +66,37 @@ final class TokenStepReopenObserver {
 
     private var observer: NSObjectProtocol?
     private weak var appState: AppState?
+    private var pendingReason: String?
 
     func bind(appState: AppState) {
         self.appState = appState
-        guard observer == nil else { return }
-
-        observer = DistributedNotificationCenter.default().addObserver(
-            forName: TokenStepReopenRequest.notificationName,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            Task { @MainActor in
-                guard let appState = self?.appState else { return }
-                let reason = notification.userInfo?["reason"] as? String ?? "unknown"
-                LifecycleLogger.log("Received reopen request reason=\(reason); showing main window.")
-                MainWindowPresenter.shared.show(appState: appState)
+        if observer == nil {
+            observer = DistributedNotificationCenter.default().addObserver(
+                forName: TokenStepReopenRequest.notificationName,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                Task { @MainActor in
+                    let reason = notification.userInfo?["reason"] as? String ?? "unknown"
+                    self?.request(reason: reason)
+                }
             }
         }
+
+        if let pendingReason {
+            self.pendingReason = nil
+            request(reason: pendingReason)
+        }
+    }
+
+    func request(reason: String) {
+        guard let appState else {
+            // MenuBarExtra constructs AppState before its label necessarily
+            // appears. Preserve one early LaunchServices reopen event until bind.
+            pendingReason = reason
+            return
+        }
+        LifecycleLogger.log("Received reopen request reason=\(reason); showing main window.")
+        MainWindowPresenter.shared.show(appState: appState)
     }
 }

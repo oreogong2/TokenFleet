@@ -17,6 +17,10 @@
   item so TokenFleet cannot cover Apple or third-party status items. Legacy
   notch/automatic placement values are normalized to the native menu bar; users
   with enough space may opt into the ring plus today's Token count.
+- Added an AppKit reopen bridge so a running TokenFleet can always restore its
+  single main window from Applications or Spotlight when macOS hides the native
+  menu-bar ring on a crowded built-in display. Early reopen requests are held
+  until app state binds, and a minimized main window is explicitly restored.
 - Added a versioned public API price catalog with model- and component-specific
   rates, source-cost priority, pricing coverage, and explicit unpriced handling.
   Ambiguous Anthropic cache-write TTLs no longer erase the known cost components.

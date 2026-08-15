@@ -2,22 +2,22 @@
 
 验收日期：2026-08-15
 
-验收对象：正式仓库当前本地 beta.8 HEAD；Draft PR #4 尚未推送到同一 head
+验收对象：正式仓库当前 beta.8 候选；Draft PR #4 最终以同一精确 head 的新 CI 为准
 工作分支：`codex/tokenfleet-beta8`
 
 ## 验收结论
 
-beta.8 本地候选已经完成 Swift 分享卡与最终页面真实渲染、服务端 SQLite／PostgreSQL、Web、浏览器联调、Windows 跨平台、universal 构建与安装失败自动回滚门禁。奥哥已完成主要视觉审核，并接受设置通用页的信息层级作为 beta.9 视觉债。当前仍未推送到 Draft PR #4，也尚未取得对应精确提交的 GitHub Actions 结果，因此不得把本文当作 PR #4 当前 CI 结论或生产发布授权。
+beta.8 候选已经完成 Swift 分享卡与最终页面真实渲染、服务端 SQLite／PostgreSQL、Web、浏览器联调、Windows 跨平台、universal 构建、安装失败自动回滚与真实原地升级。奥哥已完成主要视觉审核，并接受设置通用页的信息层级作为 beta.9 视觉债。此前远端 `f6643c4036fb1934603a51c90e7d4703db80cbe3` 的四项 CI 均为绿色；随后又根据本机单屏实测补上“菜单栏圆环被 macOS 隐藏时，从应用程序／Spotlight 再次打开主窗口”的 AppKit 回调与门禁，因此旧 CI 不覆盖这次补丁，仍必须等待新精确 PR head 的四项 CI 全绿。
 
-本机对现有 `0.1.0-source.1` 的真实原地替换已先完成独立备份；首次安装在签名 Helper 时被 macOS Keychain 拒绝（`errSecInternalComponent`），安装器自动回滚，旧 App、生产 origin、本地 usage／settings／team sync 与 SQLite 均经哈希或完整性检查确认未变。此问题与 Apple Developer 账号无关，仍需在可见终端由用户亲自授权本机自签私钥后重试。
+本机对现有 `0.1.0-source.1` 的真实原地替换已先完成两份独立备份和一份桌面可见完整备份。首次安装在签名 Helper 时被 macOS Keychain 拒绝，安装器自动回滚且旧 App、固定社群 origin、本地 usage／settings／team sync 与 SQLite 均未变；用户在可见终端解锁登录钥匙串后，第二次安装成功升级到 `0.1.0-beta.8`。升级后关键状态哈希、SQLite `quick_check`、原 `device_id`／`device_public_id` 与社群服务器保持不变，真实同步成功且未创建重复成员或设备。这一路径使用本机自签身份，不要求 Apple Developer 账号。
 
-这不是发布验收通过，也不单独构成当前 CI 通过的声明：最终状态必须以 Draft PR #4 当时的 `headRefOid` 及其 GitHub Actions 检查为准，只有同一 PR head 的全部必需检查为绿色才可视为当前 CI 证据。不得将此前已推送基线 `a0c0621e3dcf9c75fa1bbd50cf186bf811221732` 或其历史 Actions 运行 `31777201461` 冒充为 beta.8 最终提交或最终 CI；它们只用于追溯此前基线。
+这不是生产发布授权：最终技术状态必须以 Draft PR #4 当时的 `headRefOid` 及其 GitHub Actions 检查为准，只有同一 PR head 的全部必需检查为绿色才可视为当前 CI 证据。任何更早提交及其 Actions 只用于追溯，不得冒充最新候选。
 
 ## 本地自动化与产物证据
 
 | 范围 | 当前本地结果 | 关键覆盖 |
 | --- | --- | --- |
-| Swift 源码／完整渲染门禁 | 通过（本机 XCTest 受工具链限制） | 已以 `TOKENFLEET_REQUIRE_SHARE_CARD_RENDER=1` 执行完整 Swift 门禁：网络供应链、Keychain、海报与最终视图真实渲染／复制／保存、离线恢复、累计采集、价格迁移与逻辑 harness 全部通过。当前 Command Line Tools 不提供可用 XCTest 模块，测试源码已 typecheck；真实 XCTest 必须由最终 PR head 的 macOS CI 执行。 |
+| Swift 源码／完整渲染门禁 | 通过（本机 XCTest 受工具链限制） | 已以 `TOKENFLEET_REQUIRE_SHARE_CARD_RENDER=1` 执行完整 Swift 门禁：网络供应链、Keychain、海报与最终视图真实渲染／复制／保存、离线恢复、累计采集、价格迁移与逻辑 harness 全部通过。新增 AppDelegate 回归锁定 `hasVisibleWindows` 为真／假时都只请求主窗口并禁止默认 reopen；真实 XCTest 必须由最终 PR head 的 macOS CI 执行。 |
 | App 海报与二维码 | 通过 | 实际海报精确为 `1200 × 1600`，二维码像素存在；不依赖外部 QR 库的实现与 Nayuki QR Code generator v6、v15、v40 基准输出均完全匹配。 |
 | macOS universal 产物 | 通过 | `TokenFleet.app` 与 `Contents/Helpers/TokenFleetHelper` 均为 `x86_64 arm64`；App 的 `TokenFleetReleaseVersion` 为 `0.1.0-beta.8`，Apple 要求的 `CFBundleShortVersionString` / `CFBundleVersion` 为去除预发布后缀的 `0.1.0`。 |
 | Web 单元 | 通过 | `51 / 51`。 |
@@ -26,11 +26,12 @@ beta.8 本地候选已经完成 Swift 分享卡与最终页面真实渲染、服
 | Windows 跨平台门禁 | 通过（受平台限制的本机结果） | macOS 本机 28 项中 `26 passed, 2 skipped`；两项仅因必须在真实 Windows 上执行而跳过。历史 Windows CI 曾完成全部 28 项及安装、升级、预览、状态和计划任务卸载生命周期验证，但该历史记录不构成本工作树的当前 CI。 |
 | 真实浏览器验证 | 通过 | 已在 390、820、1440 px 宽度验证；静态 7 路由、live API／浏览器流程、安装／海报、100／200 成员与多批次、1／2／4 设备等场景均已通过。 |
 | Python 静态检查 | 通过 | `compileall` 通过。 |
-| beta.7 → beta.8 迁移与恢复 | 数据兼容通过；本机永久替换待钥匙串授权 | 临时迁移已证明 beta.8 可读取并保留 120 日历史、设置与社群状态。2026-08-15 真实原地替换前另行备份 App、完整 App Support 与偏好；签名失败后安装器自动回滚，旧 App、origin 与关键状态哈希未变。待用户在可见终端授权本机自签私钥后完成最终替换。 |
+| beta.7 → beta.8 迁移与恢复 | 通过 | 2026-08-15 真实原地替换前已备份 App、完整 App Support 与偏好；首次签名失败自动回滚，解锁登录钥匙串后再次安装成功。升级前后 usage／settings／team sync 哈希一致，SQLite 完整，既有设备身份和社群连接保留，随后真实同步成功。 |
 
 ## 用户可见能力范围
 
 - TokenFleet 单圈目标圆环、圈数和真实超额百分比；系统右侧原生菜单栏入口固定启用，旧自动／刘海左／刘海右设置统一迁移为原生菜单栏，不再提供会遮挡其他状态项的 Token Island。
+- MacBook 内置屏菜单栏拥挤时，原生圆环可能被 macOS 隐藏；App 运行期间从应用程序或 Spotlight 再次打开 TokenFleet 会直接找回并置前唯一主窗口，最小化窗口也会恢复。登录启动仍只进入菜单栏，不抢占前台。
 - 快览、主窗口社群页和分享内容可显示本人排名、参榜人数、超过成员比例、最近同步时间、连续活跃与相对近 7 个活跃日节奏；本人在 Top 10 外仍从签名只读响应取得自己的公开主力工具、模型与估算字段。样本不足及本地留存边界使用非误导性文案。
 - 历史 7 / 30 / 90 天按 Asia/Shanghai 连续日历桶计算，采集器省略的零用量日会补零而不会向更早活跃日扩张；活动墙分别使用 1 / 5 / 13 列，“全部”使用 34 列，并按所选日历窗口顺序填充，跨周的近 7 天不会漏掉窗口起点。
 - 九套主题、版本化 API 标准价估算与覆盖率／未计价状态、分享卡渲染、复制 PNG、保存 JPEG 的错误边界均已纳入验证。
@@ -46,7 +47,7 @@ beta.8 本地候选已经完成 Swift 分享卡与最终页面真实渲染、服
 
 ## 当前明确阻断项
 
-1. 当前邀请制成员继续使用固定仓库 commit 的源码安装／手动升级路径，**不要求付费 Apple Developer 账号**；这条路径已验证原子安装与失败回滚。奥哥本机的最终原地替换尚待一次可见 Keychain 私钥授权，不能在完成前写成“已升级”。缺少 Developer ID、Apple Team ID、公证凭据和可信 HTTPS 更新源，只阻断未来“公开公证安装包／在线自动更新”，不阻断现有源码安装。若某位原成员的旧设备凭据确实无法继承，只能为该既有成员补发设备码并重新连接，不得创建重复成员。
+1. 当前邀请制成员继续使用固定仓库 commit 的源码安装／手动升级路径，**不要求付费 Apple Developer 账号**；这条路径已在奥哥本机验证原子安装、失败回滚、解锁后重试、历史与身份保留。缺少 Developer ID、Apple Team ID、公证凭据和可信 HTTPS 更新源，只阻断未来“公开公证安装包／在线自动更新”，不阻断现有源码安装。若某位原成员的旧设备凭据确实无法继承，只能为该既有成员补发设备码并重新连接，不得创建重复成员。
 2. 生产 API 尚未部署 beta.8 所需字段／契约，不能宣称生产端已可用。
 3. 真实 Intel Mac 和真实 Windows 桌面 GUI 的人工 E2E 仍属于外部验收，不能由本机自动化、交叉构建或历史 CI 替代。
 4. Draft PR #4 的对应 head 必须完成新一轮 GitHub Actions 并全部通过；任何后续提交都会使此前 CI 证据失效，必须重新验证。

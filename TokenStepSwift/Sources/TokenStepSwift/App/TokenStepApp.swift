@@ -3,6 +3,20 @@ import Darwin
 import SwiftUI
 
 final class TokenStepAppDelegate: NSObject, NSApplicationDelegate {
+    private let reopenHandler: @MainActor (String) -> Void
+
+    override init() {
+        reopenHandler = { reason in
+            TokenStepReopenObserver.shared.request(reason: reason)
+        }
+        super.init()
+    }
+
+    init(reopenHandler: @escaping @MainActor (String) -> Void) {
+        self.reopenHandler = reopenHandler
+        super.init()
+    }
+
     func applicationWillFinishLaunching(_ notification: Notification) {
         _ = signal(SIGPIPE, SIG_IGN)
         guard SingleInstanceGuard.claimOrTerminateDuplicate() else { return }
@@ -17,6 +31,18 @@ final class TokenStepAppDelegate: NSObject, NSApplicationDelegate {
            let icon = NSImage(contentsOf: url) {
             NSApp.applicationIconImage = icon
         }
+    }
+
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        // A native status item may be hidden by macOS when the built-in display's
+        // menu bar is crowded around the camera housing. Reopening TokenFleet from
+        // Applications or Spotlight must therefore remain a reliable way back to
+        // the main window even when the menu-bar ring is not currently visible.
+        reopenHandler("application_reopen")
+        return false
     }
 }
 
