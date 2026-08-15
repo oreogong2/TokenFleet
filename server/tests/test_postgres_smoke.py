@@ -341,7 +341,12 @@ def test_postgres_migration_starts_from_fresh_database(
         command.downgrade(migration_config, "bb8d4e1a2f73")
     with postgres_runtime.engine.begin() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "c7b4e2a91d35"
+            # The new share-grant migration and the older invitation-batch
+            # guard run inside PostgreSQL transactional DDL.  The latter
+            # rejects this destructive downgrade, so Alembic rolls the whole
+            # chain back to the original current head rather than leaving an
+            # empty intermediate schema behind.
+            "9a342e52bb08"
         )
         connection.execute(
             text("DELETE FROM organizations WHERE slug = 'downgrade-guard'")
