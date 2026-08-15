@@ -266,7 +266,9 @@ def main():
         assert page.locator('[data-community-action="share-leaderboard"]').count() == 1
         assert share_hint.inner_text() == "可分享当前筛选口径的公开排行榜；成员页的“分享排名”才会展示该成员的个人成绩。"
         page.locator('[data-community-action="share-leaderboard"]').click()
-        page.locator(".community-poster-modal img").wait_for()
+        board_preview = page.locator(".community-poster-modal canvas")
+        board_preview.wait_for()
+        assert board_preview.evaluate("canvas => [canvas.width, canvas.height]") == [1200, 1600]
         assert page.get_by_role("heading", name="当前 Token 排行榜", exact=True).count() == 1
         page.get_by_role("button", name="关闭", exact=True).click()
         assert page.locator(".community-poster-modal").count() == 0
