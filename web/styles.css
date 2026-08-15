@@ -1033,9 +1033,16 @@ body.community-mode :focus-visible { outline-color: rgba(29,119,79,.48); }
 .community-poster-modal header span { color: #a7b3aa; font-size: 9px; font-weight: 760; letter-spacing: .08em; }
 .community-poster-modal h2 { margin: 2px 0 0; font-size: 16px; }
 .community-poster-modal header button { width: 36px; height: 36px; border: 1px solid rgba(255,255,255,.2); border-radius: 6px; color: #fffdf7; background: transparent; cursor: pointer; }
-.community-poster-modal img { display: block; width: auto; max-width: 100%; min-height: 0; max-height: calc(100vh - 230px); justify-self: center; object-fit: contain; background: #f4f0e6; }
+.community-poster-preview-frame { position: relative; display: grid; min-height: 0; overflow: auto; background: #f4f0e6; }
+.community-poster-preview-state { display: grid; min-height: 180px; margin: 0; place-items: center; padding: 24px; color: #526158; font-size: 13px; font-weight: 700; text-align: center; }
+.community-poster-preview-state.is-error { color: #b54f2c; }
+.community-poster-preview-frame img { display: block; width: auto; max-width: 100%; min-height: 0; max-height: calc(100vh - 230px); justify-self: center; object-fit: contain; background: #f4f0e6; }
+.community-poster-preview-frame img[hidden] { display: none; }
 .community-poster-modal footer { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 16px 16px; }
 .community-poster-modal footer button { min-height: 44px; }
+.community-poster-modal footer button:disabled { cursor: wait; opacity: .55; }
+.community-poster-modal.is-error footer button:disabled { cursor: not-allowed; }
+.community-poster-modal.is-error footer p { color: #e6ab92; }
 .community-poster-modal footer p { grid-column: 1 / -1; margin: 0; color: #a7b3aa; font-size: 10px; text-align: center; }
 
 .join-card { border-radius: 14px; background: rgba(255,253,247,.96); box-shadow: var(--shadow); }
@@ -1117,5 +1124,5 @@ body.community-mode :focus-visible { outline-color: rgba(29,119,79,.48); }
   .community-token-grid { grid-template-columns: 1fr 1fr; }
   .community-poster-modal { padding: 10px; }
   .community-poster-modal > section { max-height: calc(100vh - 20px); }
-  .community-poster-modal img { max-height: calc(100vh - 205px); }
+  .community-poster-preview-frame img { max-height: calc(100vh - 205px); }
 }

@@ -303,6 +303,7 @@ export function mountCommunityApp({
   let leaderboard = null;
   let focus = null;
   let posterObjectUrl = "";
+  let posterPreviewReady = false;
   const filters = sanitizePublicFilters(route.filters || {});
   const canonicalUrl = publicShareUrl({ route, filters, documentRef, locationRef, demoMode });
   const api = demoMode
@@ -323,20 +324,50 @@ export function mountCommunityApp({
     root.querySelector(".community-poster-modal")?.remove();
     if (posterObjectUrl) posterUrlApi.revokeObjectURL(posterObjectUrl);
     posterObjectUrl = "";
+    posterPreviewReady = false;
   };
   const showPosterPreview = (blob, { personal = false } = {}) => {
     closePoster();
     posterObjectUrl = posterUrlApi.createObjectURL(blob);
+    posterPreviewReady = false;
     const overlay = documentRef.createElement("div");
     overlay.className = "community-poster-modal";
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-modal", "true");
     overlay.setAttribute("aria-labelledby", "community-poster-title");
     const previewTitle = personal ? "Token 消耗排名" : "当前 Token 排行榜";
-    overlay.innerHTML = `<section><header><div><span>分享预览</span><h2 id="community-poster-title">${previewTitle}</h2></div><button type="button" data-community-action="close-poster" aria-label="关闭分享预览">×</button></header><img alt="${previewTitle}分享图片预览"><footer><button class="primary-button" type="button" data-community-action="save-poster">保存图片</button><button class="secondary-button" type="button" data-community-action="close-poster">关闭</button><p>手机端可长按图片保存或转发给朋友</p></footer></section>`;
-    overlay.querySelector("img").src = posterObjectUrl;
+    overlay.innerHTML = `<section><header><div><span>分享预览</span><h2 id="community-poster-title">${previewTitle}</h2></div><button type="button" data-community-action="close-poster" aria-label="关闭分享预览">×</button></header><div class="community-poster-preview-frame"><p class="community-poster-preview-state" role="status" aria-live="polite">正在载入图片预览…</p><img hidden alt="${previewTitle}分享图片预览" aria-busy="true"></div><footer><button class="primary-button" type="button" data-community-action="save-poster" disabled aria-disabled="true">保存图片</button><button class="secondary-button" type="button" data-community-action="close-poster">关闭</button><p>手机端可长按图片保存或转发给朋友</p></footer></section>`;
+    const preview = overlay.querySelector("img");
+    const status = overlay.querySelector(".community-poster-preview-state");
+    const saveButton = overlay.querySelector('[data-community-action="save-poster"]');
+    const showReadyPreview = () => {
+      if (!overlay.isConnected || !preview?.naturalWidth || !preview?.naturalHeight) return;
+      overlay.classList.remove("is-error");
+      preview.hidden = false;
+      preview.removeAttribute("aria-busy");
+      status?.remove();
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.removeAttribute("aria-disabled");
+      }
+      posterPreviewReady = true;
+    };
+    const showPreviewError = () => {
+      if (!overlay.isConnected || !status) return;
+      overlay.classList.add("is-error");
+      status.textContent = "图片预览加载失败，请关闭后重新生成";
+      status.classList.add("is-error");
+      preview.hidden = true;
+      preview.removeAttribute("aria-busy");
+      const footerNote = overlay.querySelector("footer p");
+      if (footerNote) footerNote.textContent = "请关闭此预览后重新生成图片";
+      posterPreviewReady = false;
+    };
+    preview?.addEventListener("load", showReadyPreview, { once: true });
+    preview?.addEventListener("error", showPreviewError, { once: true });
     root.append(overlay);
-    overlay.querySelector('[data-community-action="save-poster"]')?.focus({ preventScroll: true });
+    overlay.querySelector('[data-community-action="close-poster"]')?.focus({ preventScroll: true });
+    if (preview) preview.src = posterObjectUrl;
   };
   globalThis.addEventListener?.("pagehide", clearSecret, { signal: controller.signal });
   if (active()) {
@@ -479,8 +510,8 @@ export function mountCommunityApp({
       return;
     }
     if (action === "save-poster") {
-      if (!posterObjectUrl) {
-        showToast(root, "分享图片已失效，请重新生成后再保存", true, active);
+      if (!posterObjectUrl || !posterPreviewReady) {
+        showToast(root, "图片预览尚未完成，请稍候或重新生成", true, active);
         return;
       }
       try {
