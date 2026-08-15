@@ -23,6 +23,11 @@ final class DailyUsageSchemaTests: XCTestCase {
         XCTAssertEqual(row.models["gpt-5"], 40)
     }
 
+    func testLegacyMissingPricingCoverageDoesNotPresentZeroCostAsPriced() {
+        XCTAssertEqual(TokenStepFormat.estimatedMoney(0, coverage: nil), "未计价")
+        XCTAssertEqual(TokenStepFormat.estimatedMoney(0, coverage: 0), "未计价")
+    }
+
     func testExactAtomicUsageRoundTripsAllTokenComponents() throws {
         let original = DailyUsage(
             date: "2026-08-09",
@@ -121,6 +126,19 @@ final class DailyUsageSchemaTests: XCTestCase {
         )
 
         XCTAssertTrue(decoded.menuBarShowsTokenCount)
+    }
+
+    func testLegacyFloatingIslandSettingsMigrateToNativeMenuBarWithoutLosingCountPreference() {
+        var settings = TokenStepSettings.defaults
+        settings.tokenIslandEnabled = true
+        settings.tokenIslandPlacement = .notchLeft
+        settings.menuBarShowsTokenCount = true
+
+        let normalized = DataService.normalize(settings)
+
+        XCTAssertFalse(normalized.tokenIslandEnabled)
+        XCTAssertEqual(normalized.tokenIslandPlacement, .menuBar)
+        XCTAssertTrue(normalized.menuBarShowsTokenCount)
     }
 
     func testCollectedSourceCountExcludesDisabledMissingAndUnsupportedCollectors() {

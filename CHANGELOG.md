@@ -4,8 +4,8 @@
 
 ### Desktop identity, accuracy, and recovery
 
-- Replaced the inherited multi-lap fitness ring with a single segmented
-  TokenFleet signal dial while keeping “100M a day”, uncapped goal percentages,
+- Replaced the inherited multi-ring fitness skin with one clean TokenFleet goal
+  ring while keeping “100M a day”, uncapped goal percentages and lap context,
   familiar navigation, full tool/model detail, quota views, and all three
   share-card workflows.
 - Added relative pace, current streak, contextual community rank, a discoverable
@@ -13,9 +13,10 @@
 - Replaced the unrelated external rank card with TokenFleet's device-authenticated
   community rank context; private profiles remain unranked and no schema migration
   is required.
-- Kept the single-screen menu-bar entry compact and right-aligned by default;
-  notch-adjacent Token Island placement now requires an explicit choice. Users
-  with enough menu-bar space may opt into the signal plus today's Token count.
+- Fixed the single-screen entry to macOS's native, compact right-side menu-bar
+  item so TokenFleet cannot cover Apple or third-party status items. Legacy
+  notch/automatic placement values are normalized to the native menu bar; users
+  with enough space may opt into the ring plus today's Token count.
 - Added a versioned public API price catalog with model- and component-specific
   rates, source-cost priority, pricing coverage, and explicit unpriced handling.
   Ambiguous Anthropic cache-write TTLs no longer erase the known cost components.
@@ -24,7 +25,7 @@
   remain explicitly experimental only when real CC Switch proxy rows exist.
 - Reworked image export around explicit render, PNG/JPEG encoding, clipboard,
   and file-write failures, and replaced the inherited icon with a TokenFleet
-  signal icon.
+  progress-ring icon.
 - Added a safe existing-member device-code reissue path that keeps the member,
   invitation-batch count, and consumed-code audit rows unchanged, expires every
   older live unused code in the same member-locked transaction, and never stores
@@ -43,10 +44,11 @@
   experimental support, and no conversation, code, prompt, response, or path is
   parsed. The privacy card counts only sources that actually contributed usage,
   not disabled, missing, or deliberately unsupported collectors.
-- Added prerelease-channel rules and an explicit beta.7 migration plan. beta.7
-  source installs still require one manual transition to a Developer ID signed,
-  notarized universal build with a pinned HTTPS update feed and Team ID; beta.8
-  is not yet an automatically deliverable release.
+- Added prerelease-channel rules and an explicit beta.7 migration plan. Existing
+  source installs can manually upgrade from a reviewed, pinned commit while
+  retaining the same per-Mac source-signing identity; this path does not require
+  a paid Apple Developer account. A Developer ID signed/notarized package and
+  pinned HTTPS automatic-update feed remain optional future distribution work.
 
 ## 0.1.0-beta.7 - 2026-08-11
 

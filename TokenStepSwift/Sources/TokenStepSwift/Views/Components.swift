@@ -11,17 +11,10 @@ struct StatusBarLabelView: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: showsTokenCount ? 6 : 0) {
-            HStack(alignment: .bottom, spacing: 2) {
-                ForEach(
-                    Array([CGFloat(7), CGFloat(12), CGFloat(17)].enumerated()),
-                    id: \.offset
-                ) { index, height in
-                    Capsule()
-                        .fill(Color.primary.opacity(refreshing && index == 1 ? 0.42 : 0.88))
-                        .frame(width: 3.5, height: height)
-                }
-            }
-            .frame(width: 18, height: 18, alignment: .bottom)
+            TokenFleetMenuBarProgressRing(
+                progress: lap.currentLapProgress,
+                refreshing: refreshing
+            )
 
             if showsTokenCount {
                 Text(TokenStepFormat.tokens(tokens, compact: true, language: language))
@@ -38,6 +31,33 @@ struct StatusBarLabelView: View {
                 + "\(L("今日目标进度")) \(TokenStepFormat.percent(lap.rawProgress * 100))"
         )
         .id("\(theme.id)-\(language.resolved.id)-\(showsTokenCount)")
+    }
+}
+
+/// A compact, template-color goal ring for macOS's native menu bar.
+/// Keeping it to 16 points makes it readable without consuming status-item space.
+private struct TokenFleetMenuBarProgressRing: View {
+    var progress: Double
+    var refreshing: Bool
+
+    private var clampedProgress: Double {
+        min(max(progress, 0), 1)
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.primary.opacity(0.26), lineWidth: 2.5)
+            Circle()
+                .trim(from: 0, to: clampedProgress)
+                .stroke(
+                    Color.primary.opacity(refreshing ? 0.46 : 0.96),
+                    style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 16, height: 16)
+        .accessibilityHidden(true)
     }
 }
 
@@ -64,28 +84,23 @@ struct TokenFleetSignalMark: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
+            Circle()
                 .fill(Color.tokenSurface)
                 .overlay(
-                    RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
+                    Circle()
                         .stroke(Color.tokenGreen.opacity(0.18), lineWidth: max(1, size * 0.018))
                 )
 
-            HStack(alignment: .bottom, spacing: size * 0.07) {
-                signalBar(height: 0.31, opacity: 0.48)
-                signalBar(height: 0.53, opacity: 0.72)
-                signalBar(height: 0.74, opacity: 1)
-            }
-            .frame(height: size * 0.62, alignment: .bottom)
+            Circle()
+                .trim(from: 0.06, to: 0.78)
+                .stroke(
+                    Color.tokenGreenDark,
+                    style: StrokeStyle(lineWidth: max(2, size * 0.13), lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
-    }
-
-    private func signalBar(height: CGFloat, opacity: Double) -> some View {
-        Capsule()
-            .fill(Color.tokenGreenDark.opacity(opacity))
-            .frame(width: size * 0.12, height: size * height)
     }
 }
 
@@ -249,10 +264,10 @@ struct TokenCard<Content: View>: View {
 
     var body: some View {
         content
-            .padding(24)
+            .padding(16)
             .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.black.opacity(0.07)))
-            .shadow(color: Color.black.opacity(0.05), radius: 18, x: 0, y: 10)
+            .shadow(color: Color.black.opacity(0.035), radius: 10, x: 0, y: 5)
     }
 }
 
@@ -583,23 +598,26 @@ struct ContributionWallView: View {
     var rows: [DailyUsage]
     var goal: Int
     var weeks: Int = 34
+    var cellSize: CGFloat = 15
+    var cellSpacing: CGFloat = 5
+    var showsSummary = true
 
     var body: some View {
         let columnCount = max(1, weeks)
         let visibleRows = UsageCalendarWindow.contributionRows(from: rows, weeks: columnCount)
         let todayKey = DateFormatter.tokenStepDay.string(from: Date())
 
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 5) {
+        VStack(alignment: .leading, spacing: showsSummary ? 16 : 0) {
+            HStack(alignment: .top, spacing: cellSpacing) {
                 ForEach(0..<columnCount, id: \.self) { week in
-                    VStack(spacing: 5) {
+                    VStack(spacing: cellSpacing) {
                         ForEach(0..<7, id: \.self) { dayIndex in
                             let slot = week * 7 + dayIndex
                             if visibleRows.indices.contains(slot) {
                                 let row = visibleRows[slot]
                                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                                     .fill(contributionColor(tokens: row.totalTokens, goal: goal))
-                                    .frame(width: 15, height: 15)
+                                    .frame(width: cellSize, height: cellSize)
                                     .overlay {
                                         if row.date == todayKey {
                                             RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -609,29 +627,31 @@ struct ContributionWallView: View {
                             } else {
                                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                                     .fill(Color.clear)
-                                    .frame(width: 15, height: 15)
+                                    .frame(width: cellSize, height: cellSize)
                             }
                         }
                     }
                 }
             }
 
-            HStack {
-                MetricPill(label: L("活跃"), value: localizedDays(rows.filter { $0.totalTokens > 0 }.count))
-                MetricPill(label: L("达标"), value: localizedDays(rows.filter { $0.totalTokens >= goal }.count))
-                MetricPill(label: L("最高"), value: TokenStepFormat.tokens(rows.map(\.totalTokens).max() ?? 0, compact: true))
-                Spacer()
-                Text(L("少"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                ForEach([0, Int(Double(goal) * 0.25), Int(Double(goal) * 0.7), goal, goal * 2, goal * 3], id: \.self) { value in
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(contributionColor(tokens: value, goal: goal))
-                        .frame(width: 15, height: 15)
+            if showsSummary {
+                HStack {
+                    MetricPill(label: L("活跃"), value: localizedDays(rows.filter { $0.totalTokens > 0 }.count))
+                    MetricPill(label: L("达标"), value: localizedDays(rows.filter { $0.totalTokens >= goal }.count))
+                    MetricPill(label: L("最高"), value: TokenStepFormat.tokens(rows.map(\.totalTokens).max() ?? 0, compact: true))
+                    Spacer()
+                    Text(L("少"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach([0, Int(Double(goal) * 0.25), Int(Double(goal) * 0.7), goal, goal * 2, goal * 3], id: \.self) { value in
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(contributionColor(tokens: value, goal: goal))
+                            .frame(width: cellSize, height: cellSize)
+                    }
+                    Text(L("多"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
-                Text(L("多"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
             }
         }
     }

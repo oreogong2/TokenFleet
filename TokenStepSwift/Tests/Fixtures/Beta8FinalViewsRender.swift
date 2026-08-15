@@ -19,8 +19,7 @@ private final class Beta8RecordingClipboardWriter: ScreenshotClipboardWriting {
 
 @main
 struct Beta8FinalViewsRender {
-    private static let serverOrigin = "https://community.example.com"
-    private static let ownPublicID = "10000000-0000-4000-8000-000000000018"
+    private static let serverOrigin = Beta8CommunityRenderFixture.serverOrigin
 
     @MainActor
     static func main() throws {
@@ -45,8 +44,8 @@ struct Beta8FinalViewsRender {
             withIntermediateDirectories: true
         )
 
-        let rank = fixtureRank()
-        let leaderboard = fixtureLeaderboard()
+        let rank = Beta8CommunityRenderFixture.rank()
+        let leaderboard = Beta8CommunityRenderFixture.leaderboard()
         try require(rank.isValid, "fixture rank must satisfy the public contract")
         try require(leaderboard.isValid, "fixture leaderboard must satisfy the public contract")
         try require(
@@ -62,10 +61,15 @@ struct Beta8FinalViewsRender {
 
         let appState = AppState(testingCommunityServerOrigin: serverOrigin)
         appState.applyCommunityRenderFixture(rank: rank, leaderboard: leaderboard)
+        appState.applyQuotaRenderFixture(
+            codex: fixtureQuota(fiveHourUsed: 23, sevenDayUsed: 41),
+            claude: fixtureQuota(fiveHourUsed: 36, sevenDayUsed: 58)
+        )
         try require(
             appState.isCommunitySyncEnrollmentCompatible,
             "render fixture must bind the existing member to the fixed community origin"
         )
+        try validateCurrentHistoryCapture(appState: appState)
 
         let popover = PopoverPanelView()
             .environmentObject(appState)
@@ -75,8 +79,22 @@ struct Beta8FinalViewsRender {
             popover,
             to: outputDirectory.appendingPathComponent("01-single-screen-entry.png")
         )
-        try require(abs(popoverImage.size.width - 412) < 0.5, "unexpected popover width")
-        try require(popoverImage.size.height >= 520, "popover render is unexpectedly short")
+        try require(abs(popoverImage.size.width - 625) < 0.5, "unexpected popover width")
+        try require(popoverImage.size.height >= 420, "popover render is unexpectedly short")
+
+        let todayPage = DashboardScreenshotView(section: .today)
+            .environmentObject(appState)
+            .environment(\.colorScheme, .light)
+            .environment(\.isScreenshotRendering, true)
+        let todayImage = try writePNG(
+            todayPage,
+            to: outputDirectory.appendingPathComponent("02-today-window.png")
+        )
+        try require(
+            abs(todayImage.size.width - 1_180) < 0.5
+                && abs(todayImage.size.height - 1_080) < 0.5,
+            "unexpected today main-window capture size"
+        )
 
         let historyPage = DashboardScreenshotView(section: .history)
             .environmentObject(appState)
@@ -87,10 +105,59 @@ struct Beta8FinalViewsRender {
             to: outputDirectory.appendingPathComponent("03-history-activity.png")
         )
         try require(
-            abs(historyImage.size.width - 1_120) < 0.5
-                && historyImage.size.height >= 760,
+            abs(historyImage.size.width - 1_180) < 0.5
+                && abs(historyImage.size.height - 760) < 0.5,
             "unexpected sparse-history current-page capture size"
         )
+        try validateHistoryContributionGeometry()
+
+        for historySection in HistorySection.allCases {
+            let expandedDates: Set<String> = historySection == .daily
+                ? [DateFormatter.tokenStepDay.string(from: Date())]
+                : []
+            let page = DashboardScreenshotView(
+                section: .history,
+                historySection: historySection,
+                historyRange: .all,
+                historyExpandedDates: expandedDates
+            )
+            .environmentObject(appState)
+            .environment(\.colorScheme, .light)
+            .environment(\.isScreenshotRendering, true)
+            let image = try writePNG(
+                page,
+                to: outputDirectory.appendingPathComponent(
+                    "03-section-\(historySection.rawValue).png"
+                )
+            )
+            try require(
+                abs(image.size.width - 1_180) < 0.5
+                    && abs(image.size.height - 760) < 0.5,
+                "unexpected \(historySection.rawValue) history capture size"
+            )
+        }
+
+        for historyRange in HistoryRange.allCases {
+            let page = DashboardScreenshotView(
+                section: .history,
+                historySection: .overview,
+                historyRange: historyRange
+            )
+            .environmentObject(appState)
+            .environment(\.colorScheme, .light)
+            .environment(\.isScreenshotRendering, true)
+            let image = try writePNG(
+                page,
+                to: outputDirectory.appendingPathComponent(
+                    "03-range-\(historyRange.rawValue).png"
+                )
+            )
+            try require(
+                abs(image.size.width - 1_180) < 0.5
+                    && abs(image.size.height - 760) < 0.5,
+                "unexpected \(historyRange.rawValue) history range capture size"
+            )
+        }
 
         let communityPage = DashboardScreenshotView(section: .community)
             .environmentObject(appState)
@@ -101,10 +168,28 @@ struct Beta8FinalViewsRender {
             to: outputDirectory.appendingPathComponent("04-app-community-rank.png")
         )
         try require(
-            abs(communityImage.size.width - 1_120) < 0.5
-                && communityImage.size.height >= 760,
+            abs(communityImage.size.width - 1_180) < 0.5
+                && abs(communityImage.size.height - 760) < 0.5,
             "unexpected App current-page capture size"
         )
+
+        for section in TokenFleetSettingsSection.allCases {
+            let settingsPage = SettingsWindowScreenshotView(section: section)
+                .environmentObject(appState)
+                .environment(\.colorScheme, .light)
+                .environment(\.isScreenshotRendering, true)
+            let image = try writePNG(
+                settingsPage,
+                to: outputDirectory.appendingPathComponent(
+                    "06-settings-\(section.rawValue).png"
+                )
+            )
+            try require(
+                abs(image.size.width - 980) < 0.5
+                    && abs(image.size.height - 760) < 0.5,
+                "unexpected \(section.rawValue) settings capture size"
+            )
+        }
 
         let poster = CommunityRankingShareView(
             rank: rank,
@@ -178,6 +263,55 @@ struct Beta8FinalViewsRender {
         )
     }
 
+    private static func validateHistoryContributionGeometry() throws {
+        try require(
+            abs(HistoryContributionLayout.gridHeight - 102) < 0.01,
+            "history contribution grid must show all seven rows"
+        )
+        for range in HistoryRange.allCases {
+            try require(
+                HistoryContributionLayout.gridWidth(weeks: range.wallWeeks)
+                    <= HistoryContributionLayout.maximumWidth,
+                "\(range.rawValue) contribution grid exceeds its visible width"
+            )
+        }
+    }
+
+    @MainActor
+    private static func validateCurrentHistoryCapture(appState: AppState) throws {
+        let presentation = HistoryPresentationState()
+        let currentPage = DashboardScreenshotView(
+            section: .history,
+            historyPresentation: presentation
+        )
+        .environmentObject(appState)
+        .environment(\.colorScheme, .light)
+        .environment(\.isScreenshotRendering, true)
+
+        presentation.section = .tools
+        presentation.range = .sevenDays
+
+        let expectedPage = DashboardScreenshotView(
+            section: .history,
+            historySection: .tools,
+            historyRange: .sevenDays
+        )
+        .environmentObject(appState)
+        .environment(\.colorScheme, .light)
+        .environment(\.isScreenshotRendering, true)
+
+        let currentPNG = try ScreenshotExporter.pngData(
+            from: ScreenshotExporter.renderImage(currentPage)
+        )
+        let expectedPNG = try ScreenshotExporter.pngData(
+            from: ScreenshotExporter.renderImage(expectedPage)
+        )
+        try require(
+            currentPNG == expectedPNG,
+            "current-page capture ignored the live history section or range"
+        )
+    }
+
     private static func seedAppSupport() throws {
         let calendar = Calendar(identifier: .gregorian)
         let todayKey = DateFormatter.tokenStepDay.string(from: Date())
@@ -199,14 +333,20 @@ struct Beta8FinalViewsRender {
             let codex = Int(Double(total) * 0.82)
             let claude = total - codex
             let sol = Int(Double(total) * 0.61)
-            let terra = Int(Double(total) * 0.24)
+            let terra = codex - sol
+            let opus = claude
             return DailyUsage(
                 date: DateFormatter.tokenStepDay.string(from: date),
                 tools: ["Codex": codex, "Claude Code": claude],
                 models: [
                     "gpt-5.6-sol": sol,
-                    "claude-opus-4.1": terra,
-                    "gpt-5.6-terra": total - sol - terra
+                    "claude-opus-4.1": opus,
+                    "gpt-5.6-terra": terra
+                ],
+                atomicUsage: [
+                    atomicUsage(tool: "Codex", model: "gpt-5.6-sol", tokens: sol),
+                    atomicUsage(tool: "Codex", model: "gpt-5.6-terra", tokens: terra),
+                    atomicUsage(tool: "Claude Code", model: "claude-opus-4.1", tokens: opus),
                 ],
                 totalTokens: total,
                 cost: Double(total) / 790_000,
@@ -288,7 +428,7 @@ struct Beta8FinalViewsRender {
             requireVerifiedUpdates: true,
             tokenIslandEnabled: false,
             tokenIslandPlacement: .menuBar,
-            showCodexQuota: false,
+            showCodexQuota: true,
             showExperimentalAgentSources: true,
             language: .zhHans,
             skippedUpdateVersion: nil,
@@ -305,6 +445,41 @@ struct Beta8FinalViewsRender {
         try Data("fixture\n".utf8).write(
             to: AppPaths.autostartDefaultMarker,
             options: .atomic
+        )
+    }
+
+    private static func atomicUsage(tool: String, model: String, tokens: Int) -> DailyAtomicUsage {
+        let input = Int(Double(tokens) * 0.40)
+        let output = Int(Double(tokens) * 0.10)
+        let cacheRead = tokens - input - output
+        return DailyAtomicUsage(
+            tool: tool,
+            model: model,
+            inputTokens: input,
+            outputTokens: output,
+            cacheReadTokens: cacheRead,
+            cacheWriteTokens: 0,
+            totalTokens: tokens,
+            breakdownComplete: true
+        )
+    }
+
+    private static func fixtureQuota(
+        fiveHourUsed: Double,
+        sevenDayUsed: Double
+    ) -> CodexQuotaSnapshot {
+        CodexQuotaSnapshot(
+            fetchedAt: Date(),
+            fiveHour: CodexQuotaWindow(
+                kind: .fiveHour,
+                usedPercent: fiveHourUsed,
+                resetsAt: Date().addingTimeInterval(2 * 3_600)
+            ),
+            sevenDay: CodexQuotaWindow(
+                kind: .sevenDay,
+                usedPercent: sevenDayUsed,
+                resetsAt: Date().addingTimeInterval(3 * 86_400)
+            )
         )
     }
 
@@ -394,95 +569,6 @@ struct Beta8FinalViewsRender {
         )
     }
 
-    private static func fixtureRank() -> TeamSyncCommunityRank {
-        TeamSyncCommunityRank(
-            publicID: ownPublicID,
-            nickname: "奥利奥",
-            publicProfileEnabled: true,
-            period: "today",
-            metric: "tokens",
-            rank: 18,
-            totalEntries: 128,
-            metricValue: "1088000000",
-            primaryTool: "Codex",
-            primaryModel: "gpt-5.6-sol",
-            totals: TeamSyncPublicUsageTotals(
-                inputTokens: "820000000",
-                outputTokens: "70000000",
-                cacheReadTokens: "198000000",
-                cacheWriteTokens: "0",
-                normTokens: "890000000",
-                totalTokens: "1088000000",
-                estimatedCostMicrounits: "1392640000",
-                costCurrency: "USD",
-                unpriced: false,
-                mixedCurrency: false
-            )
-        )
-    }
-
-    private static func fixtureLeaderboard() -> TeamSyncPublicLeaderboard {
-        let nicknames = [
-            "Ray", "Momo", "Aster", "Nora", "Kai",
-            "小宇", "Ada", "Lin", "Juno", "Max"
-        ]
-        let tokens = [
-            1_462_000_000, 1_241_000_000, 1_088_000_000, 986_000_000, 864_000_000,
-            742_000_000, 668_000_000, 591_000_000, 524_000_000, 476_000_000
-        ]
-        let tools = ["Codex", "Claude Code", "Codex", "Cursor", "Codex"]
-        let models = [
-            "gpt-5.6-sol", "claude-opus-4.1", "gpt-5.6-sol",
-            "gpt-5.6-terra", "claude-sonnet-4"
-        ]
-        let entries = nicknames.indices.map { index -> TeamSyncPublicLeaderboardEntry in
-            let tokenValue = tokens[index]
-            let input = Int(Double(tokenValue) * 0.82)
-            let output = Int(Double(tokenValue) * 0.07)
-            let cacheRead = tokenValue - input - output
-            let publicID = String(
-                format: "10000000-0000-4000-8000-%012d",
-                index + 1
-            )
-            return TeamSyncPublicLeaderboardEntry(
-                rank: index + 1,
-                publicID: publicID,
-                nickname: nicknames[index],
-                metricValue: String(tokenValue),
-                primaryTool: tools[index % tools.count],
-                primaryToolTokens: String(Int(Double(tokenValue) * 0.83)),
-                toolCount: 2 + (index % 3),
-                primaryModel: models[index % models.count],
-                primaryModelTokens: String(Int(Double(tokenValue) * 0.66)),
-                modelCount: 3 + (index % 4),
-                totals: TeamSyncPublicUsageTotals(
-                    inputTokens: String(input),
-                    outputTokens: String(output),
-                    cacheReadTokens: String(cacheRead),
-                    cacheWriteTokens: "0",
-                    normTokens: String(tokenValue),
-                    totalTokens: String(tokenValue),
-                    estimatedCostMicrounits: String(Int(Double(tokenValue) * 1.28)),
-                    costCurrency: "USD",
-                    unpriced: false,
-                    mixedCurrency: false
-                )
-            )
-        }
-        return TeamSyncPublicLeaderboard(
-            period: "today",
-            metric: "tokens",
-            timezone: "Asia/Shanghai",
-            mixedTimezones: false,
-            totalEntries: 128,
-            availableTools: ["Claude Code", "Codex", "Cursor"],
-            availableModels: [
-                "claude-opus-4.1", "claude-sonnet-4", "gpt-5.6-sol", "gpt-5.6-terra"
-            ],
-            entries: entries
-        )
-    }
-
     @MainActor
     private static func writePNG<V: View>(_ view: V, to url: URL) throws -> NSImage {
         let image = try ScreenshotExporter.renderImage(view)
@@ -510,13 +596,13 @@ struct Beta8FinalViewsRender {
             "\(stage) ranking poster must be exactly 1200 x 1600 pixels"
         )
         try require(
-            lowerRightDarkPixelCount(in: bitmap) > 500,
+            bottomLeftQRCodeDarkPixelCount(in: bitmap) > 500,
             "\(stage) ranking poster is missing its public-board QR code"
         )
     }
 
-    private static func lowerRightDarkPixelCount(in bitmap: NSBitmapImageRep) -> Int {
-        let xRange = 950..<min(bitmap.pixelsWide, 1_170)
+    private static func bottomLeftQRCodeDarkPixelCount(in bitmap: NSBitmapImageRep) -> Int {
+        let xRange = 50..<min(bitmap.pixelsWide, 260)
         let lowerRange = 0..<min(bitmap.pixelsHigh, 300)
         let upperRange = max(0, bitmap.pixelsHigh - 300)..<bitmap.pixelsHigh
         return max(

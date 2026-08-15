@@ -258,17 +258,18 @@ def main():
         page.locator(".install-contact").wait_for()
         assert resource_status.get("/tokenfleet-contact-wechat-qr.jpg") == 200
 
-        # The anonymous leaderboard share uses the same rich poster layout, but
-        # truthfully shows a community summary because no member identity exists.
+        # The anonymous board is shareable, but must label itself as the board;
+        # only a disclosed member profile may render a personal ranking card.
         page.goto(f"{base}/?demo=1#/rank", wait_until="networkidle")
-        page.get_by_role("button", name="分享社群排名", exact=True).click()
+        share_hint = page.locator(".community-share-hint")
+        share_hint.wait_for()
+        assert page.locator('[data-community-action="share-leaderboard"]').count() == 1
+        assert share_hint.inner_text() == "可分享当前筛选口径的公开排行榜；成员页的“分享排名”才会展示该成员的个人成绩。"
+        page.locator('[data-community-action="share-leaderboard"]').click()
         page.locator(".community-poster-modal img").wait_for()
-        with page.expect_download() as download_info:
-            page.get_by_role("button", name="保存图片", exact=True).click()
-        board_poster_path = str(ARTIFACT_DIR / "tokenfleet-community-poster-all.png")
-        download_info.value.save_as(board_poster_path)
-        assert png_dimensions(board_poster_path) == (1200, 1600)
+        assert page.get_by_role("heading", name="当前 Token 排行榜", exact=True).count() == 1
         page.get_by_role("button", name="关闭", exact=True).click()
+        assert page.locator(".community-poster-modal").count() == 0
 
         # The server fixture has nested totals for distributions; these must not normalize to zero.
         page.goto(f"{base}/?demo=1#/rank/p/demo-1?period=7d", wait_until="networkidle")
@@ -321,6 +322,8 @@ def main():
         poster_path = str(ARTIFACT_DIR / "tokenfleet-community-poster.png")
         download.save_as(poster_path)
         assert png_dimensions(poster_path) == (1200, 1600)
+        page.get_by_role("button", name="关闭", exact=True).click()
+        assert page.locator(".community-poster-modal").count() == 0
 
         # Empty state is deliberate and still keyboard-accessible.
         page.goto(f"{base}/?demo=1&scenario=empty#/rank", wait_until="networkidle")
@@ -611,7 +614,7 @@ def main():
 
         # In-progress poster generation cannot open a modal or download after route disposal.
         page.goto(
-            f"{base}/?demo=1&scenario=slow-share#/rank",
+            f"{base}/?demo=1&scenario=slow-share#/rank/p/demo-1",
             wait_until="networkidle",
         )
         share = page.locator('[data-community-action="share"]')

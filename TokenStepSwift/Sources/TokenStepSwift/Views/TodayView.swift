@@ -4,7 +4,7 @@ struct TodayView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 16) {
             hero
             todayBreakdownStrip
             TodayAgentWorkCard()
@@ -14,22 +14,22 @@ struct TodayView: View {
     private var hero: some View {
         let lap = appState.todayLap
         return TokenCard {
-            HStack(alignment: .center, spacing: 30) {
+            HStack(alignment: .center, spacing: 22) {
                 TokenFleetGoalDial(
                     tokens: appState.today.totalTokens,
                     goal: appState.settings.dailyGoalTokens,
-                    size: 184
+                    size: 145
                 )
-                .frame(width: 214)
+                .frame(width: 165)
 
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text(lap.lapStatusText)
-                        .font(.system(size: 27, weight: .heavy, design: .rounded))
+                        .font(.system(size: 22, weight: .heavy, design: .rounded))
                         .foregroundStyle(Color.tokenGreenDark)
                         .monospacedDigit()
 
                     Text(TokenStepFormat.tokens(appState.today.totalTokens))
-                        .font(.system(size: 52, weight: .heavy, design: .rounded))
+                        .font(.system(size: 43, weight: .heavy, design: .rounded))
                         .foregroundStyle(Color.tokenInk)
                         .monospacedDigit()
                         .minimumScaleFactor(0.62)
@@ -44,7 +44,7 @@ struct TodayView: View {
 
                     LazyVGrid(
                         columns: [GridItem(.flexible()), GridItem(.flexible())],
-                        spacing: 10
+                        spacing: 7
                     ) {
                         TodayHeroMetric(
                             label: L("API 标准价估算"),
@@ -66,8 +66,6 @@ struct TodayView: View {
                         )
                         TodayHeroMetric(label: L("社群排名"), value: communityRankValue)
                     }
-
-                    pricingDetail
                 }
 
                 Spacer(minLength: 0)
@@ -95,7 +93,7 @@ struct TodayView: View {
     }
 
     private var todayBreakdownStrip: some View {
-        HStack(alignment: .top, spacing: 22) {
+        HStack(alignment: .top, spacing: 12) {
             TodayBreakdownCard(title: L("今日模型消耗"), rows: todayModelRows)
             TodayBreakdownCard(title: L("今日工具消耗"), rows: todayToolRows)
         }

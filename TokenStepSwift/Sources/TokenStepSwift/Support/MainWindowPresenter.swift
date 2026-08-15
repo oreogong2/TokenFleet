@@ -3,6 +3,7 @@ import SwiftUI
 
 final class MainWindowNavigation: ObservableObject {
     @Published private(set) var section: AppSection
+    var onSectionChange: ((AppSection) -> Void)?
 
     init(section: AppSection = .today) {
         self.section = section
@@ -10,6 +11,7 @@ final class MainWindowNavigation: ObservableObject {
 
     func select(_ section: AppSection) {
         self.section = section
+        onSectionChange?(section)
     }
 }
 
@@ -39,22 +41,28 @@ final class MainWindowPresenter: NSObject, NSWindowDelegate {
     private func makeWindow(appState: AppState) -> NSWindow {
         let rootView = MainWindowView(navigation: navigation)
             .environmentObject(appState)
-            .frame(minWidth: 1080, minHeight: 720)
+            .frame(minWidth: 1040, minHeight: 680)
 
         let controller = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: controller)
-        window.title = "TokenFleet"
+        window.title = mainWindowTitle(for: navigation.section)
+        window.appearance = NSAppearance(named: .aqua)
         window.identifier = NSUserInterfaceItemIdentifier("tokenfleet.main")
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-        window.titlebarSeparatorStyle = .none
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = false
+        window.titlebarSeparatorStyle = .line
         window.toolbarStyle = .unifiedCompact
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.minSize = NSSize(width: 1080, height: 720)
+        window.minSize = NSSize(width: 1040, height: 680)
         window.maxSize = NSSize(width: 1440, height: 980)
-        window.setContentSize(NSSize(width: 1240, height: 820))
+        window.setContentSize(NSSize(width: 1180, height: 719))
         window.center()
         window.setFrameAutosaveName("TokenFleetMainWindow.v2")
+        navigation.onSectionChange = { [weak window] section in
+            window?.title = mainWindowTitle(for: section)
+        }
         return window
     }
 
@@ -75,4 +83,8 @@ final class MainWindowPresenter: NSObject, NSWindowDelegate {
             window.close()
         }
     }
+}
+
+private func mainWindowTitle(for section: AppSection) -> String {
+    "TokenFleet beta.8 · \(section.title)"
 }

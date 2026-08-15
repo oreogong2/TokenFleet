@@ -44,6 +44,15 @@ struct TokenStepApp: App {
             .onAppear {
                 TokenStepReopenObserver.shared.bind(appState: appState)
                 TokenIslandWindowPresenter.shared.bind(appState: appState)
+                #if TOKENSTEP_TESTING
+                if ProcessInfo.processInfo.environment[
+                    "TOKENFLEET_TEST_OPEN_MAIN_WINDOW"
+                ] == "1" {
+                    Task { @MainActor in
+                        MainWindowPresenter.shared.show(appState: appState)
+                    }
+                }
+                #endif
             }
         }
         .menuBarExtraStyle(.window)

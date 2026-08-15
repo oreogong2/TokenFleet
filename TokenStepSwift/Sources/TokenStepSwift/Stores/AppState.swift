@@ -45,6 +45,27 @@ final class AppState: ObservableObject {
     private let fixedCommunityServerOrigin: URL?
 
     convenience init() {
+        #if TOKENSTEP_TESTING
+        if let rawOrigin = ProcessInfo.processInfo.environment[
+            "TOKENFLEET_TEST_COMMUNITY_SERVER_ORIGIN"
+        ], !rawOrigin.isEmpty {
+            self.init(
+                communityServerOrigin:
+                    TeamSyncCommunityServerConfiguration.explicitTestingOrigin(rawOrigin)
+            )
+            if ProcessInfo.processInfo.environment[
+                "TOKENFLEET_TEST_BETA8_COMMUNITY_FIXTURE"
+            ] == "1" {
+                applyCommunityRenderFixture(
+                    rank: Beta8CommunityRenderFixture.rank(),
+                    leaderboard: Beta8CommunityRenderFixture.leaderboard()
+                )
+            } else {
+                applyEnvironmentCommunityRenderFixtureIfPresent()
+            }
+            return
+        }
+        #endif
         self.init(
             communityServerOrigin: TeamSyncCommunityServerConfiguration.productionOrigin
         )
@@ -444,12 +465,14 @@ final class AppState: ObservableObject {
     }
 
     func setTokenIslandEnabled(_ enabled: Bool) {
-        setTokenIslandPlacement(enabled ? .automatic : .menuBar)
+        // Retained for settings-file compatibility. The beta.8 surface is
+        // deliberately native-menu-bar only so it cannot cover other extras.
+        setTokenIslandPlacement(.menuBar)
     }
 
     func setTokenIslandPlacement(_ placement: TokenIslandDisplayPlacement) {
-        settings.tokenIslandPlacement = placement
-        settings.tokenIslandEnabled = placement != .menuBar
+        settings.tokenIslandPlacement = .menuBar
+        settings.tokenIslandEnabled = false
         saveSettingsAndReload()
         refreshTokenIslandAvailability()
     }
@@ -669,6 +692,30 @@ final class AppState: ObservableObject {
     }
 
     #if TOKENSTEP_TESTING
+    /// Lets a manually launched native preview use deterministic public rank
+    /// responses without touching production or making a network request.
+    private func applyEnvironmentCommunityRenderFixtureIfPresent() {
+        let environment = ProcessInfo.processInfo.environment
+        guard let rankPath = environment["TOKENFLEET_TEST_COMMUNITY_RANK_JSON"],
+              let leaderboardPath = environment["TOKENFLEET_TEST_COMMUNITY_LEADERBOARD_JSON"]
+        else { return }
+
+        do {
+            let decoder = JSONDecoder()
+            let rank = try decoder.decode(
+                TeamSyncCommunityRank.self,
+                from: Data(contentsOf: URL(fileURLWithPath: rankPath))
+            )
+            let leaderboard = try decoder.decode(
+                TeamSyncPublicLeaderboard.self,
+                from: Data(contentsOf: URL(fileURLWithPath: leaderboardPath))
+            )
+            applyCommunityRenderFixture(rank: rank, leaderboard: leaderboard)
+        } catch {
+            preconditionFailure("Invalid TokenFleet native-preview community fixture: \(error)")
+        }
+    }
+
     /// Supplies deterministic, already-validated public community data to UI
     /// render fixtures. This never exists in a production build and avoids
     /// turning a screenshot gate into a live network request.
@@ -696,6 +743,17 @@ final class AppState: ObservableObject {
         communityLeaderboard = leaderboard
         communityLeaderboardError = nil
         isRefreshingCommunityLeaderboard = false
+    }
+
+    /// Supplies deterministic quota data to the screenshot fixture without
+    /// invoking either local CLI or a network request.
+    func applyQuotaRenderFixture(
+        codex: CodexQuotaSnapshot,
+        claude: CodexQuotaSnapshot
+    ) {
+        codexQuota = codex
+        claudeQuota = claude
+        isRefreshingCodexQuota = false
     }
     #endif
 

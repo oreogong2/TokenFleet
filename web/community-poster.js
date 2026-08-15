@@ -10,7 +10,6 @@ export const COMMUNITY_POSTER_LAYOUT = Object.freeze({
   urlX: 500,
   urlMaxWidth: 590,
   qrX: 88,
-  qrY: 1141,
   qrSize: 370,
 });
 
@@ -82,20 +81,39 @@ export function buildCommunityPosterModel({ leaderboard, focus = null, filters =
   const safeFilters = sanitizePublicFilters({ ...filters, metric: "tokens" });
   const periodLabel = PUBLIC_PERIODS.find(([key]) => key === safeFilters.period)?.[1] || "今天";
   const topPeople = (leaderboard?.participants || []).slice(0, 10);
-  const totalEntries = Math.max(
-    Number(leaderboard?.totalEntries) || 0,
-    Number(focus?.rank) || 0,
-  );
+  const reportedTotal = Number(leaderboard?.totalEntries) || 0;
+  const totalEntries = reportedTotal || Number(focus?.rank) || 0;
   const top = topPeople.map((person) => posterRow(person, focus));
   const focusRow = focus ? posterRow(focus, focus) : null;
   if (focusRow) {
     focusRow.totalEntries = totalEntries;
-    focusRow.exceededPercent = focusRow.rank && totalEntries
+    focusRow.hasConsistentRankTotal = Boolean(
+      focusRow.rank && totalEntries && Number(focusRow.rank) <= totalEntries,
+    );
+    focusRow.exceededPercent = focusRow.hasConsistentRankTotal
       ? Math.max(0, Math.min(100, Math.round(((totalEntries - focusRow.rank) / totalEntries) * 100)))
       : null;
   }
-
+  // The public board has no viewer identity.  It may still be shared, but its
+  // hero must describe the board itself rather than fabricate a "my ranking"
+  // card or silently select the first participant as the viewer.
+  const hero = focusRow
+    ? {
+      ...focusRow,
+      kind: "personal",
+      label: "个人成绩",
+    }
+    : {
+      kind: "leaderboard",
+      label: "当前榜单",
+      periodLabel,
+      totalEntries,
+      detail: safeFilters.tool || safeFilters.model
+        ? [safeFilters.tool, safeFilters.model].filter(Boolean).join(" · ")
+        : "全部工具 · 全部模型",
+    };
   return Object.freeze({
+    shareKind: focusRow ? "personal" : "leaderboard",
     title: "Token 消耗排行榜",
     subtitle: `${periodLabel} · 含缓存 Token · API 公开标准价估算`,
     filters: Object.freeze([
@@ -104,12 +122,9 @@ export function buildCommunityPosterModel({ leaderboard, focus = null, filters =
     ]),
     rows: Object.freeze(top),
     focus: focusRow ? Object.freeze(focusRow) : null,
-    summary: Object.freeze({
-      period: periodLabel,
-      participants: totalEntries,
-    }),
+    hero: Object.freeze(hero),
     publicUrl: new URL(publicUrl).href,
-    footer: "扫码查看同一口径的完整排行榜",
+    footer: focusRow ? "扫码查看同一口径的完整排行榜" : "扫码查看当前公开排行榜",
     slogan: "让自己 AI Native 化，Learn in Public.",
     demoLabel: demo === true ? "演示数据 · 非真实排名" : "",
   });
@@ -200,77 +215,78 @@ export function renderCommunityPosterCanvas(model, documentRef = document) {
   context.font = "600 25px Avenir Next, PingFang SC, sans-serif";
   context.fillText(model.subtitle, 84, 233);
 
-  const panelY = 442;
+  // A compact score strip gives the name/Token pair and the rank a shared
+  // baseline.  Keeping the old tall card after removing the secondary fields
+  // left an obvious empty lower half in every exported poster.
+  const heroY = 260;
+  const heroHeight = 112;
+  const panelY = 396;
   context.fillStyle = "#fffdf7";
-  roundedRect(context, 76, 270, 1048, 144, 22);
+  roundedRect(context, 76, heroY, 1048, heroHeight, 22);
   context.strokeStyle = "rgba(29,119,79,.28)";
   context.lineWidth = 2;
-  strokeRoundedRect(context, 77, 271, 1046, 142, 21);
-  if (model.focus) {
-    context.fillStyle = "#657068";
-    context.font = "700 18px Avenir Next, PingFang SC, sans-serif";
-    context.fillText("我的成绩", 108, 303);
+  strokeRoundedRect(context, 77, heroY + 1, 1046, heroHeight - 2, 21);
+  if (model.hero.kind === "personal") {
+    const hero = model.hero;
     context.fillStyle = "#17211c";
-    context.font = "750 30px Avenir Next, PingFang SC, sans-serif";
-    context.fillText(fitText(context, model.focus.nickname, 520), 108, 341);
+    context.font = "750 26px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(fitText(context, hero.nickname, 565), 108, 302);
     context.fillStyle = "#1d774f";
-    context.font = "850 40px Avenir Next, PingFang SC, sans-serif";
-    const focusTokenValue = fitText(context, model.focus.tokenValue, 430);
-    context.fillText(focusTokenValue, 108, 391);
+    context.font = "850 34px Avenir Next, PingFang SC, sans-serif";
+    const focusTokenValue = fitText(context, hero.tokenValue, 510);
+    context.fillText(focusTokenValue, 108, 345);
     const focusTokenWidth = context.measureText(focusTokenValue).width;
     context.fillStyle = "#657068";
-    context.font = "750 16px Avenir Next, PingFang SC, sans-serif";
-    context.fillText("TOKEN · 含缓存", 124 + focusTokenWidth, 389);
+    context.font = "750 15px Avenir Next, PingFang SC, sans-serif";
+    context.fillText("TOKEN · 含缓存", 122 + focusTokenWidth, 344);
     context.strokeStyle = "rgba(29,119,79,.18)";
     context.lineWidth = 2;
     context.beginPath();
-    context.moveTo(714, 292);
-    context.lineTo(714, 392);
+    context.moveTo(714, 279);
+    context.lineTo(714, 353);
     context.stroke();
     context.textAlign = "left";
     context.fillStyle = "#657068";
-    context.font = "700 18px Avenir Next, PingFang SC, sans-serif";
-    context.fillText("社群排名", 760, 303);
+    context.font = "700 16px Avenir Next, PingFang SC, sans-serif";
+    context.fillText("排名", 760, 293);
     context.fillStyle = "#1d774f";
-    context.font = "850 54px Avenir Next, sans-serif";
-    const rankValue = model.focus.rank ? `#${model.focus.rank}` : "未上榜";
-    context.fillText(rankValue, 760, 360);
+    // Keep the rank as the first visual on the right, without letting a
+    // single-digit rank overpower the name and Token value on the left.
+    context.font = "850 34px Avenir Next, sans-serif";
+    const rankValue = hero.rank ? `#${hero.rank}` : "未上榜";
+    context.fillText(rankValue, 760, 339);
     const rankWidth = context.measureText(rankValue).width;
-    if (model.focus.rank) {
-      context.font = "800 26px Avenir Next, PingFang SC, sans-serif";
-      context.fillText(`/ ${model.focus.totalEntries} 名`, 774 + rankWidth, 357);
+    if (hero.rank && hero.hasConsistentRankTotal) {
+      context.font = "800 20px Avenir Next, PingFang SC, sans-serif";
+      context.fillText(`/ ${hero.totalEntries}`, 772 + rankWidth, 337);
     }
-    context.fillStyle = "#657068";
-    context.font = "700 18px Avenir Next, PingFang SC, sans-serif";
-    context.fillText(
-      model.focus.exceededPercent === null
-        ? "当前筛选下暂无名次"
-        : `超过 ${model.focus.exceededPercent}% 参榜用户`,
-      760,
-      391,
-    );
     context.textAlign = "left";
   } else {
+    const hero = model.hero;
     context.fillStyle = "#657068";
     context.font = "700 18px Avenir Next, PingFang SC, sans-serif";
-    context.fillText("当前榜单", 108, 305);
+    context.fillText(hero.label, 108, 292);
     context.fillStyle = "#17211c";
-    context.font = "700 31px Avenir Next, PingFang SC, sans-serif";
-    context.fillText(model.summary.period, 108, 348);
+    context.font = "750 38px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(hero.periodLabel, 108, 333);
     context.fillStyle = "#657068";
-    context.font = "700 20px Avenir Next, PingFang SC, sans-serif";
-    context.fillText(model.filters.join(" · "), 108, 382);
-    context.textAlign = "right";
+    context.font = "700 17px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(fitText(context, hero.detail, 565), 108, 356);
+    context.strokeStyle = "rgba(29,119,79,.18)";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(714, 279);
+    context.lineTo(714, 353);
+    context.stroke();
     context.fillStyle = "#657068";
     context.font = "700 18px Avenir Next, PingFang SC, sans-serif";
-    context.fillText("参与人数", 1080, 305);
+    context.fillText("参与人数", 760, 292);
     context.fillStyle = "#1d774f";
-    context.font = "800 48px Avenir Next, PingFang SC, sans-serif";
-    context.fillText(`${model.summary.participants} 人`, 1080, 351);
+    context.font = "850 40px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(`${hero.totalEntries || "—"} 人`, 760, 333);
     context.fillStyle = "#657068";
-    context.font = "700 20px Avenir Next, PingFang SC, sans-serif";
-    context.fillText("公开社群 Token 排名", 1080, 382);
-    context.textAlign = "left";
+    context.font = "700 18px Avenir Next, PingFang SC, sans-serif";
+    context.fillText("公开社群 Token 排名", 760, 356);
   }
 
   const rankingPanelHeight = Math.max(254, 82 + model.rows.length * 58);
@@ -330,30 +346,50 @@ export function renderCommunityPosterCanvas(model, documentRef = document) {
     y += 58;
   };
   model.rows.forEach((row) => drawRow(row));
+  if (model.rows.length < 10) {
+    context.textAlign = "center";
+    context.fillStyle = "#657068";
+    context.font = "650 16px Avenir Next, PingFang SC, sans-serif";
+    context.fillText(
+      `当前范围仅有 ${model.rows.length} 位公开参赛成员`,
+      600,
+      panelY + rankingPanelHeight - 27,
+    );
+    context.textAlign = "left";
+  }
 
+  const footerY = Math.min(1132, panelY + rankingPanelHeight + 24);
+  const footerHeight = 388;
+  const footerContentY = footerY + 9;
   context.fillStyle = "#fffdf7";
-  roundedRect(context, 76, 1132, 1048, 388, 24);
+  roundedRect(context, 76, footerY, 1048, footerHeight, 24);
   context.textAlign = "left";
   context.fillStyle = "#17211c";
-  context.font = "750 31px Avenir Next, PingFang SC, sans-serif";
-  context.fillText(model.footer, 500, 1225);
+  context.font = "750 20px Avenir Next, PingFang SC, sans-serif";
+  context.fillText(model.footer, 500, footerContentY + 70);
+  context.fillStyle = "#1d774f";
+  context.font = "850 29px Avenir Next, PingFang SC, sans-serif";
+  context.fillText(model.slogan, 500, footerContentY + 118);
   context.fillStyle = "#657068";
-  context.font = "600 20px Avenir Next, PingFang SC, sans-serif";
-  context.fillText("Top 10 之外还有更多排名", 500, 1268);
-  context.fillText(model.slogan, 500, 1310);
   context.font = "600 18px Avenir Next, PingFang SC, sans-serif";
-  context.fillText(model.filters.join(" · "), 500, 1350);
+  context.fillText(
+    model.rows.length >= 10 ? "Top 10 之外还有更多排名" : "当前筛选下仅展示公开参榜成员",
+    500,
+    footerContentY + 157,
+  );
+  context.font = "600 18px Avenir Next, PingFang SC, sans-serif";
+  context.fillText(model.filters.join(" · "), 500, footerContentY + 197);
   context.font = "500 17px Avenir Next, sans-serif";
   context.fillText(
     fitText(context, model.publicUrl, COMMUNITY_POSTER_LAYOUT.urlMaxWidth),
     COMMUNITY_POSTER_LAYOUT.urlX,
-    1400,
+    footerContentY + 247,
   );
   drawQr(
     context,
     createQrMatrix(model.publicUrl),
     COMMUNITY_POSTER_LAYOUT.qrX,
-    COMMUNITY_POSTER_LAYOUT.qrY,
+    footerContentY,
     COMMUNITY_POSTER_LAYOUT.qrSize,
   );
   return canvas;

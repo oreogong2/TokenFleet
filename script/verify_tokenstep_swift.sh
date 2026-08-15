@@ -207,10 +207,11 @@ if [[ "$REQUIRE_SHARE_CARD_RENDER" == "1" ]]; then
     -o "$BETA8_FINAL_VIEWS_FIXTURE_PATH"
 
   TOKENFLEET_TEST_APP_SUPPORT_ROOT="$BUILD_DIR/beta8-final-app-support" \
+  TOKENFLEET_TEST_RELEASE_VERSION="0.1.0-beta.8" \
   TOKENFLEET_BETA8_RENDER_DIR="${TOKENFLEET_BETA8_RENDER_DIR:-$BUILD_DIR/beta8-final-output}" \
     "$BETA8_FINAL_VIEWS_FIXTURE_PATH"
 else
-  echo "Share-card UI render fixture skipped on this headless runner; a GPU-capable gate must run it" >&2
+  echo "Share-card UI render fixture skipped; this run is not a render-inclusive Swift gate" >&2
 fi
 
 swiftc \
@@ -263,4 +264,8 @@ python3 "$ROOT_DIR/script/check_localization.py"
 python3 "$ROOT_DIR/script/check_language_refresh.py"
 
 COMPLETED=true
-echo "TokenFleet Swift verification passed"
+if [[ "$REQUIRE_SHARE_CARD_RENDER" == "1" ]]; then
+  echo "TokenFleet Swift verification passed (share-card UI render fixture: executed; XCTest sources: typechecked only)"
+else
+  echo "TokenFleet Swift verification passed (share-card UI render fixture: skipped; XCTest sources: typechecked only)"
+fi

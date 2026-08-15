@@ -40,7 +40,7 @@ enum TokenStepFormat {
     }
 
     static func estimatedMoney(_ value: Double, coverage: Double?) -> String {
-        if coverage == 0, value == 0 {
+        if value == 0, coverage == nil || coverage == 0 {
             return L("未计价")
         }
         return money(value)

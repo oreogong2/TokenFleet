@@ -1,13 +1,15 @@
 # TokenFleet beta.8 提交候选验收报告
 
-验收日期：2026-08-14
+验收日期：2026-08-15
 
-验收对象：`/Users/oreo/Desktop/code/TokenFleet/release/public-source/TokenFleet-beta` 中经固定并用于 Draft PR #4 的 beta.8 候选
+验收对象：正式仓库当前**未提交** beta.8 工作树；它以 Draft PR #4 当前 head 为基线，但尚未固定为提交，也尚未包含在 PR #4 head 中
 工作分支：`codex/tokenfleet-beta8`
 
 ## 验收结论
 
-beta.8 的本地构建、源码门禁、服务端、Web、浏览器联调、迁移与安装回滚证据均已取得，候选具备**本地技术验收通过**条件。
+beta.8 当前未提交工作树已经完成 Swift 分享卡与最终页面真实渲染、服务端 SQLite／PostgreSQL、Web、浏览器联调、Windows 跨平台、universal 构建与安装失败自动回滚门禁。奥哥已完成主要视觉审核，并接受设置通用页的信息层级作为 beta.9 视觉债。当前仍未固定为最终提交，也尚未取得对应精确提交的 GitHub Actions 结果，因此不得把本文当作 PR #4 当前 CI 结论或生产发布授权。
+
+本机对现有 `0.1.0-source.1` 的真实原地替换已先完成独立备份；首次安装在签名 Helper 时被 macOS Keychain 拒绝（`errSecInternalComponent`），安装器自动回滚，旧 App、生产 origin、本地 usage／settings／team sync 与 SQLite 均经哈希或完整性检查确认未变。此问题与 Apple Developer 账号无关，仍需在可见终端由用户亲自授权本机自签私钥后重试。
 
 这不是发布验收通过，也不单独构成当前 CI 通过的声明：最终状态必须以 Draft PR #4 当时的 `headRefOid` 及其 GitHub Actions 检查为准，只有同一 PR head 的全部必需检查为绿色才可视为当前 CI 证据。不得将此前已推送基线 `a0c0621e3dcf9c75fa1bbd50cf186bf811221732` 或其历史 Actions 运行 `31777201461` 冒充为 beta.8 最终提交或最终 CI；它们只用于追溯此前基线。
 
@@ -15,20 +17,20 @@ beta.8 的本地构建、源码门禁、服务端、Web、浏览器联调、迁�
 
 | 范围 | 当前本地结果 | 关键覆盖 |
 | --- | --- | --- |
-| Swift 完整门禁 | 通过 | 网络供应链、Keychain、离线恢复、累计采集、迁移、分享卡，以及 beta.8 真实 Swift 入口、稀疏日历补零、榜外本人、社群海报渲染／复制／保存均已覆盖。 |
+| Swift 源码／完整渲染门禁 | 通过（本机 XCTest 受工具链限制） | 已以 `TOKENFLEET_REQUIRE_SHARE_CARD_RENDER=1` 执行完整 Swift 门禁：网络供应链、Keychain、海报与最终视图真实渲染／复制／保存、离线恢复、累计采集、价格迁移与逻辑 harness 全部通过。当前 Command Line Tools 不提供可用 XCTest 模块，测试源码已 typecheck；真实 XCTest 必须由最终 PR head 的 macOS CI 执行。 |
 | App 海报与二维码 | 通过 | 实际海报精确为 `1200 × 1600`，二维码像素存在；不依赖外部 QR 库的实现与 Nayuki QR Code generator v6、v15、v40 基准输出均完全匹配。 |
 | macOS universal 产物 | 通过 | `TokenFleet.app` 与 `Contents/Helpers/TokenFleetHelper` 均为 `x86_64 arm64`；App 的 `TokenFleetReleaseVersion` 为 `0.1.0-beta.8`，Apple 要求的 `CFBundleShortVersionString` / `CFBundleVersion` 为去除预发布后缀的 `0.1.0`。 |
-| Web 单元 | 通过 | `50 / 50`。 |
+| Web 单元 | 通过 | `51 / 51`。 |
 | 服务端 SQLite | 通过 | `155 passed, 16 skipped`。 |
 | 服务端 PostgreSQL 17 专属项 | 通过 | `16 / 16`。 |
 | Windows 跨平台门禁 | 通过（受平台限制的本机结果） | macOS 本机 28 项中 `26 passed, 2 skipped`；两项仅因必须在真实 Windows 上执行而跳过。历史 Windows CI 曾完成全部 28 项及安装、升级、预览、状态和计划任务卸载生命周期验证，但该历史记录不构成本工作树的当前 CI。 |
 | 真实浏览器验证 | 通过 | 已在 390、820、1440 px 宽度验证；静态 7 路由、live API／浏览器流程、安装／海报、100／200 成员与多批次、1／2／4 设备等场景均已通过。 |
 | Python 静态检查 | 通过 | `compileall` 通过。 |
-| beta.7 → beta.8 迁移与恢复 | 通过 | 先备份本机 beta.7，再迁移到临时 beta.8；随后按哈希恢复原 beta.7，SQLite 校验正常，并已重新运行验证。 |
+| beta.7 → beta.8 迁移与恢复 | 数据兼容通过；本机永久替换待钥匙串授权 | 临时迁移已证明 beta.8 可读取并保留 120 日历史、设置与社群状态。2026-08-15 真实原地替换前另行备份 App、完整 App Support 与偏好；签名失败后安装器自动回滚，旧 App、origin 与关键状态哈希未变。待用户在可见终端授权本机自签私钥后完成最终替换。 |
 
 ## 用户可见能力范围
 
-- TokenFleet 分段信号环和真实超额百分比；系统右侧紧凑菜单栏入口默认启用，Token Island 仍由用户显式选择。
+- TokenFleet 单圈目标圆环、圈数和真实超额百分比；系统右侧原生菜单栏入口固定启用，旧自动／刘海左／刘海右设置统一迁移为原生菜单栏，不再提供会遮挡其他状态项的 Token Island。
 - 快览、主窗口社群页和分享内容可显示本人排名、参榜人数、超过成员比例、最近同步时间、连续活跃与相对近 7 个活跃日节奏；本人在 Top 10 外仍从签名只读响应取得自己的公开主力工具、模型与估算字段。样本不足及本地留存边界使用非误导性文案。
 - 历史 7 / 30 / 90 天按 Asia/Shanghai 连续日历桶计算，采集器省略的零用量日会补零而不会向更早活跃日扩张；活动墙分别使用 1 / 5 / 13 列，“全部”使用 34 列，并按所选日历窗口顺序填充，跨周的近 7 天不会漏掉窗口起点。
 - 九套主题、版本化 API 标准价估算与覆盖率／未计价状态、分享卡渲染、复制 PNG、保存 JPEG 的错误边界均已纳入验证。
@@ -44,11 +46,12 @@ beta.8 的本地构建、源码门禁、服务端、Web、浏览器联调、迁�
 
 ## 当前明确阻断项
 
-1. 没有有效的 Apple Developer ID、Team ID、公证凭据或可信 HTTPS 更新源，不能签名、公证或可信自动更新。原 beta.7 自签版本本就会出现 `CSSMERR_TP_NOT_TRUSTED`，且 Keychain 不可用；不得将其作为 beta.8 自动更新可用的依据。
+1. 当前邀请制成员继续使用固定仓库 commit 的源码安装／手动升级路径，**不要求付费 Apple Developer 账号**；这条路径已验证原子安装与失败回滚。奥哥本机的最终原地替换尚待一次可见 Keychain 私钥授权，不能在完成前写成“已升级”。缺少 Developer ID、Apple Team ID、公证凭据和可信 HTTPS 更新源，只阻断未来“公开公证安装包／在线自动更新”，不阻断现有源码安装。若某位原成员的旧设备凭据确实无法继承，只能为该既有成员补发设备码并重新连接，不得创建重复成员。
 2. 生产 API 尚未部署 beta.8 所需字段／契约，不能宣称生产端已可用。
 3. 真实 Intel Mac 和真实 Windows 桌面 GUI 的人工 E2E 仍属于外部验收，不能由本机自动化、交叉构建或历史 CI 替代。
 4. Draft PR #4 的对应 head 必须完成新一轮 GitHub Actions 并全部通过；任何后续提交都会使此前 CI 证据失效，必须重新验证。
 5. 尚无生产部署、合并或发布授权。不得执行更新源切换、成员通知、DMG 发布、生产服务部署或合并；若后续获授权，需先用中文说明影响范围、回滚路径与待验证项，再逐项执行。
+6. 内部运维手册仍要求首批 50 人连续观察至少 14 天且 P0／P1 为 0；beta.7 从 2026-08-11 到本报告日约 4 天。生产部署前应等待到约 2026-08-25，或由奥哥在收到影响与回滚说明后明确豁免该内部观察门禁；不得静默跳过。
 
 ## 历史基线说明
 

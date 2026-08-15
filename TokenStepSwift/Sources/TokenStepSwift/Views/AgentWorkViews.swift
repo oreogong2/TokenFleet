@@ -5,21 +5,23 @@ import SwiftUI
 /// Token volume.
 struct TodayAgentWorkCard: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.isScreenshotRendering) private var isScreenshotRendering
     @State private var period: AgentWorkPeriod = .today
     @State private var dimension: AgentWorkDimension = .tool
     @State private var selectedValue = AgentWorkSelection.all
 
     var body: some View {
-        TokenCard {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                readingSummary
-                filterRow
-                metricStrip
-                AgentWorkTokenChart(bars: chartBars, period: period)
-                cacheDetail
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            readingSummary
+            filterRow
+            metricStrip
+            AgentWorkTokenChart(bars: chartBars, period: period)
+            cacheDetail
         }
+        .padding(15)
+        .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.black.opacity(0.07)))
         .onChange(of: dimension) { _ in selectedValue = AgentWorkSelection.all }
         .onChange(of: period) { _ in
             if !availableValues.contains(selectedValue) {
@@ -29,10 +31,10 @@ struct TodayAgentWorkCard: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 20) {
-            VStack(alignment: .leading, spacing: 5) {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(L("Agent 工作强度"))
-                    .font(.title3.weight(.heavy))
+                    .font(.headline.weight(.heavy))
                     .foregroundStyle(Color.tokenInk)
                 Text(L("看清 Token 主要在什么时间产生；不代表工时或生产力。"))
                     .font(.caption.weight(.semibold))
@@ -48,28 +50,28 @@ struct TodayAgentWorkCard: View {
                     }
                 }
             }
-            .padding(4)
+            .padding(3)
             .background(Color.tokenTrack.opacity(0.42), in: Capsule())
         }
     }
 
     private var readingSummary: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(L("一句话看懂"))
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(Color.tokenGreenDark)
             Text(summarySentence)
-                .font(.callout.weight(.heavy))
+                .font(.caption.weight(.heavy))
                 .foregroundStyle(Color.tokenInk)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .background(Color.tokenMint.opacity(0.18), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.tokenMint.opacity(0.18), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var filterRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             HStack(spacing: 4) {
                 ForEach(AgentWorkDimension.allCases) { item in
                     AgentWorkSegmentButton(title: item.title, selected: dimension == item) {
@@ -79,17 +81,33 @@ struct TodayAgentWorkCard: View {
                     }
                 }
             }
-            .padding(4)
+            .padding(3)
             .background(Color.tokenTrack.opacity(0.42), in: Capsule())
 
-            Picker(dimension.filterLabel, selection: $selectedValue) {
-                Text(dimension.allLabel).tag(AgentWorkSelection.all)
-                ForEach(availableValues, id: \.self) { value in
-                    Text(value).tag(value)
+            if isScreenshotRendering {
+                HStack(spacing: 7) {
+                    Text(selectedValue == AgentWorkSelection.all ? dimension.allLabel : selectedValue)
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundStyle(Color.tokenInk.opacity(0.76))
+                    Spacer(minLength: 6)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 7, weight: .heavy))
+                        .foregroundStyle(.secondary)
                 }
+                .padding(.horizontal, 9)
+                .frame(minWidth: 150, maxWidth: 220, minHeight: 28)
+                .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Color.black.opacity(0.09)))
+            } else {
+                Picker(dimension.filterLabel, selection: $selectedValue) {
+                    Text(dimension.allLabel).tag(AgentWorkSelection.all)
+                    ForEach(availableValues, id: \.self) { value in
+                        Text(value).tag(value)
+                    }
+                }
+                .labelsHidden()
+                .frame(minWidth: 150, maxWidth: 220)
             }
-            .labelsHidden()
-            .frame(minWidth: 190, maxWidth: 270)
 
             Text(LFormat("%d 个%@ · 可继续扩展", availableValues.count, dimension.countNoun))
                 .font(.caption.weight(.bold))
@@ -99,7 +117,7 @@ struct TodayAgentWorkCard: View {
     }
 
     private var metricStrip: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 7) {
             AgentWorkMetricTile(
                 title: period == .today ? L("今日 Token") : L("近 7 日 Token"),
                 value: TokenStepFormat.tokens(selectedPeriodTokens, compact: true),
@@ -382,13 +400,13 @@ private struct AgentWorkMetricTile: View {
     var detail: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Text(value)
-                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .font(.system(size: 17, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.tokenInk)
                 .lineLimit(1)
                 .minimumScaleFactor(0.56)
@@ -399,9 +417,9 @@ private struct AgentWorkMetricTile: View {
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.tokenTrack.opacity(0.24), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.tokenTrack.opacity(0.24), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -413,7 +431,7 @@ private struct AgentWorkTokenChart: View {
     private var maximum: Int { max(1, bars.map(\.tokens).max() ?? 0) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 7) {
             HStack {
                 Text(period == .today ? L("每小时 Token") : L("每日 Token"))
                     .font(.callout.weight(.heavy))
@@ -443,7 +461,7 @@ private struct AgentWorkTokenChart: View {
                     }
                 }
             }
-            .frame(height: 148)
+            .frame(height: 96)
 
             HStack {
                 if period == .today {
@@ -461,9 +479,9 @@ private struct AgentWorkTokenChart: View {
             .foregroundStyle(.secondary)
             .monospacedDigit()
         }
-        .padding(14)
-        .background(Color.tokenSurface.opacity(0.64), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(Color.black.opacity(0.055)))
+        .padding(10)
+        .background(Color.tokenSurface.opacity(0.64), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(Color.black.opacity(0.055)))
     }
 
     private var hoverSummary: String {
@@ -491,8 +509,8 @@ private struct AgentWorkSegmentButton: View {
             Text(title)
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(selected ? Color.tokenSurface : Color.tokenInk.opacity(0.62))
-                .padding(.horizontal, 12)
-                .frame(height: 28)
+                .padding(.horizontal, 9)
+                .frame(height: 25)
                 .background(selected ? Color.tokenInk : Color.clear, in: Capsule())
         }
         .buttonStyle(.plain)

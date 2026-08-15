@@ -14,7 +14,7 @@ import {
 } from "./api.js";
 import { demoApi } from "./demo-data.js";
 import { parseCommunityRoute } from "./community-contract.js";
-import { mountCommunityApp } from "./community-app.js";
+import { mountCommunityApp } from "./community-app.js?v=beta8-unified-ranking-share";
 import {
   aggregateTokenRows,
   adaptUsageDashboard,

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsGoalCard: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.isScreenshotRendering) private var isScreenshotRendering
 
     var body: some View {
         SettingsCard(title: L("每日目标"), symbol: "scope") {
@@ -14,9 +15,20 @@ struct SettingsGoalCard: View {
                             .foregroundStyle(Color.tokenGreenDark)
                             .monospacedDigit()
 
-                        ProgressView(value: min(max(appState.progress, 0), 1))
-                            .tint(Color.tokenGreenDark)
-                            .frame(width: 68)
+                        if isScreenshotRendering {
+                            GeometryReader { proxy in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(Color.tokenTrack)
+                                    Capsule().fill(Color.tokenGreenDark)
+                                        .frame(width: proxy.size.width * min(max(appState.progress, 0), 1))
+                                }
+                            }
+                            .frame(width: 68, height: 5)
+                        } else {
+                            ProgressView(value: min(max(appState.progress, 0), 1))
+                                .tint(Color.tokenGreenDark)
+                                .frame(width: 68)
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 8) {

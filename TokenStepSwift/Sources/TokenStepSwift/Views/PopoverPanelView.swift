@@ -6,37 +6,47 @@ struct PopoverPanelView: View {
     @Environment(\.isScreenshotRendering) private var isScreenshotRendering
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 0) {
             header
             if let error = appState.lastError {
                 ErrorBanner(message: error) {
                     appState.clearError()
                 }
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
             }
             if appState.showsUsageRecalibrationNotice {
                 UsageRecalibrationNotice {
                     appState.dismissUsageRecalibrationNotice()
                 }
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
             } else if appState.showsPricingReestimationNotice {
                 PricingReestimationNotice {
                     appState.dismissPricingReestimationNotice()
                 }
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
             }
             PopoverTodayRingCard()
-            PopoverAgentWorkStrip()
             if appState.settings.showCodexQuota {
                 PopoverQuotaCard()
             }
             if let update = appState.availableUpdate {
                 UpdateNoticeCard(update: update)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 10)
             }
             PopoverFooterView()
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 20)
-        .frame(width: 412)
-        .background(TokenStepBackdrop())
+        .frame(width: 625)
+        .background(Color.tokenSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 25, style: .continuous)
+                .stroke(Color.black.opacity(0.12))
+        )
+        .shadow(color: Color.black.opacity(0.24), radius: 34, x: 0, y: 20)
         .id(appState.appearanceID)
         .onAppear {
             if !isScreenshotRendering {
@@ -46,15 +56,15 @@ struct PopoverPanelView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            TokenFleetSignalMark(size: 40)
-            VStack(alignment: .leading, spacing: 0) {
+        HStack(spacing: 9) {
+            TokenFleetSignalMark(size: 33)
+            VStack(alignment: .leading, spacing: 1) {
                 Text("TokenFleet")
-                    .font(.system(size: 24, weight: .heavy, design: .rounded))
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
-                Text(L("每天一个亿"))
-                    .font(.caption2.weight(.heavy))
-                    .foregroundStyle(Color.tokenGreenDark)
+                Text("\(L("每天一个亿")) · \(formattedPopoverDate)")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
             }
             Spacer()
             HStack(spacing: 6) {
@@ -62,10 +72,10 @@ struct PopoverPanelView: View {
                     .fill(appState.isRefreshing ? Color.secondary.opacity(0.68) : Color.tokenGreen)
                     .frame(width: 7, height: 7)
                 Text(appState.isRefreshing ? L("同步中") : L("已同步"))
-                    .font(.caption.weight(.heavy))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Color.tokenInk.opacity(0.72))
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(Color.tokenSurface, in: Capsule())
             .overlay(Capsule().stroke(Color.black.opacity(0.055)))
@@ -82,6 +92,22 @@ struct PopoverPanelView: View {
                 )
             }
         }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .background(Color.tokenSurface)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color.black.opacity(0.08)).frame(height: 1)
+        }
+    }
+
+    private var formattedPopoverDate: String {
+        guard let date = DateFormatter.tokenStepDay.date(from: appState.today.date) else {
+            return appState.today.date
+        }
+        let formatter = DateFormatter()
+        formatter.locale = TokenStepLocalization.locale
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        return formatter.string(from: date)
     }
 
     private func copyShareCard(_ mode: ShareCardMode) {
@@ -287,9 +313,9 @@ private struct PopoverCaptureMenuButton: View {
             }
         } label: {
             Image(systemName: "camera.fill")
-                .font(.system(size: 14, weight: .heavy))
+                .font(.system(size: 12, weight: .heavy))
                 .foregroundStyle(Color.tokenInk.opacity(0.76))
-                .frame(width: 34, height: 34)
+                .frame(width: 30, height: 30)
                 .background(Color.tokenSurface, in: Circle())
                 .overlay(Circle().stroke(Color.black.opacity(0.07)))
                 .shadow(color: Color.black.opacity(0.055), radius: 9, x: 0, y: 5)

@@ -365,7 +365,10 @@ enum DataService {
 
     static func normalize(_ settings: TokenStepSettings) -> TokenStepSettings {
         let intervals = Set([0, 60, 300, 900])
-        let placement = settings.tokenIslandEnabled ? settings.tokenIslandPlacement : .menuBar
+        // A floating status-level panel can overlap Apple's and other apps'
+        // menu-bar items. beta.8 intentionally uses the native status item,
+        // which lets macOS manage placement and crowding safely.
+        let placement: TokenIslandDisplayPlacement = .menuBar
         return TokenStepSettings(
             dailyGoalTokens: max(1_000_000, settings.dailyGoalTokens),
             refreshIntervalSeconds: intervals.contains(settings.refreshIntervalSeconds) ? settings.refreshIntervalSeconds : TokenStepSettings.defaults.refreshIntervalSeconds,
@@ -374,7 +377,7 @@ enum DataService {
             autoUpdateEnabled: settings.autoUpdateEnabled,
             askBeforeDownloadingUpdates: settings.askBeforeDownloadingUpdates,
             requireVerifiedUpdates: true,
-            tokenIslandEnabled: placement != .menuBar,
+            tokenIslandEnabled: false,
             tokenIslandPlacement: placement,
             menuBarShowsTokenCount: settings.menuBarShowsTokenCount,
             showCodexQuota: settings.showCodexQuota,

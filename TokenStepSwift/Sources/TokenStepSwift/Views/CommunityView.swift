@@ -6,10 +6,9 @@ struct CommunityView: View {
     @Environment(\.isScreenshotRendering) private var isScreenshotRendering
 
     var body: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 10) {
             hero
             leaderboardCard
-            privacyCard
         }
         .onAppear {
             if !isScreenshotRendering {
@@ -19,97 +18,39 @@ struct CommunityView: View {
     }
 
     private var hero: some View {
-        TokenCard {
-            HStack(alignment: .center, spacing: 26) {
-                VStack(alignment: .leading, spacing: 9) {
-                    Text(L("TokenFleet 社群排行"))
-                        .font(.system(size: 34, weight: .heavy, design: .rounded))
-                        .foregroundStyle(Color.tokenInk)
-                    Text(L("和一群人一起，看见进步的速度。"))
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Label(connectionLabel, systemImage: connectionSymbol)
-                        .font(.callout.weight(.heavy))
-                        .foregroundStyle(connectionTint)
-                }
-
-                Spacer(minLength: 16)
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(rankNumber)
-                        .font(.system(size: 58, weight: .black, design: .rounded))
-                        .foregroundStyle(Color.tokenGreenDark)
-                        .monospacedDigit()
-                    Text(rankTotal)
-                        .font(.callout.weight(.heavy))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(minWidth: 160, alignment: .trailing)
-
-                VStack(spacing: 9) {
-                    if isScreenshotRendering {
-                        Label(L("分享排名"), systemImage: "square.and.arrow.up")
-                            .font(.headline.weight(.heavy))
-                            .frame(width: 144, height: 42)
-                            .foregroundStyle(.white)
-                            .background(
-                                Color.tokenGreenDark,
-                                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            )
-                    } else {
-                        Menu {
-                            Button(L("复制排名海报"), action: copyRankingPoster)
-                            Button(L("保存排名海报 PNG"), action: saveRankingPoster)
-                        } label: {
-                            Label(L("分享排名"), systemImage: "square.and.arrow.up")
-                                .font(.headline.weight(.heavy))
-                                .frame(width: 144, height: 42)
-                        }
-                        .menuStyle(.borderlessButton)
-                        .buttonStyle(.borderedProminent)
-                        .tint(Color.tokenGreenDark)
-                        .disabled(!canShareRanking)
-                    }
-
-                    Button {
-                        appState.openCommunityLeaderboard(isScreenshotRendering: isScreenshotRendering)
-                    } label: {
-                        Label(L("打开完整榜单"), systemImage: "arrow.up.right")
-                            .font(.callout.weight(.bold))
-                            .frame(width: 144, height: 34)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(appState.communityLeaderboardURL(isScreenshotRendering: isScreenshotRendering) == nil)
-
-                    Button {
-                        SettingsWindowPresenter.shared.show(appState: appState)
-                    } label: {
-                        Text(appState.isCommunitySyncEnrollmentCompatible ? L("管理同步") : L("连接社群榜"))
-                            .font(.caption.weight(.bold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.tokenGreenDark)
-                    .disabled(isScreenshotRendering)
-                }
-            }
+        VStack(alignment: .leading, spacing: 4) {
+            Text("COMMUNITY · TODAY")
+                .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                .tracking(1.1)
+                .foregroundStyle(Color.tokenGreen.opacity(0.78))
+            Text(rankHeadline)
+                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .foregroundStyle(Color.white)
+                .monospacedDigit()
+            Text(rankDetail)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.62))
         }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.tokenInk, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
     }
 
     private var leaderboardCard: some View {
-        TokenCard {
-            VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L("今日 Top 10"))
-                            .font(.title3.weight(.heavy))
+                            .font(.system(size: 11, weight: .heavy))
                             .foregroundStyle(Color.tokenInk)
                         Text(L("主力工具优先于主力模型；费用是公开 API 标准价等价估算"))
-                            .font(.callout.weight(.semibold))
+                            .font(.system(size: 7, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     Text(leaderboardStatus)
-                        .font(.callout.weight(.heavy))
+                        .font(.system(size: 8, weight: .heavy))
                         .foregroundStyle(Color.tokenGreenDark)
                 }
 
@@ -136,23 +77,68 @@ struct CommunityView: View {
                         }
                     }
                 }
-            }
+                leaderboardFooter
         }
+        .padding(14)
+        .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(Color.black.opacity(0.08)))
     }
 
-    private var privacyCard: some View {
-        TokenCard {
-            VStack(alignment: .leading, spacing: 14) {
-                Text(L("公开与同步边界"))
-                    .font(.title3.weight(.heavy))
-                    .foregroundStyle(Color.tokenInk)
-                HStack(alignment: .top, spacing: 24) {
-                    CommunityBoundaryItem(symbol: "chart.bar.fill", text: L("公开昵称、排名、聚合 Token、工具、模型与日趋势"))
-                    CommunityBoundaryItem(symbol: "lock.shield.fill", text: L("不上传提示词、回复、代码、文件路径或会话正文"))
-                    CommunityBoundaryItem(symbol: "externaldrive.badge.checkmark", text: L("同一成员可连接多台设备，用量按成员聚合"))
+    private var leaderboardFooter: some View {
+        HStack(spacing: 12) {
+            Text(L("只公开昵称、排名、工具/模型和聚合用量；不上传提示词、回复、代码或路径。"))
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if isScreenshotRendering {
+                Text(L("分享排名"))
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundStyle(Color.tokenGreenDark)
+                    .padding(.horizontal, 11)
+                    .frame(height: 30)
+                    .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Color.tokenGreen.opacity(0.3)))
+            } else {
+                Menu {
+                    Button(L("复制排名海报"), action: copyRankingPoster)
+                    Button(L("保存排名海报 PNG"), action: saveRankingPoster)
+                } label: {
+                    Text(L("分享排名"))
+                        .font(.system(size: 9, weight: .heavy))
+                        .frame(width: 80, height: 30)
                 }
+                .menuStyle(.borderlessButton)
+                .buttonStyle(.bordered)
+                .tint(Color.tokenGreenDark)
+                .disabled(!canShareRanking)
+            }
+
+            if isScreenshotRendering {
+                Text(L("查看排行榜详情 ↗"))
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 11)
+                    .frame(height: 30)
+                    .background(Color.tokenGreen, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            } else {
+                Button {
+                    appState.openCommunityLeaderboard(isScreenshotRendering: isScreenshotRendering)
+                } label: {
+                    Text(L("查看排行榜详情 ↗"))
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 11)
+                        .frame(height: 30)
+                        .background(Color.tokenGreen, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(appState.communityLeaderboardURL(isScreenshotRendering: isScreenshotRendering) == nil)
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.tokenTrack.opacity(0.4), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 
     private var leaderboardEntries: [TeamSyncPublicLeaderboardEntry] {
@@ -183,6 +169,29 @@ struct CommunityView: View {
             return appState.isRefreshingCommunityRank ? L("排名读取中") : L("今日排名")
         }
         return LFormat("全榜 %d 人", total)
+    }
+
+    private var rankHeadline: String {
+        guard let rank = appState.communityRank?.rank,
+              let total = appState.communityRank?.totalEntries,
+              appState.communityRank?.publicProfileEnabled == true
+        else { return L("今天暂无公开排名") }
+        return LFormat("今天第 %d / %d 名", rank, total)
+    }
+
+    private var rankDetail: String {
+        let exceeded = appState.communityRank?.exceededPercentage.map { LFormat("超过 %d%% 参榜用户", $0) }
+        let tool = currentUserEntry?.primaryTool ?? appState.communityRank?.primaryTool
+        var parts = [String]()
+        if let exceeded { parts.append(exceeded) }
+        if let tool { parts.append(LFormat("主力工具 %@", tool)) }
+        parts.append(localizedStreakDescription(days: appState.activeStreak.days, isLowerBound: appState.activeStreak.isLowerBound))
+        return parts.joined(separator: " · ")
+    }
+
+    private var currentUserEntry: TeamSyncPublicLeaderboardEntry? {
+        guard let publicID = appState.communityRank?.publicID else { return nil }
+        return leaderboardEntries.first(where: { $0.publicID == publicID })
     }
 
     private var leaderboardStatus: String {
@@ -254,18 +263,18 @@ struct CommunityView: View {
 private struct CommunityLeaderboardHeader: View {
     var body: some View {
         HStack(spacing: 12) {
-            Text(L("排名")).frame(width: 46, alignment: .leading)
+            Text(L("名次")).frame(width: 42, alignment: .leading)
             Text(L("昵称")).frame(minWidth: 120, maxWidth: .infinity, alignment: .leading)
-            Text(L("主力工具")).frame(width: 126, alignment: .leading)
-            Text(L("主力模型")).frame(width: 152, alignment: .leading)
-            Text(L("Token")).frame(width: 116, alignment: .trailing)
-            Text(L("API 估算")).frame(width: 116, alignment: .trailing)
+            Text(L("主力工具")).frame(width: 118, alignment: .leading)
+            Text(L("主力模型")).frame(width: 138, alignment: .leading)
+            Text(L("总 Token")).frame(width: 104, alignment: .trailing)
+            Text(L("估算费用")).frame(width: 104, alignment: .trailing)
         }
-        .font(.caption.weight(.heavy))
+        .font(.system(size: 7, weight: .heavy))
         .foregroundStyle(.secondary)
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color.tokenTrack.opacity(0.58), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.vertical, 8)
+        .background(Color.tokenTrack.opacity(0.58), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 }
 
@@ -275,15 +284,15 @@ private struct CommunityLeaderboardRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(entry.rank.map { "#\($0)" } ?? "--")
-                .font(.headline.weight(.black))
+            Text(entry.rank.map { "\($0)" } ?? "--")
+                .font(.system(size: 11, weight: .black))
                 .foregroundStyle(entry.rank.map(rankColor) ?? .secondary)
-                .frame(width: 46, alignment: .leading)
+                .frame(width: 42, alignment: .leading)
             HStack(spacing: 7) {
-                Text(entry.nickname).font(.callout.weight(.heavy)).lineLimit(1)
+                Text(entry.nickname).font(.system(size: 9, weight: .heavy)).lineLimit(1)
                 if isCurrentUser {
                     Text(L("我"))
-                        .font(.caption2.weight(.black))
+                        .font(.system(size: 6, weight: .black))
                         .foregroundStyle(Color.tokenSurface)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
@@ -291,22 +300,25 @@ private struct CommunityLeaderboardRow: View {
                 }
             }
             .frame(minWidth: 120, maxWidth: .infinity, alignment: .leading)
-            CommunityDimensionValue(name: entry.primaryTool, count: entry.toolCount)
-                .frame(width: 126, alignment: .leading)
-            CommunityDimensionValue(name: entry.primaryModel, count: entry.modelCount)
-                .frame(width: 152, alignment: .leading)
+            CommunityDimensionValue(name: entry.primaryTool, tokenValue: entry.primaryToolTokens, count: entry.toolCount)
+                .frame(width: 118, alignment: .leading)
+            CommunityDimensionValue(name: entry.primaryModel, tokenValue: entry.primaryModelTokens, count: entry.modelCount)
+                .frame(width: 138, alignment: .leading)
             Text(TokenStepFormat.tokens(entry.tokenValue, compact: true))
-                .font(.callout.weight(.heavy))
+                .font(.system(size: 9, weight: .heavy))
                 .monospacedDigit()
-                .frame(width: 116, alignment: .trailing)
+                .frame(width: 104, alignment: .trailing)
             Text(costText)
-                .font(.callout.weight(.bold))
+                .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(.secondary)
-                .frame(width: 116, alignment: .trailing)
+                .frame(width: 104, alignment: .trailing)
         }
         .foregroundStyle(Color.tokenInk)
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        // Keep all ten rows plus the real share/open actions in the standard
+        // 760 pt main-window viewport. A taller row silently pushed the
+        // footer below the capture and made the actions look removed.
+        .frame(height: 34)
         .background(isCurrentUser ? Color.tokenMint.opacity(0.24) : Color.clear)
         .background(alignment: .bottom) {
             Rectangle().fill(Color.black.opacity(0.05)).frame(height: 1)
@@ -330,15 +342,26 @@ private struct CommunityLeaderboardRow: View {
 
 private struct CommunityDimensionValue: View {
     var name: String?
+    var tokenValue: String?
     var count: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(name ?? "--").font(.callout.weight(.bold)).lineLimit(1)
-            if count > 1 {
-                Text(LFormat("另有 %d 项", count - 1)).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-            }
+            Text(name ?? "--").font(.system(size: 8, weight: .bold)).lineLimit(1)
+            Text(dimensionDetail)
+                .font(.system(size: 6, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
+    }
+
+    private var dimensionDetail: String {
+        if let tokenValue, let tokens = Int(tokenValue) {
+            return count > 1
+                ? "\(TokenStepFormat.tokens(tokens, compact: true)) · \(LFormat("共 %d 项", count))"
+                : TokenStepFormat.tokens(tokens, compact: true)
+        }
+        return count > 0 ? LFormat("共 %d 项", count) : L("暂无")
     }
 }
 

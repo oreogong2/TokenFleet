@@ -203,8 +203,14 @@ enum UpdateService {
     }
 
     static var currentVersion: String {
-        (Bundle.main.object(forInfoDictionaryKey: "TokenFleetReleaseVersion") as? String)
+        #if TOKENSTEP_TESTING
+        let testingVersion = ProcessInfo.processInfo.environment["TOKENFLEET_TEST_RELEASE_VERSION"]
+        #else
+        let testingVersion: String? = nil
+        #endif
+        return (Bundle.main.object(forInfoDictionaryKey: "TokenFleetReleaseVersion") as? String)
             ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
+            ?? testingVersion
             ?? "0.0.0"
     }
 

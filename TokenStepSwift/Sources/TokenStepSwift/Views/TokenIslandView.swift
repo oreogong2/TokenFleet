@@ -2,7 +2,10 @@ import AppKit
 import SwiftUI
 
 enum TokenIslandMetrics {
-    static let expandedCardSize = NSSize(width: 356, height: 238)
+    // Kept as a safe fallback for legacy settings. The active beta.8 path is
+    // the native menu bar; if an old panel is ever restored it must never clip
+    // its footer or quota row.
+    static let expandedCardSize = NSSize(width: 356, height: 338)
     static let expandedCornerRadius: CGFloat = 28
     static let expandedShadowMargin: CGFloat = 26
 
@@ -71,14 +74,18 @@ struct TokenIslandCompactView: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            HStack(alignment: .bottom, spacing: 1.5) {
-                ForEach(Array([CGFloat(5), CGFloat(9), CGFloat(13)].enumerated()), id: \.offset) { index, height in
-                    Capsule()
-                        .fill(Color.white.opacity(refreshing && index == 1 ? 0.45 : 0.92))
-                        .frame(width: 2.5, height: height)
-                }
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.27), lineWidth: 2.2)
+                Circle()
+                    .trim(from: 0.06, to: min(max(lap.currentLapProgress, 0.06), 1))
+                    .stroke(
+                        Color.white.opacity(refreshing ? 0.48 : 0.92),
+                        style: StrokeStyle(lineWidth: 2.2, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
             }
-                .frame(width: 13, height: 15, alignment: .bottom)
+            .frame(width: 15, height: 15)
                 .accessibilityLabel("\(L("今日目标进度")) \(TokenStepFormat.percent(lap.rawProgress * 100))")
                 .id("\(theme.id)-\(language.resolved.id)")
 

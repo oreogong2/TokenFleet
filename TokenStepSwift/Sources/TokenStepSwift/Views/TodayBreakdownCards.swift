@@ -7,15 +7,14 @@ struct TodayBreakdownCard: View {
     @State private var isExpanded = false
 
     var body: some View {
-        TokenCard {
-            VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(title)
-                        .font(.title3.weight(.heavy))
+                        .font(.system(size: 11, weight: .heavy))
                         .foregroundStyle(Color.tokenInk)
                     Spacer()
                     Text(LFormat("%d 项", rows.count))
-                        .font(.caption.weight(.bold))
+                        .font(.system(size: 7, weight: .bold))
                         .foregroundStyle(Color.tokenGreenDark)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
@@ -24,11 +23,11 @@ struct TodayBreakdownCard: View {
 
                 if rows.isEmpty {
                     Text(L("等待下一次同步"))
-                        .font(.callout.weight(.semibold))
+                        .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
                 } else {
-                    VStack(spacing: 14) {
+                    VStack(spacing: 10) {
                         ForEach(Array(visibleRows.enumerated()), id: \.element.id) { index, row in
                             TodayBreakdownRowView(
                                 row: row,
@@ -59,9 +58,11 @@ struct TodayBreakdownCard: View {
                         .buttonStyle(.plain)
                     }
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.black.opacity(0.07)))
     }
 
     private var visibleRows: [TodayBreakdownRow] {
@@ -93,10 +94,10 @@ private struct TodayBreakdownRowView: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(row.name)
-                .font(.headline.weight(.bold))
+                .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(Color.tokenInk.opacity(0.78))
                 .lineLimit(1)
-                .frame(width: 138, alignment: .leading)
+                .frame(width: 115, alignment: .leading)
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
@@ -111,11 +112,11 @@ private struct TodayBreakdownRowView: View {
             .frame(height: 10)
 
             Text("\(TokenStepFormat.tokens(row.tokens, compact: true)) · \(TokenStepFormat.percent(row.percent))")
-                .font(.headline.weight(.semibold))
+                .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .monospacedDigit()
-                .frame(width: 126, alignment: .trailing)
+                .frame(width: 98, alignment: .trailing)
         }
         .frame(height: 30)
     }

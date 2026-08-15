@@ -65,7 +65,7 @@ const records = NAMES.map((nickname, index) => {
 
 const outsideRecord = {
   public_id: "outside-100",
-  nickname: "榜外参赛者",
+  nickname: "演示·远航",
   rank: 137,
   totals: totalsFor(13),
   tool: "CC Switch",

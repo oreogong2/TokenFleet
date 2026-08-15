@@ -146,6 +146,9 @@ test("poster model contains only public display fields and appends a rank beyond
 
   assert.equal(model.rows.length, 10);
   assert.equal(model.focus.rank, 137);
+  assert.equal(model.hero.label, "个人成绩");
+  assert.equal(model.hero.hasConsistentRankTotal, false);
+  assert.equal(model.hero.exceededPercent, null);
   assert.equal(model.focus.tool, "CC Switch");
   assert.equal(model.focus.model, "kimi-k2");
   assert.equal(model.rows[0].toolCount, 2);
@@ -157,6 +160,23 @@ test("poster model contains only public display fields and appends a rank beyond
     assert.equal(serialized.includes(forbidden), false);
   }
   assert.throws(() => buildCommunityPosterModel({ leaderboard: board, publicUrl: "http://localhost/rank" }), /HTTPS/);
+});
+
+test("anonymous leaderboard poster is explicitly a board, never a fabricated personal ranking", async () => {
+  const api = createCommunityDemoApi();
+  const board = normalizePublicLeaderboard(await api.leaderboard({ metric: "tokens" }));
+  const model = buildCommunityPosterModel({
+    leaderboard: board,
+    filters: { metric: "tokens" },
+    publicUrl: "https://tokenfleet.example/rank",
+  });
+  assert.equal(model.shareKind, "leaderboard");
+  assert.equal(model.focus, null);
+  assert.equal(model.hero.kind, "leaderboard");
+  assert.equal(model.hero.label, "当前榜单");
+  assert.equal(model.hero.totalEntries, board.totalEntries);
+  assert.match(model.footer, /当前公开排行榜/);
+  assert.equal(JSON.stringify(model).includes("我的成绩"), false);
 });
 
 test("unpriced entries stay explicit in posters and QR generation is deterministic", async () => {
@@ -300,7 +320,7 @@ test("join security order, deep-link assets, demo labels and license boundaries 
   assert.match(communitySource, /演示数据 · 不是真实排名或真实成员数据/);
   assert.match(communitySource, /未跨时区重新归日/);
   assert.match(indexSource, /href="\/styles\.css"/);
-  assert.match(indexSource, /src="\/app\.js"/);
+  assert.match(indexSource, /src="\/app\.js(?:\?[^\"]*)?"/);
   assert.match(qrSource, /The above copyright notice and this permission notice/);
   assert.match(qrSource, /AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM/);
 });
