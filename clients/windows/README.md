@@ -42,12 +42,12 @@ Download or clone the reviewed TokenFleet release, enter its root, and run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 `
-  -CommunityServer https://<community-domain>
+  -CommunityServer https://token.ipwriter.com
 ```
 
-`https://<community-domain>` is a placeholder. Ask your community administrator
-for the real fixed community HTTPS origin over a trusted private channel — do
-not use a documentation example domain and do not guess.
+`https://token.ipwriter.com` is the official TokenFleet community origin and is
+already used in the command above. If your community runs its own server, use
+the origin your administrator provides instead — do not guess.
 
 The installer validates and pins that canonical HTTPS origin in a non-secret,
 integrity-checked installation file, copies only this client to

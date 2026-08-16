@@ -15,7 +15,7 @@
 
 1. 官方源码仓库地址；
 2. 已复核的版本标签和对应完整 commit SHA（实际安装以 SHA 为准）；
-3. 固定社群 HTTPS 地址，例如 `https://tokenfleet.example.com`。
+3. 固定社群 HTTPS 地址。官方社群为 `https://token.ipwriter.com`（本文档中的安装命令已直接使用）；自建服务器的社群使用管理员提供的地址。
 
 这些都不是设备邀请码或 device secret。一次性邀请码不要写进命令行、截图或群聊。
 
@@ -30,7 +30,7 @@ git checkout --detach <reviewed-commit-sha>
 test "$(git rev-parse HEAD)" = "<reviewed-commit-sha>"
 ./script/install_from_source.sh \
   --enable-community-sync \
-  --community-server https://<community-domain>
+  --community-server https://token.ipwriter.com
 ```
 
 脚本只接受公开的固定社群 origin，不接受或打印一次性码。它会：
@@ -59,7 +59,7 @@ git fetch --tags
 git checkout --detach <new-reviewed-commit-sha>
 test "$(git rev-parse HEAD)" = "<new-reviewed-commit-sha>"
 ./script/install_from_source.sh --enable-community-sync \
-  --community-server https://<community-domain>
+  --community-server https://token.ipwriter.com
 ./script/rollback_source_install.sh
 ./script/uninstall_source_install.sh
 ```
@@ -88,10 +88,10 @@ Windows 首版需要 Python 3.10 或更高版本。下载或克隆经过复核�
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 `
-  -CommunityServer https://<community-domain>
+  -CommunityServer https://token.ipwriter.com
 ```
 
-`https://<community-domain>` 是占位符。真实的固定社群 HTTPS 地址由社群管理员通过可信私聊渠道提供（见第 2 节），不要使用文档示例域名，也不要自行猜测。
+命令中的 `https://token.ipwriter.com` 是官方社群地址；自建服务器的社群替换为管理员提供的地址，不要自行猜测。
 
 打开新终端，为这台设备使用一个新的单次接入码：
 

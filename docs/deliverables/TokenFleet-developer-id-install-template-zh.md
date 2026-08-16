@@ -85,7 +85,7 @@ open '/Applications/TokenFleet.app'
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 `
-  -CommunityServer https://<community-domain>
+  -CommunityServer https://token.ipwriter.com
 tokenfleet connect
 ```
 

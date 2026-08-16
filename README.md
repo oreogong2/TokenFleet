@@ -109,8 +109,10 @@ git checkout --detach <reviewed-commit-sha>
 test "$(git rev-parse HEAD)" = "<reviewed-commit-sha>"
 ./script/install_from_source.sh \
   --enable-community-sync \
-  --community-server https://<community-domain>
+  --community-server https://token.ipwriter.com
 ```
+
+命令中的 `https://token.ipwriter.com` 是官方社群地址；自建服务器的社群请替换为你的管理员提供的 HTTPS 地址。
 
 脚本会构建、验证并原子安装到 `~/Applications/TokenFleet.app`；它不接受一次性连接码。首次接入时先从管理员发出的批次链接登记唯一昵称并复制个人设备码，再在 App 的“社群榜同步”安全输入框粘贴。
 
@@ -135,7 +137,7 @@ Windows 首版从经过复核的源码发布包安装：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 `
-  -CommunityServer https://<community-domain>
+  -CommunityServer https://token.ipwriter.com
 ```
 
 安装后运行 `tokenfleet connect`，在隐藏输入中粘贴管理员为这台设备单独生成的一次性码。社群地址在安装时固定，升级必须保持一致；`connect` 不接受任意服务器参数。完整说明见 [clients/windows/README.md](clients/windows/README.md)。它支持采集、安全连接、自动同步和上榜，但不是 macOS 原生桌面界面的 Windows 复刻版。
