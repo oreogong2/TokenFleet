@@ -4,9 +4,9 @@
 
 ## 1. 三套身份不要混在一起
 
-- TokenFleet 的社群身份是“管理员授权的批次 + 唯一昵称参赛者 + 一次性设备接入码”，不是会员账号，也不是 Codex/Claude 账号。
+- TokenFleet 的社群身份是“管理员授权的批次 + 唯一昵称参赛者 + 一次性设备码”，不是会员账号，也不是 Codex/Claude 账号。
 - 每位成员建议使用自己独立的 Codex、Claude 账号；不建议多人共用一个 AI 供应商账号，否则费用归属和权限撤销都会变得不清楚。TokenFleet 不上传这些供应商账号身份。
-- 同一参赛者可以登记多台 Mac 或 Windows 设备。每台设备使用各自的接入码登记，后台按设备分别保存，再对该参赛者求和；v1 不做跨设备去重。
+- 同一参赛者可以登记多台 Mac 或 Windows 设备。每台设备使用各自的设备码登记，后台按设备分别保存，再对该参赛者求和；v1 不做跨设备去重。
 - 其他第三方排行榜或社区服务是独立链路。成员必须使用自己的个人接入，不能共用，也不要把第三方 URL、访问令牌或 secret 填进 TokenFleet 团队连接。
 
 ## 2. 安装前向管理员拿三项公开信息（macOS 与 Windows 通用）
@@ -33,6 +33,8 @@ test "$(git rev-parse HEAD)" = "<reviewed-commit-sha>"
   --community-server https://token.ipwriter.com
 ```
 
+必须完整 clone：管理员指定的 commit 可能不在默认分支上，`git clone --depth 1` 浅克隆会导致 checkout 失败。
+
 脚本只接受公开的固定社群 origin，不接受或打印一次性码。它会：
 
 - 在本机编译 TokenFleet；
@@ -45,6 +47,8 @@ test "$(git rev-parse HEAD)" = "<reviewed-commit-sha>"
 - 原子安装到 `~/Applications/TokenFleet.app`，升级时保留上一版用于回滚。
 
 安装过程中你会看到的系统弹窗：macOS 会弹出「codesign 想要访问你的钥匙串中的密钥」。这是系统在为上面那把本机签名钥匙做授权——钥匙只存在你自己的登录钥匙串里、不可导出、不会上传；输入的是你这台 Mac 的登录密码，密码只交给 macOS 系统本身，TokenFleet 无法读取。建议点「始终允许」，之后升级不再弹窗。
+
+让 AI 助手代跑安装时注意：脚本在创建签名钥匙前有一个终端确认（`Create it now? [y/N]`），在没有交互终端的环境里会被当作取消而退出（报 `cancelled before changing the login Keychain`）；这种场景请给脚本加 `--yes` 参数跳过该终端确认。上面的系统 codesign 弹窗不受 `--yes` 影响，仍需要你本人在弹窗里操作。
 
 源码自签版本没有 Apple 公证信誉，只适合成员从管理员指定并复核的完整 commit SHA 在自己机器上构建。每台 Mac 必须独立安装，不能复制另一台机器的 App 或签名 identity。
 
@@ -73,7 +77,7 @@ test "$(git rev-parse HEAD)" = "<new-reviewed-commit-sha>"
 1. 管理员创建单批最多 50 人、最长 24 小时且可随时关闭的批次链接；同一社群可创建多个批次，再通过可信社群渠道发给受邀成员；
 2. 成员打开链接，页面立即擦除批次令牌；成员填写唯一公开昵称并勾选公开范围；
 3. 服务端原子创建参赛者和个人设备码。页面不显示原码，只在成员主动点击时写入剪贴板；
-4. 成员打开 TokenFleet → 设置 → 社群榜同步，粘贴个人设备码；
+4. 成员打开 TokenFleet → 设置 → 社群同步，粘贴个人设备码；
 5. App 已固定唯一社群服务器，只需点“确认并开始同步”；确认后立即上传当前仍可验证的历史日聚合，并持续后台同步；
 6. 个人设备码默认 60 分钟有效、使用一次即失效；客户端后续保存独立设备凭据；
 7. 第二台 Mac 由管理员选择已有参赛者重新生成一个码。不要再次走批次创建同名参赛者，也不要复制第一台 Mac 的设置目录或设备凭据。
@@ -82,9 +86,9 @@ test "$(git rev-parse HEAD)" = "<new-reviewed-commit-sha>"
 
 ## 5. Windows 10/11：源码安装与登记
 
-重要：Windows 客户端目前是实验性源码候选。跨平台自动化已通过，但尚未在真实
-Windows 10/11 电脑完成 DPAPI、计划任务、升级、卸载和真实同步 E2E。当前 Mac
-首批灰度不向成员承诺 Windows 正式可用；下列命令仅供后续真机验收和技术预览。
+状态：Windows 客户端为 beta。已有成员在真实环境成功使用，发布门禁也在真实
+Windows runner 上覆盖 DPAPI、计划任务、源码安装、升级与卸载；在完成正式的
+Windows 10/11 真机全项验收前，尚不称为正式认证版本（与 `clients/windows/README.md` 口径一致）。
 
 Windows 首版需要 Python 3.10 或更高版本。下载或克隆经过复核的 TokenFleet 发布版本，进入仓库根目录后运行：
 
@@ -95,13 +99,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps
 
 命令中的 `https://token.ipwriter.com` 是官方社群地址；自建服务器的社群替换为管理员提供的地址，不要自行猜测。
 
-打开新终端，为这台设备使用一个新的单次接入码：
+打开新终端，为这台设备使用一个新的单次设备码：
 
 ```powershell
 tokenfleet connect
 ```
 
-社群 HTTPS origin 在安装时固定，后续升级必须传入相同值；`connect` 不接受 `--server`。接入码通过隐藏输入读取，不提供会进入命令历史或进程列表的 `--code` 参数。连接成功后，当前用户 DPAPI 保护 device secret，计划任务每六小时自动同步；也可运行：
+社群 HTTPS origin 在安装时固定，后续升级必须传入相同值；`connect` 不接受 `--server`。设备码通过隐藏输入读取，不提供会进入命令历史或进程列表的 `--code` 参数。连接成功后，当前用户 DPAPI 保护 device secret，计划任务每六小时自动同步；也可运行：
 
 ```powershell
 tokenfleet preview

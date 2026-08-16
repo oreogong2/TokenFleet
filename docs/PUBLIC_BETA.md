@@ -42,7 +42,7 @@ test "$(git rev-parse HEAD)" = "<reviewed-commit-sha>"
 ```
 
 成员先打开批次链接登记昵称、点击复制个人设备码。安装完成后打开
-`~/Applications/TokenFleet.app`，进入“设置 → 社群榜同步”，在安全输入框粘贴设备
+`~/Applications/TokenFleet.app`，进入“设置 → 社群同步”，在安全输入框粘贴设备
 码。安装脚本不接收邀请码，也不会把邀请码写入 shell 历史。
 
 ## 管理员发放步骤

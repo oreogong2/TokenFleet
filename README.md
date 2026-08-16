@@ -114,7 +114,7 @@ test "$(git rev-parse HEAD)" = "<reviewed-commit-sha>"
 
 命令中的 `https://token.ipwriter.com` 是官方社群地址；自建服务器的社群请替换为你的管理员提供的 HTTPS 地址。
 
-脚本会构建、验证并原子安装到 `~/Applications/TokenFleet.app`；它不接受一次性连接码。首次接入时先从管理员发出的批次链接登记唯一昵称并复制个人设备码，再在 App 的“社群榜同步”安全输入框粘贴。
+脚本会构建、验证并原子安装到 `~/Applications/TokenFleet.app`；它不接受一次性连接码。首次接入时先从管理员发出的批次链接登记唯一昵称并复制个人设备码，再在 App 的“社群同步”安全输入框粘贴。
 
 如果只看本地统计、不加入社群榜：
 
