@@ -9,7 +9,7 @@
 - 同一参赛者可以登记多台 Mac 或 Windows 设备。每台设备使用各自的接入码登记，后台按设备分别保存，再对该参赛者求和；v1 不做跨设备去重。
 - 其他第三方排行榜或社区服务是独立链路。成员必须使用自己的个人接入，不能共用，也不要把第三方 URL、访问令牌或 secret 填进 TokenFleet 团队连接。
 
-## 2. macOS：安装前向管理员拿三项公开信息
+## 2. 安装前向管理员拿三项公开信息（macOS 与 Windows 通用）
 
 管理员通过可信的私聊渠道提供：
 
@@ -90,6 +90,8 @@ Windows 首版需要 Python 3.10 或更高版本。下载或克隆经过复核�
 powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 `
   -CommunityServer https://<community-domain>
 ```
+
+`https://<community-domain>` 是占位符。真实的固定社群 HTTPS 地址由社群管理员通过可信私聊渠道提供（见第 2 节），不要使用文档示例域名，也不要自行猜测。
 
 打开新终端，为这台设备使用一个新的单次接入码：
 

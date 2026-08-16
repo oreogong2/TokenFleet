@@ -45,6 +45,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps
   -CommunityServer https://<community-domain>
 ```
 
+`https://<community-domain>` is a placeholder. Ask your community administrator
+for the real fixed community HTTPS origin over a trusted private channel — do
+not use a documentation example domain and do not guess.
+
 The installer validates and pins that canonical HTTPS origin in a non-secret,
 integrity-checked installation file, copies only this client to
 `%LOCALAPPDATA%\TokenFleet`, adds its
