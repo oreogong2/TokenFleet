@@ -402,6 +402,8 @@ if [[ "$MODE" == "community" ]]; then
       if [[ "$ASSUME_YES" != true ]]; then
         echo "Community sync needs one non-exportable self-signed identity in your login Keychain."
         echo "It is used only to keep TokenFleet's local Keychain ACL stable across source upgrades."
+        echo "（中文说明：社群同步需要在你的登录钥匙串里创建一把不可导出的本机 App 签名钥匙，"
+        echo "  仅用于保持升级后权限稳定；钥匙只存在这台 Mac 上，绝不上传。）"
         printf 'Create it now? [y/N] '
         IFS= read -r answer
         case "$answer" in
@@ -429,6 +431,10 @@ if [[ "$MODE" == "community" ]]; then
   if [[ "$TEST_STABLE_FIXTURE" == "1" ]]; then
     tokenfleet_source_test_sign_stable_app "$BUILT_APP" "$IDENTITY_FINGERPRINT"
   else
+    echo "接下来 macOS 可能弹出系统对话框：「codesign 想要访问你的钥匙串中的密钥」。"
+    echo "这是系统在为本机刚才那把签名钥匙做授权：钥匙只存在你自己的登录钥匙串里、不可导出、不会上传。"
+    echo "请输入这台 Mac 的登录密码——密码只交给 macOS 系统本身，TokenFleet 无法读取。"
+    echo "建议点「始终允许」，之后升级就不会再弹这个窗。"
     tokenfleet_source_sign_stable_app "$BUILT_APP" "$IDENTITY_FINGERPRINT" "$KEYCHAIN"
   fi
   tokenfleet_install_verify_stable_app \

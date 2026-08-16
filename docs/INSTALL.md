@@ -44,6 +44,8 @@ test "$(git rev-parse HEAD)" = "<reviewed-commit-sha>"
 - 校验 Bundle ID、固定 origin、签名证书、designated requirement 和凭据后端；
 - 原子安装到 `~/Applications/TokenFleet.app`，升级时保留上一版用于回滚。
 
+安装过程中你会看到的系统弹窗：macOS 会弹出「codesign 想要访问你的钥匙串中的密钥」。这是系统在为上面那把本机签名钥匙做授权——钥匙只存在你自己的登录钥匙串里、不可导出、不会上传；输入的是你这台 Mac 的登录密码，密码只交给 macOS 系统本身，TokenFleet 无法读取。建议点「始终允许」，之后升级不再弹窗。
+
 源码自签版本没有 Apple 公证信誉，只适合成员从管理员指定并复核的完整 commit SHA 在自己机器上构建。每台 Mac 必须独立安装，不能复制另一台机器的 App 或签名 identity。
 
 纯本地统计（不启用社群同步）：
