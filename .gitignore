@@ -27,3 +27,4 @@ TokenStepSwift/dist/
 release/
 output/playwright/
 .playwright-cli/
+.gstack/
