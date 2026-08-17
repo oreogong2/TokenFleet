@@ -27,16 +27,17 @@ final class SettingsWindowPresenter {
 
         let controller = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: controller)
-        window.title = L("设置")
+        window.title = L("TokenFleet beta.8 · 设置")
+        window.appearance = NSAppearance(named: .aqua)
         window.identifier = NSUserInterfaceItemIdentifier("tokenfleet.settings")
-        window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.titlebarSeparatorStyle = .none
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = false
+        window.titlebarSeparatorStyle = .line
         window.toolbarStyle = .unifiedCompact
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 920, height: 760)
-        window.setContentSize(NSSize(width: 920, height: 760))
+        window.minSize = NSSize(width: 980, height: 719)
+        window.setContentSize(NSSize(width: 980, height: 719))
         window.center()
         window.setFrameAutosaveName("TokenFleetSettingsWindow")
         return window

@@ -89,6 +89,115 @@ final class TeamSyncServiceTests: XCTestCase {
         XCTAssertEqual(request.url?.path, "/api/v1/devices/enroll")
     }
 
+    func testCommunityRankUsesStoredDeviceCredentialAndValidatesResponse() async throws {
+        let origin = "https://team.example.com"
+        let deviceID = "server-device-42"
+        let http = RecordingTeamSyncHTTPClient(
+            responses: [
+                TeamSyncHTTPResponse(
+                    data: Data(#"{"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"奥哥","public_profile_enabled":true,"period":"today","metric":"tokens","rank":2,"total_entries":10,"metric_value":"704000000"}"#.utf8),
+                    statusCode: 200
+                )
+            ]
+        )
+        let service = TeamSyncService(
+            httpClient: http,
+            credentialStore: MemoryTeamSyncCredentialStore(
+                values: [deviceID: "test-device-secret-0123456789"]
+            ),
+            stateStore: MemoryTeamSyncStateStore(
+                state: TeamSyncPersistentState(
+                    serverURL: origin,
+                    devicePublicID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                    deviceID: deviceID
+                )
+            )
+        )
+
+        let rank = try await service.fetchCommunityRank(
+            serverURL: origin,
+            now: Date(timeIntervalSince1970: 1_786_240_000)
+        )
+
+        XCTAssertEqual(rank.rank, 2)
+        let requests = await http.requests
+        let request = try XCTUnwrap(requests.first)
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.path, "/api/v1/devices/me/community-rank")
+        XCTAssertNil(request.httpBody)
+        XCTAssertNotNil(request.value(forHTTPHeaderField: "X-Signature"))
+    }
+
+    func testCommunityShareGrantUsesOnlyStoredDeviceCredentialAndRejectsInvalidResponse() async throws {
+        let origin = "https://team.example.com"
+        let deviceID = "server-device-42"
+        let rawGrant = "demo_community_share_grant_0123456789_abcdefghijklmnop"
+        let http = RecordingTeamSyncHTTPClient(
+            responses: [
+                TeamSyncHTTPResponse(
+                    data: Data(#"{"grant":"demo_community_share_grant_0123456789_abcdefghijklmnop","public_id":"123e4567-e89b-12d3-a456-426614174000"}"#.utf8),
+                    statusCode: 201
+                )
+            ]
+        )
+        let service = TeamSyncService(
+            httpClient: http,
+            credentialStore: MemoryTeamSyncCredentialStore(
+                values: [deviceID: "test-device-secret-0123456789"]
+            ),
+            stateStore: MemoryTeamSyncStateStore(
+                state: TeamSyncPersistentState(
+                    serverURL: origin,
+                    devicePublicID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                    deviceID: deviceID
+                )
+            )
+        )
+
+        let grant = try await service.issueCommunityShareGrant(
+            serverURL: origin,
+            now: Date(timeIntervalSince1970: 1_786_240_000)
+        )
+
+        XCTAssertEqual(grant.grant, rawGrant)
+        XCTAssertEqual(grant.publicID, "123e4567-e89b-12d3-a456-426614174000")
+        let recordedRequests = await http.requests
+        let request = try XCTUnwrap(recordedRequests.first)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/api/v1/devices/me/community-share-grants")
+        XCTAssertEqual(request.httpBody, Data("{}".utf8))
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertNotNil(request.value(forHTTPHeaderField: "X-Signature"))
+        XCTAssertFalse(String(data: request.httpBody ?? Data(), encoding: .utf8)?.contains(rawGrant) == true)
+    }
+
+    func testPublicLeaderboardUsesNoCredentialOrEnrollmentState() async throws {
+        let http = RecordingTeamSyncHTTPClient(
+            responses: [
+                TeamSyncHTTPResponse(
+                    data: Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":["gpt-5"],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"甲","metric_value":"330","primary_tool":"Codex","primary_tool_tokens":"330","tool_count":1,"primary_model":"gpt-5","primary_model_tokens":"330","model_count":1,"totals":{"input_tokens":"10","output_tokens":"20","cache_read_tokens":"300","cache_write_tokens":"0","norm_tokens":"30","total_tokens":"330","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false}}]}"#.utf8),
+                    statusCode: 200
+                )
+            ]
+        )
+        let service = TeamSyncService(
+            httpClient: http,
+            credentialStore: DisabledTeamSyncCredentialStore(),
+            stateStore: MemoryTeamSyncStateStore()
+        )
+
+        let board = try await service.fetchPublicLeaderboard(
+            serverURL: "https://team.example.com"
+        )
+
+        XCTAssertEqual(board.entries.first?.nickname, "甲")
+        let requests = await http.requests
+        let request = try XCTUnwrap(requests.first)
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "X-Device-ID"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "X-Signature"))
+    }
+
     func testEnrollmentRejectsUnexpectedSigningKeyDerivationBeforeStoringSecret() async {
         let stablePublicID = "123e4567-e89b-12d3-a456-426614174000"
         let http = RecordingTeamSyncHTTPClient(

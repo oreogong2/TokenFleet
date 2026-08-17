@@ -6,7 +6,7 @@ TokenFleet 是基于 TokenStep v0.1.48 的邀请制社群 AI Token 账本：保�
 
 - 只同步日期、时区、工具、模型、四类 Token 和匿名设备 ID；
 - 不采集 prompt、回复、代码、文件、项目路径或会话正文；
-- 不读取、保存或转发生财 OpenToken 的个人 URL/secret；
+- 不读取、保存或转发任何第三方服务的个人 URL、访问令牌或 secret；
 - 管理员可创建最多 50 人、最长 24 小时、可随时关闭的受限批次链接；成员只填唯一昵称并明确同意公开，系统给每人一个默认 60 分钟的单次设备码；参赛者没有邮箱、密码、微信或 Web session；
 - 同一参赛者可以登记任意多台设备，后台与公开投影明确按设备求和，不冒充跨设备去重；
 - 同一安装重新连接会复用设备账本并轮换密钥，既不复制历史，也不允许把设备身份转给另一成员；
@@ -22,6 +22,8 @@ TokenFleet 是基于 TokenStep v0.1.48 的邀请制社群 AI Token 账本：保�
 - `docs/TOKENFLEET_PRODUCT_SPEC.md`：产品范围；
 - `docs/TOKENFLEET_ARCHITECTURE.md`：跨端协议；
 - `docs/TOKENFLEET_ACCEPTANCE.md`：发布证据与未完成门槛；
+- `docs/TOKENFLEET_BETA8_ACCEPTANCE_REPORT.md`：beta.8 本地证据、CI 阻断和未执行的生产动作；
+- `docs/TOKENFLEET_BETA8_COLLECTOR_MATRIX.md`：Kimi、DeepSeek、Cursor、Gemini CLI 的真实可行性与隐私边界；
 - `docs/TOKENFLEET_OPERATIONS.md`：部署、备份、恢复与事故处理。
 
 ## 验证

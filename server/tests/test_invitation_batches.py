@@ -65,6 +65,189 @@ def _recursive_keys(value) -> set[str]:
     return set()
 
 
+def test_admin_reissues_existing_member_without_duplicate_or_batch_slot(harness) -> None:
+    created = _create_batch(harness, capacity=2)
+    claimed = _claim(harness, created["invitation_token"], "漏存设备码成员")
+    assert claimed.status_code == 201, claimed.text
+    original_token = claimed.json()["enrollment_token"]
+
+    enrolled = harness.client.post(
+        "/api/v1/devices/enroll",
+        json={
+            "enrollment_token": original_token,
+            "device_public_id": str(uuid4()),
+            "platform": "macos",
+            "app_version": "0.1.0-beta.8",
+            "collector_version": "0.1.0-beta.8",
+        },
+    )
+    assert enrolled.status_code == 201, enrolled.text
+
+    with harness.session_factory() as session:
+        member = session.scalar(
+            select(User).where(
+                User.org_id == harness.users["a_admin"].org_id,
+                User.display_name == "漏存设备码成员",
+            )
+        )
+        assert member is not None
+        before_user_count = session.scalar(select(func.count()).select_from(User))
+        before_token_count = session.scalar(
+            select(func.count()).select_from(EnrollmentToken)
+        )
+        batch = session.get(InvitationBatch, created["batch"]["id"])
+        assert batch is not None and batch.claimed_count == 1
+        original_row = session.scalar(
+            select(EnrollmentToken).where(
+                EnrollmentToken.token_hash == opaque_token_hash(original_token)
+            )
+        )
+        assert original_row is not None and original_row.used_at is not None
+        original_used_at = original_row.used_at
+        member_id = member.id
+
+    reissued = harness.client.post(
+        "/api/v1/enrollment-tokens",
+        headers=harness.auth("a_admin"),
+        json={"user_id": member_id, "expires_in_minutes": 60},
+    )
+    assert reissued.status_code == 201, reissued.text
+    assert reissued.headers["Cache-Control"] == "no-store"
+    assert set(reissued.json()) == {"enrollment_token", "expires_at"}
+    reissued_token = reissued.json()["enrollment_token"]
+    assert reissued_token != original_token
+
+    with harness.session_factory() as session:
+        batch = session.get(InvitationBatch, created["batch"]["id"])
+        assert batch is not None and batch.claimed_count == 1
+        assert session.scalar(select(func.count()).select_from(User)) == before_user_count
+        assert (
+            session.scalar(select(func.count()).select_from(EnrollmentToken))
+            == before_token_count + 1
+        )
+        original_row = session.scalar(
+            select(EnrollmentToken).where(
+                EnrollmentToken.token_hash == opaque_token_hash(original_token)
+            )
+        )
+        reissued_row = session.scalar(
+            select(EnrollmentToken).where(
+                EnrollmentToken.token_hash == opaque_token_hash(reissued_token)
+            )
+        )
+        assert original_row is not None and original_row.used_at == original_used_at
+        assert reissued_row is not None and reissued_row.used_at is None
+        assert reissued_row.user_id == member_id
+        assert reissued_token not in repr(reissued_row.__dict__)
+
+    second_device = harness.client.post(
+        "/api/v1/devices/enroll",
+        json={
+            "enrollment_token": reissued_token,
+            "device_public_id": str(uuid4()),
+            "platform": "macos",
+            "app_version": "0.1.0-beta.8",
+            "collector_version": "0.1.0-beta.8",
+        },
+    )
+    assert second_device.status_code == 201, second_device.text
+
+    reused = harness.client.post(
+        "/api/v1/devices/enroll",
+        json={
+            "enrollment_token": reissued_token,
+            "device_public_id": str(uuid4()),
+            "platform": "macos",
+            "app_version": "0.1.0-beta.8",
+            "collector_version": "0.1.0-beta.8",
+        },
+    )
+    assert reused.status_code == 400
+
+
+def test_admin_reissue_invalidates_lost_unused_code_and_keeps_one_live_code(harness) -> None:
+    created = _create_batch(harness, capacity=2)
+    claimed = _claim(harness, created["invitation_token"], "漏存未绑定成员")
+    assert claimed.status_code == 201, claimed.text
+    lost_token = claimed.json()["enrollment_token"]
+
+    with harness.session_factory() as session:
+        member = session.scalar(
+            select(User).where(
+                User.org_id == harness.users["a_admin"].org_id,
+                User.display_name == "漏存未绑定成员",
+            )
+        )
+        assert member is not None
+        member_id = member.id
+        before_user_count = session.scalar(select(func.count()).select_from(User))
+        batch = session.get(InvitationBatch, created["batch"]["id"])
+        assert batch is not None and batch.claimed_count == 1
+
+    first_reissue = harness.client.post(
+        "/api/v1/enrollment-tokens",
+        headers=harness.auth("a_admin"),
+        json={"user_id": member_id, "expires_in_minutes": 60},
+    )
+    assert first_reissue.status_code == 201, first_reissue.text
+    first_reissued_token = first_reissue.json()["enrollment_token"]
+
+    second_reissue = harness.client.post(
+        "/api/v1/enrollment-tokens",
+        headers=harness.auth("a_admin"),
+        json={"user_id": member_id, "expires_in_minutes": 60},
+    )
+    assert second_reissue.status_code == 201, second_reissue.text
+    live_token = second_reissue.json()["enrollment_token"]
+
+    payload = {
+        "device_public_id": str(uuid4()),
+        "platform": "macos",
+        "app_version": "0.1.0-beta.8",
+        "collector_version": "0.1.0-beta.8",
+    }
+    for invalid_token in (lost_token, first_reissued_token):
+        refused = harness.client.post(
+            "/api/v1/devices/enroll",
+            json={"enrollment_token": invalid_token, **payload},
+        )
+        assert refused.status_code == 400
+
+    accepted = harness.client.post(
+        "/api/v1/devices/enroll",
+        json={
+            "enrollment_token": live_token,
+            **{**payload, "device_public_id": str(uuid4())},
+        },
+    )
+    assert accepted.status_code == 201, accepted.text
+
+    with harness.session_factory() as session:
+        batch = session.get(InvitationBatch, created["batch"]["id"])
+        assert batch is not None and batch.claimed_count == 1
+        assert session.scalar(select(func.count()).select_from(User)) == before_user_count
+        rows = list(
+            session.scalars(
+                select(EnrollmentToken).where(
+                    EnrollmentToken.org_id == harness.users["a_admin"].org_id,
+                    EnrollmentToken.user_id == member_id,
+                )
+            )
+        )
+        assert len(rows) == 3
+        assert sum(row.used_at is not None for row in rows) == 1
+        assert session.scalar(
+            select(func.count())
+            .select_from(EnrollmentToken)
+            .where(
+                EnrollmentToken.org_id == harness.users["a_admin"].org_id,
+                EnrollmentToken.user_id == member_id,
+                EnrollmentToken.used_at.is_(None),
+                EnrollmentToken.expires_at > utcnow(),
+            )
+        ) == 0
+
+
 def test_admin_batch_rbac_lifecycle_and_raw_token_is_returned_once(harness) -> None:
     unauthenticated = harness.client.post(
         "/api/v1/admin/invitation-batches",
@@ -110,6 +293,77 @@ def test_admin_batch_rbac_lifecycle_and_raw_token_is_returned_once(harness) -> N
     assert closed.status_code == 200
     assert closed.json()["status"] == "closed"
     assert closed.headers["Cache-Control"] == "no-store"
+
+
+@pytest.mark.parametrize("member_count", [100, 200])
+def test_multiple_fifty_member_batches_scale_one_community_without_global_cap(
+    harness, member_count: int
+) -> None:
+    assert member_count % 50 == 0
+    harness.app.state.claim_rate_limiter = PublicReadRateLimiter(
+        attempts=member_count + 10,
+        window_seconds=60,
+        max_keys=10,
+    )
+    rejected_oversized = harness.client.post(
+        "/api/v1/admin/invitation-batches",
+        headers=harness.auth("a_admin"),
+        json={"capacity": 51, "expires_in_hours": 24},
+    )
+    assert rejected_oversized.status_code == 422
+
+    with harness.session_factory() as session:
+        before_users = session.scalar(select(func.count()).select_from(User)) or 0
+        before_tokens = (
+            session.scalar(select(func.count()).select_from(EnrollmentToken)) or 0
+        )
+
+    batches = [_create_batch(harness) for _ in range(member_count // 50)]
+    nicknames: set[str] = set()
+    enrollment_tokens: set[str] = set()
+    for batch_index, batch in enumerate(batches):
+        for member_index in range(50):
+            claimed = _claim(
+                harness,
+                batch["invitation_token"],
+                f"容量-{member_count}-{batch_index:02d}-{member_index:02d}",
+            )
+            assert claimed.status_code == 201, claimed.text
+            body = claimed.json()
+            nicknames.add(body["nickname"])
+            enrollment_tokens.add(body["enrollment_token"])
+
+    assert len(nicknames) == member_count
+    assert len(enrollment_tokens) == member_count
+    assert _claim(
+        harness,
+        batches[0]["invitation_token"],
+        f"容量-{member_count}-超额",
+    ).status_code == 409
+
+    with harness.session_factory() as session:
+        stored_batches = list(
+            session.scalars(
+                select(InvitationBatch).where(
+                    InvitationBatch.id.in_([
+                        batch["batch"]["id"] for batch in batches
+                    ])
+                )
+            )
+        )
+        assert len(stored_batches) == member_count // 50
+        assert all(
+            batch.capacity == 50 and batch.claimed_count == 50
+            for batch in stored_batches
+        )
+        assert (
+            session.scalar(select(func.count()).select_from(User))
+            == before_users + member_count
+        )
+        assert (
+            session.scalar(select(func.count()).select_from(EnrollmentToken))
+            == before_tokens + member_count
+        )
 
 
 def test_anonymous_claim_is_atomic_and_response_is_public_field_whitelist(harness) -> None:

@@ -21,12 +21,13 @@ code are distributed under the same MIT License reproduced in LICENSE.
 Project Nayuki QR Code generator
 --------------------------------
 
-The local share-image QR encoder in web/qr-code.js follows the algorithm from
-Project Nayuki's QR Code generator library:
+The local share-image QR encoders in web/qr-code.js and
+TokenStepSwift/Sources/TokenStepSwift/Support/LocalQRCodeGenerator.swift follow
+the algorithm from Project Nayuki's QR Code generator library:
 https://www.nayuki.io/page/qr-code-generator-library
 
 Copyright (c) Project Nayuki. Distributed under the MIT License. The complete
-copyright and permission notice is retained at the top of web/qr-code.js.
+copyright and permission notice is retained at the top of both source files.
 
 The TokenFleet name and project do not imply endorsement by the TokenStep or
 Project Nayuki authors.

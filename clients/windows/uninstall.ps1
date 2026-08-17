@@ -20,12 +20,9 @@ if ((Split-Path -Parent $installRoot) -ne $expectedParent -or (Split-Path -Leaf 
     throw "Refusing an unexpected uninstall target."
 }
 
-& schtasks.exe /Query /TN "TokenFleet Community Sync" 2>$null | Out-Null
-if ($LASTEXITCODE -eq 0) {
-    & schtasks.exe /Delete /TN "TokenFleet Community Sync" /F 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "TokenFleet scheduled task could not be removed."
-    }
+$scheduledTask = Get-ScheduledTask -TaskName "TokenFleet Community Sync" -ErrorAction SilentlyContinue
+if ($null -ne $scheduledTask) {
+    Unregister-ScheduledTask -InputObject $scheduledTask -Confirm:$false -ErrorAction Stop
 }
 
 $binRoot = Join-Path $installRoot "bin"

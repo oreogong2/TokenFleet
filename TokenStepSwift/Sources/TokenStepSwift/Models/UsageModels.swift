@@ -66,6 +66,17 @@ struct UsageSnapshot: Codable {
         agentWork.first { $0.date == date && $0.totalTokens > 0 }
     }
 
+    /// Sources that contributed real usage rows to this snapshot. Disabled,
+    /// unavailable, or deliberately unsupported collectors remain visible in
+    /// diagnostics but must not be presented as collected clients.
+    var collectedSourceCount: Int {
+        sources.values.filter { source in
+            guard let status = source.status else { return false }
+            let succeeded = status == "ok" || status == "ok_sqlite"
+            return succeeded && (source.records ?? 0) > 0
+        }.count
+    }
+
     static let empty = UsageSnapshot(
         generatedAt: nil,
         timezone: "Asia/Shanghai",
@@ -83,11 +94,54 @@ struct UsageTotals: Codable {
     var tokens: Int
     var cost: Double
     var activeDays: Int
+    /// Token coverage for the displayed cost. Nil means the snapshot predates
+    /// coverage metadata and must not be presented as 0% coverage.
+    var pricedTokens: Int?
+    var unpricedTokens: Int?
+    var pricingVersion: String?
+
+    var pricingCoverage: Double? {
+        guard let pricedTokens, let unpricedTokens else { return nil }
+        guard pricedTokens >= 0, unpricedTokens >= 0 else { return nil }
+        let (coveredTotal, overflow) = pricedTokens.addingReportingOverflow(unpricedTokens)
+        guard !overflow else { return nil }
+        guard coveredTotal > 0 else { return 1 }
+        return Double(pricedTokens) / Double(coveredTotal)
+    }
 
     enum CodingKeys: String, CodingKey {
         case tokens
         case cost
         case activeDays = "active_days"
+        case pricedTokens = "priced_tokens"
+        case unpricedTokens = "unpriced_tokens"
+        case pricingVersion = "pricing_version"
+    }
+
+    init(
+        tokens: Int,
+        cost: Double,
+        activeDays: Int,
+        pricedTokens: Int? = nil,
+        unpricedTokens: Int? = nil,
+        pricingVersion: String? = nil
+    ) {
+        self.tokens = tokens
+        self.cost = cost
+        self.activeDays = activeDays
+        self.pricedTokens = pricedTokens
+        self.unpricedTokens = unpricedTokens
+        self.pricingVersion = pricingVersion
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tokens = try container.decode(Int.self, forKey: .tokens)
+        cost = try container.decode(Double.self, forKey: .cost)
+        activeDays = try container.decode(Int.self, forKey: .activeDays)
+        pricedTokens = try container.decodeIfPresent(Int.self, forKey: .pricedTokens)
+        unpricedTokens = try container.decodeIfPresent(Int.self, forKey: .unpricedTokens)
+        pricingVersion = try container.decodeIfPresent(String.self, forKey: .pricingVersion)
     }
 }
 
@@ -193,6 +247,18 @@ struct DailyUsage: Codable, Identifiable {
     var atomicUsage: [DailyAtomicUsage]?
     var totalTokens: Int
     var cost: Double
+    var pricedTokens: Int?
+    var unpricedTokens: Int?
+    var pricingVersion: String?
+
+    var pricingCoverage: Double? {
+        guard let pricedTokens, let unpricedTokens else { return nil }
+        guard pricedTokens >= 0, unpricedTokens >= 0 else { return nil }
+        let (coveredTotal, overflow) = pricedTokens.addingReportingOverflow(unpricedTokens)
+        guard !overflow else { return nil }
+        guard coveredTotal > 0 else { return 1 }
+        return Double(pricedTokens) / Double(coveredTotal)
+    }
 
     enum CodingKeys: String, CodingKey {
         case date
@@ -201,6 +267,9 @@ struct DailyUsage: Codable, Identifiable {
         case atomicUsage = "atomic_usage"
         case totalTokens = "total_tokens"
         case cost
+        case pricedTokens = "priced_tokens"
+        case unpricedTokens = "unpriced_tokens"
+        case pricingVersion = "pricing_version"
     }
 
     init(
@@ -209,7 +278,10 @@ struct DailyUsage: Codable, Identifiable {
         models: [String: Int] = [:],
         atomicUsage: [DailyAtomicUsage]? = nil,
         totalTokens: Int,
-        cost: Double
+        cost: Double,
+        pricedTokens: Int? = nil,
+        unpricedTokens: Int? = nil,
+        pricingVersion: String? = nil
     ) {
         self.date = date
         self.tools = tools
@@ -217,6 +289,9 @@ struct DailyUsage: Codable, Identifiable {
         self.atomicUsage = atomicUsage
         self.totalTokens = totalTokens
         self.cost = cost
+        self.pricedTokens = pricedTokens
+        self.unpricedTokens = unpricedTokens
+        self.pricingVersion = pricingVersion
     }
 
     init(from decoder: Decoder) throws {
@@ -227,6 +302,9 @@ struct DailyUsage: Codable, Identifiable {
         atomicUsage = try container.decodeIfPresent([DailyAtomicUsage].self, forKey: .atomicUsage)
         totalTokens = try container.decode(Int.self, forKey: .totalTokens)
         cost = try container.decode(Double.self, forKey: .cost)
+        pricedTokens = try container.decodeIfPresent(Int.self, forKey: .pricedTokens)
+        unpricedTokens = try container.decodeIfPresent(Int.self, forKey: .unpricedTokens)
+        pricingVersion = try container.decodeIfPresent(String.self, forKey: .pricingVersion)
     }
 }
 
@@ -459,8 +537,12 @@ struct AgentWorkHourBucket: Codable, Identifiable {
 }
 
 struct AgentWorkHourlySource: Codable, Identifiable {
-    var id: String { source }
+    var id: String { "\(source)\u{1F}\(model)" }
     var source: String
+    /// Model is retained only as a bounded usage dimension. Older beta.7
+    /// snapshots did not persist it, so they decode to `unknown` without
+    /// inventing a model assignment.
+    var model: String
     var tokens: Int
     var inputTokens: Int
     var cachedInputTokens: Int
@@ -469,11 +551,41 @@ struct AgentWorkHourlySource: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case source
+        case model
         case tokens
         case inputTokens = "input_tokens"
         case cachedInputTokens = "cached_input_tokens"
         case outputTokens = "output_tokens"
         case cacheCoverageComplete = "cache_coverage_complete"
+    }
+
+    init(
+        source: String,
+        model: String = "unknown",
+        tokens: Int,
+        inputTokens: Int,
+        cachedInputTokens: Int,
+        outputTokens: Int,
+        cacheCoverageComplete: Bool
+    ) {
+        self.source = source
+        self.model = model
+        self.tokens = tokens
+        self.inputTokens = inputTokens
+        self.cachedInputTokens = cachedInputTokens
+        self.outputTokens = outputTokens
+        self.cacheCoverageComplete = cacheCoverageComplete
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        source = try container.decode(String.self, forKey: .source)
+        model = try container.decodeIfPresent(String.self, forKey: .model) ?? "unknown"
+        tokens = try container.decode(Int.self, forKey: .tokens)
+        inputTokens = try container.decode(Int.self, forKey: .inputTokens)
+        cachedInputTokens = try container.decode(Int.self, forKey: .cachedInputTokens)
+        outputTokens = try container.decode(Int.self, forKey: .outputTokens)
+        cacheCoverageComplete = try container.decode(Bool.self, forKey: .cacheCoverageComplete)
     }
 
     var cacheHitRate: Double? {
@@ -591,6 +703,10 @@ struct SourceInfo: Codable {
     var records: Int?
     var rawRecords: Int?
     var dedupedRecords: Int?
+    /// Proxy rows that resemble a native record but lack sufficient identity
+    /// evidence to delete safely. They remain counted and are surfaced only as
+    /// a diagnostic so totals are never changed by a heuristic guess.
+    var possibleOverlapRecords: Int?
     var skippedRecords: Int?
     var strategy: String?
     var exactRecords: Int?
@@ -610,6 +726,7 @@ struct SourceInfo: Codable {
         case records
         case rawRecords = "raw_records"
         case dedupedRecords = "deduped_records"
+        case possibleOverlapRecords = "possible_overlap_records"
         case skippedRecords = "skipped_records"
         case strategy
         case exactRecords = "exact_records"
@@ -682,128 +799,6 @@ struct CodexQuotaWindow: Equatable, Identifiable, Codable {
     var remainingPercent: Double {
         min(max(100 - usedPercent, 0), 100)
     }
-}
-
-struct TokenRankLeaderboard: Equatable {
-    var fetchedAt: Date
-    var range: String
-    var client: String
-    var usageMode: String
-    var totalTokens: Int
-    var totalRankedUsers: Int
-    var topLimit: Int
-    var entries: [TokenRankEntry]
-
-    var topEntry: TokenRankEntry? {
-        entries.first
-    }
-
-    func entry(matching userID: Int) -> TokenRankEntry? {
-        entries.first { $0.userID == userID }
-    }
-}
-
-struct TokenRankEntry: Decodable, Equatable, Identifiable {
-    var id: Int { userID }
-    var rank: Int
-    var userID: Int
-    var name: String
-    var avatarURL: String?
-    var totalTokens: Int
-    var callCount: Int
-    var sessionCount: Int
-    var clients: [String: Int]
-    var models: [String: Int]
-
-    enum CodingKeys: String, CodingKey {
-        case rank
-        case user
-        case totalTokens = "total_tokens"
-        case callCount = "call_count"
-        case sessionCount = "session_count"
-        case clients
-        case models
-    }
-
-    init(
-        rank: Int,
-        userID: Int,
-        name: String,
-        avatarURL: String?,
-        totalTokens: Int,
-        callCount: Int,
-        sessionCount: Int,
-        clients: [String: Int],
-        models: [String: Int]
-    ) {
-        self.rank = rank
-        self.userID = userID
-        self.name = name
-        self.avatarURL = avatarURL
-        self.totalTokens = totalTokens
-        self.callCount = callCount
-        self.sessionCount = sessionCount
-        self.clients = clients
-        self.models = models
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let user = try container.decode(TokenRankPublicUser.self, forKey: .user)
-        rank = try container.decode(Int.self, forKey: .rank)
-        userID = user.id
-        name = user.name
-        avatarURL = user.avatarURL
-        totalTokens = try container.decodeIfPresent(Int.self, forKey: .totalTokens) ?? 0
-        callCount = try container.decodeIfPresent(Int.self, forKey: .callCount) ?? 0
-        sessionCount = try container.decodeIfPresent(Int.self, forKey: .sessionCount) ?? 0
-        clients = try container.decodeIfPresent([String: Int].self, forKey: .clients) ?? [:]
-        models = try container.decodeIfPresent([String: Int].self, forKey: .models) ?? [:]
-    }
-}
-
-private struct TokenRankPublicUser: Decodable {
-    var id: Int
-    var name: String
-    var avatarURL: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case name
-        case avatarURL = "avatar_url"
-    }
-}
-
-struct TokenRankLeaderboardResponse: Decodable {
-    var success: Bool
-    var data: TokenRankLeaderboardPayload
-}
-
-struct TokenRankLeaderboardPayload: Decodable {
-    var range: String
-    var client: String
-    var usageMode: String
-    var totalTokens: Int
-    var totalRankedUsers: Int
-    var topLimit: Int
-    var rows: [TokenRankEntry]
-
-    enum CodingKeys: String, CodingKey {
-        case range
-        case client
-        case usageMode = "usage_mode"
-        case totalTokens = "total_tokens"
-        case totalRankedUsers = "total_ranked_users"
-        case topLimit = "top_limit"
-        case rows
-    }
-}
-
-struct AgentWorkRankIdentity: Equatable, Identifiable {
-    var id: Int
-    var name: String
-    var avatarURL: String?
-    var lastSyncedAt: Date?
 }
 
 enum TokenIslandDisplayPlacement: String, CaseIterable, Identifiable, Codable {
@@ -890,29 +885,6 @@ enum TokenStepLanguage: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-enum AgentWorkRankVisibility: String, Codable, CaseIterable, Identifiable {
-    case automatic
-    case visible
-    case hidden
-
-    var id: String { rawValue }
-
-    var readsLocalIdentity: Bool {
-        self != .hidden
-    }
-
-    func shouldShow(hasLocalIdentity: Bool) -> Bool {
-        switch self {
-        case .automatic:
-            return hasLocalIdentity
-        case .visible:
-            return true
-        case .hidden:
-            return false
-        }
-    }
-}
-
 struct TokenStepSettings: Codable {
     var dailyGoalTokens: Int
     var refreshIntervalSeconds: Int
@@ -923,8 +895,8 @@ struct TokenStepSettings: Codable {
     var requireVerifiedUpdates: Bool
     var tokenIslandEnabled: Bool
     var tokenIslandPlacement: TokenIslandDisplayPlacement
+    var menuBarShowsTokenCount: Bool
     var showCodexQuota: Bool
-    var agentWorkRankVisibility: AgentWorkRankVisibility
     var showExperimentalAgentSources: Bool
     var language: TokenStepLanguage
     var skippedUpdateVersion: String?
@@ -941,9 +913,8 @@ struct TokenStepSettings: Codable {
         case requireVerifiedUpdates = "require_verified_updates"
         case tokenIslandEnabled = "token_island_enabled"
         case tokenIslandPlacement = "token_island_placement"
+        case menuBarShowsTokenCount = "menu_bar_shows_token_count"
         case showCodexQuota = "show_codex_quota"
-        case agentWorkRankVisibility = "agent_work_rank_visibility"
-        case legacyShowAgentWorkRank = "show_agent_work_rank"
         case showExperimentalAgentSources = "show_experimental_agent_sources"
         case language
         case skippedUpdateVersion = "skipped_update_version"
@@ -961,8 +932,8 @@ struct TokenStepSettings: Codable {
         requireVerifiedUpdates: true,
         tokenIslandEnabled: false,
         tokenIslandPlacement: .menuBar,
+        menuBarShowsTokenCount: false,
         showCodexQuota: false,
-        agentWorkRankVisibility: .automatic,
         showExperimentalAgentSources: false,
         language: .system,
         skippedUpdateVersion: nil,
@@ -980,8 +951,8 @@ struct TokenStepSettings: Codable {
         requireVerifiedUpdates: Bool,
         tokenIslandEnabled: Bool,
         tokenIslandPlacement: TokenIslandDisplayPlacement,
+        menuBarShowsTokenCount: Bool = false,
         showCodexQuota: Bool,
-        agentWorkRankVisibility: AgentWorkRankVisibility,
         showExperimentalAgentSources: Bool,
         language: TokenStepLanguage,
         skippedUpdateVersion: String?,
@@ -997,8 +968,8 @@ struct TokenStepSettings: Codable {
         self.requireVerifiedUpdates = requireVerifiedUpdates
         self.tokenIslandEnabled = tokenIslandEnabled
         self.tokenIslandPlacement = tokenIslandPlacement
+        self.menuBarShowsTokenCount = menuBarShowsTokenCount
         self.showCodexQuota = showCodexQuota
-        self.agentWorkRankVisibility = agentWorkRankVisibility
         self.showExperimentalAgentSources = showExperimentalAgentSources
         self.language = language
         self.skippedUpdateVersion = skippedUpdateVersion
@@ -1026,14 +997,9 @@ struct TokenStepSettings: Codable {
         } else {
             tokenIslandPlacement = defaults.tokenIslandPlacement
         }
+        menuBarShowsTokenCount = try container.decodeIfPresent(Bool.self, forKey: .menuBarShowsTokenCount)
+            ?? defaults.menuBarShowsTokenCount
         showCodexQuota = try container.decodeIfPresent(Bool.self, forKey: .showCodexQuota) ?? defaults.showCodexQuota
-        if let visibility = try container.decodeIfPresent(AgentWorkRankVisibility.self, forKey: .agentWorkRankVisibility) {
-            agentWorkRankVisibility = visibility
-        } else if let legacyVisible = try container.decodeIfPresent(Bool.self, forKey: .legacyShowAgentWorkRank) {
-            agentWorkRankVisibility = legacyVisible ? .visible : .automatic
-        } else {
-            agentWorkRankVisibility = defaults.agentWorkRankVisibility
-        }
         showExperimentalAgentSources = try container.decodeIfPresent(Bool.self, forKey: .showExperimentalAgentSources) ?? defaults.showExperimentalAgentSources
         language = try container.decodeIfPresent(TokenStepLanguage.self, forKey: .language) ?? defaults.language
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
@@ -1052,8 +1018,8 @@ struct TokenStepSettings: Codable {
         try container.encode(requireVerifiedUpdates, forKey: .requireVerifiedUpdates)
         try container.encode(tokenIslandEnabled, forKey: .tokenIslandEnabled)
         try container.encode(tokenIslandPlacement, forKey: .tokenIslandPlacement)
+        try container.encode(menuBarShowsTokenCount, forKey: .menuBarShowsTokenCount)
         try container.encode(showCodexQuota, forKey: .showCodexQuota)
-        try container.encode(agentWorkRankVisibility, forKey: .agentWorkRankVisibility)
         try container.encode(showExperimentalAgentSources, forKey: .showExperimentalAgentSources)
         try container.encode(language, forKey: .language)
         try container.encodeIfPresent(skippedUpdateVersion, forKey: .skippedUpdateVersion)

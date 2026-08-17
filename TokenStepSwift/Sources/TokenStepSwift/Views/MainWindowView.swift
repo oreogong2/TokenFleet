@@ -9,9 +9,9 @@ enum AppSection: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .today: L("今日")
-        case .history: L("历史")
-        case .community: L("社群")
+        case .today: L("今日消耗")
+        case .history: L("历史活动")
+        case .community: L("社群排行")
         }
     }
 
@@ -19,7 +19,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .today: L("今日消耗")
         case .history: L("历史活动")
-        case .community: L("社群榜")
+        case .community: L("社群排行")
         }
     }
 
@@ -33,7 +33,7 @@ enum AppSection: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .today: "figure.walk.circle.fill"
+        case .today: "waveform.path.ecg.rectangle.fill"
         case .history: "square.grid.3x3.fill"
         case .community: "person.3.fill"
         }
@@ -42,22 +42,21 @@ enum AppSection: String, CaseIterable, Identifiable {
     var screenshotFilePrefix: String {
         switch self {
         case .today: "today"
-        case .history: "history-30d"
+        case .history: "history"
         case .community: "community"
         }
     }
 
     var saveScreenshotTitle: String {
-        switch self {
-        case .history: L("保存当前页 PNG（最近 30 天）")
-        default: L("保存当前页 PNG")
-        }
+        L("保存当前页 PNG")
     }
 }
 
 struct MainWindowView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.isScreenshotRendering) private var isScreenshotRendering
     @ObservedObject var navigation: MainWindowNavigation
+    @StateObject private var historyPresentation = HistoryPresentationState()
 
     var body: some View {
         HStack(spacing: 0) {
@@ -71,38 +70,25 @@ struct MainWindowView: View {
         }
         .background(TokenStepBackdrop().id(appState.appearanceID))
         .onAppear {
-            appState.refreshForForeground()
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    appState.refresh()
-                } label: {
-                    Label(appState.isRefreshing ? L("同步中") : L("刷新"), systemImage: "arrow.clockwise")
-                }
-                .disabled(appState.isRefreshing)
+            if !isScreenshotRendering {
+                appState.refreshForForeground()
             }
         }
     }
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 14) {
-                TokenStepMark(size: 54)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("TokenFleet")
-                        .font(.system(size: 25, weight: .heavy, design: .rounded))
-                        .foregroundStyle(Color.tokenInk)
-                    Text(L("每天一个亿"))
-                        .font(.callout.weight(.bold))
-                        .foregroundStyle(Color.tokenGreen)
-                }
+            HStack(spacing: 8) {
+                TokenFleetSignalMark(size: 30)
+                Text("TokenFleet")
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.tokenInk)
             }
-            .padding(.top, 30)
-            .padding(.horizontal, 22)
-            .padding(.bottom, 28)
+            .padding(.top, 22)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 20)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 5) {
                 ForEach(AppSection.allCases) { section in
                     SidebarNavButton(
                         section: section,
@@ -113,27 +99,16 @@ struct MainWindowView: View {
                         }
                     }
                 }
+                SidebarSettingsButton {
+                    SettingsWindowPresenter.shared.show(appState: appState)
+                }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 10)
 
             Spacer(minLength: 24)
-
-            sidebarFooter
-                .padding(.horizontal, 14)
-                .padding(.bottom, 22)
         }
-        .frame(width: 226)
+        .frame(width: 190)
         .background(Color.tokenSurface.opacity(0.94))
-    }
-
-    private var sidebarFooter: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SidebarSettingsButton {
-                SettingsWindowPresenter.shared.show(appState: appState)
-            }
-
-            SidebarPrivacyStatus()
-        }
     }
 
     private var content: some View {
@@ -141,7 +116,7 @@ struct MainWindowView: View {
             HStack(alignment: .top, spacing: 0) {
                 Spacer(minLength: 0)
 
-                VStack(alignment: .leading, spacing: 26) {
+                VStack(alignment: .leading, spacing: 18) {
                     pageHeader
                     if let error = appState.lastError {
                         ErrorBanner(message: error) {
@@ -152,27 +127,31 @@ struct MainWindowView: View {
                         UsageRecalibrationNotice {
                             appState.dismissUsageRecalibrationNotice()
                         }
+                    } else if appState.showsPricingReestimationNotice {
+                        PricingReestimationNotice {
+                            appState.dismissPricingReestimationNotice()
+                        }
                     }
                     detailView
                 }
-                .frame(maxWidth: 1160, alignment: .leading)
+                .frame(maxWidth: 920, alignment: .leading)
 
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 38)
-            .padding(.vertical, 32)
+            .padding(.horizontal, 25)
+            .padding(.vertical, 22)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var pageHeader: some View {
-        HStack(alignment: .center, spacing: 18) {
-            VStack(alignment: .leading, spacing: 7) {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(navigation.section.title)
-                    .font(.system(size: 42, weight: .heavy, design: .rounded))
+                    .font(.system(size: 24, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
                 Text(navigation.section.subtitle)
-                    .font(.headline.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
 
@@ -187,8 +166,8 @@ struct MainWindowView: View {
                         Text(appState.isRefreshing ? L("同步中") : L("已同步"))
                             .font(.callout.weight(.bold))
                     }
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 8)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
                     .background(Color.tokenSurface, in: Capsule())
                     .overlay(Capsule().stroke(Color.black.opacity(0.06)))
 
@@ -202,14 +181,17 @@ struct MainWindowView: View {
                 }
 
                 Text("\(L("更新")) \(TokenStepFormat.generatedTime(appState.snapshot.generatedAt))")
-                    .font(.caption.weight(.semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
         }
     }
 
     private var currentPageScreenshot: some View {
-        DashboardScreenshotView(section: navigation.section)
+        DashboardScreenshotView(
+            section: navigation.section,
+            historyPresentation: historyPresentation
+        )
             .environmentObject(appState)
             .environment(\.isScreenshotRendering, true)
     }
@@ -237,9 +219,11 @@ struct MainWindowView: View {
     private var detailView: some View {
         switch navigation.section {
         case .today:
-            TodayView()
+            TodayView(toolExpansionRequest: navigation.todayToolExpansionRequest)
         case .history:
-            HistoryView()
+            HistoryView(
+                presentation: historyPresentation
+            )
         case .community:
             CommunityView()
         }
@@ -253,46 +237,25 @@ private struct SidebarNavButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(selected ? Color.tokenGreen : Color.tokenGreen.opacity(0.10))
-                    Image(systemName: section.systemImage)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(selected ? .white : Color.tokenGreenDark)
+            Text(section.sidebarTitle)
+                .font(.callout.weight(.bold))
+                .foregroundStyle(selected ? Color.tokenInk : Color.tokenInk.opacity(0.62))
+                .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                .padding(.horizontal, 11)
+                .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .background(
+                    selected ? Color.tokenSurface : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                )
+                .overlay {
+                    if selected {
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .stroke(Color.black.opacity(0.055))
+                    }
                 }
-                .frame(width: 34, height: 34)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(section.sidebarTitle)
-                        .font(.callout.weight(.bold))
-                        .foregroundStyle(selected ? Color.tokenInk : Color.tokenInk.opacity(0.72))
-                    Text(section.subtitle)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .background {
-                if selected {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color.tokenSurface)
-                        .shadow(color: Color.black.opacity(0.07), radius: 14, x: 0, y: 8)
-                }
-            }
-            .overlay {
-                if selected {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.black.opacity(0.06))
-                }
-            }
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }
 
@@ -302,40 +265,16 @@ private struct SidebarSettingsButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 11) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .fill(Color.tokenGreen.opacity(isHovering ? 0.18 : 0.12))
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(Color.tokenGreenDark)
-                }
-                .frame(width: 34, height: 34)
-
-                Text(L("设置"))
-                    .font(.callout.weight(.heavy))
-                    .foregroundStyle(Color.tokenInk.opacity(0.86))
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundStyle(Color.secondary.opacity(isHovering ? 0.82 : 0.52))
-            }
-            .frame(maxWidth: .infinity, minHeight: 54)
-            .padding(.horizontal, 12)
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.tokenSurface.opacity(isHovering ? 0.98 : 0.82))
-                    .shadow(color: Color.black.opacity(isHovering ? 0.075 : 0.035), radius: isHovering ? 16 : 10, x: 0, y: 7)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.black.opacity(isHovering ? 0.08 : 0.055))
-            )
-            .scaleEffect(isHovering ? 1.01 : 1)
-            .animation(.spring(response: 0.24, dampingFraction: 0.84), value: isHovering)
+            Text(L("设置"))
+                .font(.callout.weight(.bold))
+                .foregroundStyle(Color.tokenInk.opacity(isHovering ? 0.92 : 0.68))
+                .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                .padding(.horizontal, 11)
+                .background(
+                    Color.tokenGreen.opacity(isHovering ? 0.12 : 0.055),
+                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                )
+                .animation(.easeInOut(duration: 0.16), value: isHovering)
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }

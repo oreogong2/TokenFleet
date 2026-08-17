@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from .models import DailyUsage, Organization, PriceVersion, User, UserRole, utcnow
 from .schemas import (
+    DeviceCommunityRankResponse,
     PublicDailyTrendItem,
     PublicDistributionItem,
     PublicLeaderboardEntry,
@@ -191,6 +192,8 @@ class MemberAggregate:
     public_id: str
     nickname: str
     usage: UsageAggregate = field(default_factory=UsageAggregate)
+    tools: dict[str, UsageAggregate] = field(default_factory=dict)
+    models: dict[str, UsageAggregate] = field(default_factory=dict)
 
 
 def resolve_public_organization(
@@ -451,7 +454,12 @@ def _member_aggregates(
     grouped_query = _grouped_usage_query(
         session,
         query,
-        dimensions=(User.public_id, User.display_name),
+        dimensions=(
+            User.public_id,
+            User.display_name,
+            DailyUsage.tool,
+            DailyUsage.model,
+        ),
     )
     for row in session.execute(grouped_query):
         nickname = _safe_nickname(row.display_name)
@@ -463,7 +471,27 @@ def _member_aggregates(
             MemberAggregate(public_id=public_id, nickname=nickname),
         )
         member.usage.add_group(row)
+        tool_name = str(row.tool)
+        model_name = str(row.model)
+        member.tools.setdefault(tool_name, UsageAggregate()).add_group(row)
+        member.models.setdefault(model_name, UsageAggregate()).add_group(row)
     return members
+
+
+def _primary_usage(
+    aggregates: dict[str, UsageAggregate],
+) -> tuple[str | None, int | None]:
+    if not aggregates:
+        return None, None
+    name, usage = min(
+        aggregates.items(),
+        key=lambda item: (
+            -item[1].total_tokens,
+            item[0].casefold(),
+            item[0],
+        ),
+    )
+    return name, usage.total_tokens
 
 
 def _distribution_aggregates(
@@ -652,6 +680,8 @@ def build_public_leaderboard(
     ranked_position = 0
     for member in ordered[:limit]:
         value = _metric_value(member.usage, metric)
+        primary_tool, primary_tool_tokens = _primary_usage(member.tools)
+        primary_model, primary_model_tokens = _primary_usage(member.models)
         rank = None
         if value is not None:
             ranked_position += 1
@@ -662,6 +692,20 @@ def build_public_leaderboard(
                 public_id=member.public_id,
                 nickname=member.nickname,
                 metric_value=str(value) if value is not None else None,
+                primary_tool=primary_tool,
+                primary_tool_tokens=(
+                    str(primary_tool_tokens)
+                    if primary_tool_tokens is not None
+                    else None
+                ),
+                tool_count=len(member.tools),
+                primary_model=primary_model,
+                primary_model_tokens=(
+                    str(primary_model_tokens)
+                    if primary_model_tokens is not None
+                    else None
+                ),
+                model_count=len(member.models),
                 totals=member.usage.as_response(),
             )
         )
@@ -683,6 +727,51 @@ def build_public_leaderboard(
         available_models=available_models,
         total_entries=len(ordered),
         entries=entries,
+    )
+
+
+def build_device_community_rank(
+    session: Session,
+    *,
+    organization: Organization,
+    user: User,
+    max_scan_rows: int,
+) -> DeviceCommunityRankResponse:
+    """Return only an authenticated member's public ranking context."""
+    start_date, end_date = period_bounds(organization, "today")
+    query = _base_public_usage_query(
+        organization=organization,
+        start_date=start_date,
+        end_date=end_date,
+        tool=None,
+        model=None,
+    )
+    _enforce_scan_limit(session, query, max_scan_rows)
+    members = _member_aggregates(session, query)
+    ordered = _ordered_members(members.values(), "tokens")
+    nickname = (
+        _safe_nickname(user.display_name)
+        if user.public_profile_enabled
+        else None
+    )
+    target = members.get(user.public_id) if nickname is not None else None
+    metric_value = target.usage.total_tokens if target is not None else None
+    primary_tool, _ = _primary_usage(target.tools) if target is not None else (None, None)
+    primary_model, _ = _primary_usage(target.models) if target is not None else (None, None)
+    return DeviceCommunityRankResponse(
+        public_id=user.public_id,
+        nickname=nickname,
+        public_profile_enabled=nickname is not None,
+        rank=(
+            _member_rank(ordered, "tokens", user.public_id)
+            if target is not None
+            else None
+        ),
+        total_entries=len(ordered),
+        metric_value=str(metric_value) if metric_value is not None else None,
+        primary_tool=primary_tool,
+        primary_model=primary_model,
+        totals=target.usage.as_response() if target is not None else None,
     )
 
 

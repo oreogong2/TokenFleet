@@ -8,14 +8,14 @@ import urllib.error
 import urllib.request
 
 
-DEFAULT_REPO = "Backtthefuture/TokenStep"
+DEFAULT_REPO = "oreogong2/TokenFleet"
 API_ROOT = "https://api.github.com"
 
 
 def fetch_json(url, token=None):
     request = urllib.request.Request(url)
     request.add_header("Accept", "application/vnd.github+json")
-    request.add_header("User-Agent", "TokenStep-download-stats")
+    request.add_header("User-Agent", "TokenFleet-download-stats")
     if token:
         request.add_header("Authorization", f"Bearer {token}")
 
@@ -103,7 +103,7 @@ def print_markdown(rows):
         "total": sum(row["total"] for row in rows),
     }
 
-    print("# TokenStep GitHub 下载统计")
+    print("# TokenFleet GitHub 下载统计")
     print()
     print(f"- Release 数量：{len(rows)}")
     print(f"- DMG 下载：{format_number(totals['dmg'])}")
@@ -136,7 +136,7 @@ def print_csv(rows):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Show GitHub Release download counts for TokenStep.")
+    parser = argparse.ArgumentParser(description="Show GitHub Release download counts for TokenFleet.")
     parser.add_argument("--repo", default=DEFAULT_REPO, help=f"GitHub repo, default: {DEFAULT_REPO}")
     parser.add_argument("--limit", type=int, help="Only show the newest N releases.")
     parser.add_argument("--include-prerelease", action="store_true", help="Include prereleases.")

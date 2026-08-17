@@ -4,34 +4,31 @@ struct SettingsDisplayCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        SettingsCard(title: L("显示入口"), symbol: "macwindow.badge.plus", height: 268) {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(L("显示位置"))
-                        .font(.headline.weight(.heavy))
+        SettingsCard(title: L("菜单栏入口"), symbol: "circle.dotted", height: 218) {
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L("显示方式"))
+                        .font(.system(size: 10, weight: .heavy))
                         .foregroundStyle(Color.tokenInk)
-                    Text(L("刘海屏显示在刘海旁，其他屏幕使用菜单栏。"))
-                        .font(.callout.weight(.semibold))
+                    Text(L("固定使用 macOS 原生菜单栏，避免遮挡其它状态图标。"))
+                        .font(.system(size: 8, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                HStack(spacing: 8) {
-                    ForEach(TokenIslandDisplayPlacement.allCases) { placement in
-                        DisplayPlacementButton(
-                            title: placement.shortTitle,
-                            selected: appState.settings.tokenIslandPlacement == placement
-                        ) {
-                            appState.setTokenIslandPlacement(placement)
-                        }
-                    }
-                }
-
                 StatusLine(
-                    symbol: appState.shouldShowTokenIsland ? "circle.dotted.circle.fill" : "menubar.rectangle",
-                    title: appState.tokenIslandStatus,
-                    value: appState.tokenIslandStatusDetail,
-                    tint: appState.shouldShowTokenIsland ? .tokenGreen : .gray
+                    symbol: "circle.dotted",
+                    title: L("当前入口"),
+                    value: L("原生菜单栏 · 圆环进度"),
+                    tint: .tokenGreen
+                )
+
+                SettingsToggleRow(
+                    title: L("菜单栏显示今日 Token"),
+                    isOn: Binding(
+                        get: { appState.settings.menuBarShowsTokenCount },
+                        set: { appState.setMenuBarTokenCountVisible($0) }
+                    )
                 )
 
                 SettingsToggleRow(
@@ -41,7 +38,32 @@ struct SettingsDisplayCard: View {
                         set: { appState.setCodexQuotaVisible($0) }
                     )
                 )
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(L("当前使用方式（只读）"))
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundStyle(Color.tokenInk.opacity(0.78))
+                    menuStatusLine("circle.dotted", L("点击圆环图标 → 完整详情浮窗"))
+                    menuStatusLine("arrow.up.left.and.arrow.down.right", L("主窗口找回 → 从应用程序或 Spotlight 随时打开"))
+                    menuStatusLine("xmark.rectangle", L("关闭主窗口 → 继续菜单栏统计"))
+                }
+                .padding(.top, 2)
             }
+        }
+    }
+
+    private func menuStatusLine(_ symbol: String, _ title: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(Color.tokenGreenDark)
+                .frame(width: 12)
+            Text(title)
+                .font(.system(size: 7, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+            Spacer(minLength: 0)
         }
     }
 }
@@ -89,196 +111,28 @@ struct SettingsRefreshCard: View {
     }
 }
 
-struct SettingsTokenRankCard: View {
-    @EnvironmentObject private var appState: AppState
-
-    var body: some View {
-        SettingsCard(title: L("Agent 消耗榜"), symbol: "list.number", height: 282) {
-            VStack(alignment: .leading, spacing: 13) {
-                Picker("", selection: Binding(
-                    get: { appState.settings.agentWorkRankVisibility },
-                    set: { appState.setAgentWorkRankVisibility($0) }
-                )) {
-                    Text(L("自动")).tag(AgentWorkRankVisibility.automatic)
-                    Text(L("显示")).tag(AgentWorkRankVisibility.visible)
-                    Text(L("隐藏")).tag(AgentWorkRankVisibility.hidden)
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-
-                StatusLine(
-                    symbol: statusSymbol,
-                    title: statusTitle,
-                    value: statusValue,
-                    tint: statusTint
-                )
-
-                if appState.shouldShowAgentWorkRank {
-                    StatusLine(
-                        symbol: "arrow.triangle.2.circlepath",
-                        title: L("数据同步"),
-                        value: syncText,
-                        tint: .tokenGreen
-                    )
-
-                    HStack(spacing: 8) {
-                        Button {
-                            appState.openTokenRankUserPage()
-                        } label: {
-                            Label(L("我的消耗"), systemImage: "person.crop.circle")
-                                .font(.caption.weight(.heavy))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 32)
-                        }
-                        .buttonStyle(SettingsSecondaryButtonStyle())
-
-                        Button {
-                            appState.openTokenRankLeaderboardPage()
-                        } label: {
-                            Label(L("打开榜单"), systemImage: "list.number")
-                                .font(.caption.weight(.heavy))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 32)
-                        }
-                        .buttonStyle(SettingsSecondaryButtonStyle())
-                    }
-                }
-
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    private var statusSymbol: String {
-        switch appState.settings.agentWorkRankVisibility {
-        case .automatic:
-            return appState.agentWorkRankIdentity == nil ? "magnifyingglass" : "checkmark.circle.fill"
-        case .visible:
-            return "eye.fill"
-        case .hidden:
-            return "eye.slash.fill"
-        }
-    }
-
-    private var statusTitle: String {
-        switch appState.settings.agentWorkRankVisibility {
-        case .automatic:
-            return appState.agentWorkRankIdentity == nil ? L("自动检测") : L("已自动显示")
-        case .visible:
-            return L("已显示")
-        case .hidden:
-            return L("已手动隐藏")
-        }
-    }
-
-    private var statusValue: String {
-        if let identity = appState.agentWorkRankIdentity {
-            return identity.name
-        }
-        switch appState.settings.agentWorkRankVisibility {
-        case .automatic:
-            return L("未检测到 Token Rank")
-        case .visible:
-            return L("等待关联")
-        case .hidden:
-            return L("不读取身份与榜单")
-        }
-    }
-
-    private var statusTint: Color {
-        switch appState.settings.agentWorkRankVisibility {
-        case .automatic:
-            return appState.agentWorkRankIdentity == nil ? .orange : .tokenGreen
-        case .visible:
-            return .tokenGreen
-        case .hidden:
-            return .gray
-        }
-    }
-
-    private var syncText: String {
-        guard let date = appState.agentWorkRankIdentity?.lastSyncedAt else {
-            return L("等待同步")
-        }
-        return relativeTime(date)
-    }
-
-    private func relativeTime(_ date: Date) -> String {
-        let minutes = max(0, Int(Date().timeIntervalSince(date) / 60))
-        if minutes < 1 { return L("刚刚") }
-        if minutes < 60 { return LFormat("%d 分钟前", minutes) }
-        return LFormat("%d 小时前", minutes / 60)
-    }
-}
-
 struct SettingsExperimentalAgentSourcesCard: View {
-    @EnvironmentObject private var appState: AppState
-
     var body: some View {
-        SettingsCard(title: L("实验 Agent 来源"), symbol: "point.3.connected.trianglepath.dotted", height: 282) {
-            VStack(alignment: .leading, spacing: 13) {
-                SettingsToggleRow(
-                    title: L("启用 ZCode / Hermes / WorkBuddy"),
-                    isOn: Binding(
-                        get: { appState.settings.showExperimentalAgentSources },
-                        set: { appState.setExperimentalAgentSourcesVisible($0) }
-                    )
-                )
-
-                Text(L("只读取本地 usage 字段，不读取对话正文。"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                VStack(spacing: 8) {
-                    experimentalSourceLine(name: "ZCode", sourceKey: "ZCode")
-                    experimentalSourceLine(name: "Hermes Agent", sourceKey: "Hermes Agent")
-                    experimentalSourceLine(name: "WorkBuddy", sourceKey: "WorkBuddy")
-                }
-
-                Spacer(minLength: 0)
+        SettingsCard(title: L("实验来源"), symbol: "point.3.connected.trianglepath.dotted", height: 180) {
+            VStack(spacing: 8) {
+                sourceLine(name: L("Kimi / DeepSeek"), detail: L("仅真实 CC Switch 代理行"), status: L("实验性"), tint: .orange)
+                sourceLine(name: L("Cursor / Gemini CLI"), detail: L("暂无稳定隐私安全字段"), status: L("暂不支持"), tint: .secondary)
+                sourceLine(name: "WorkBuddy", detail: L("不扫描目录或文件"), status: L("暂不支持"), tint: .secondary)
             }
         }
     }
 
-    private func experimentalSourceLine(name: String, sourceKey: String) -> some View {
-        let rawStatus = appState.snapshot.sources[sourceKey]?.status
-        let status = normalizedExperimentalStatus(rawStatus)
-        let active = status == "ok"
-        let discoveredOnly = status == "discovered_no_usage"
-        return StatusLine(
-            symbol: active ? "checkmark.circle.fill" : discoveredOnly ? "magnifyingglass.circle.fill" : "circle.dashed",
-            title: name,
-            value: statusText(status),
-            tint: active ? .tokenGreen : discoveredOnly ? .orange : .gray
-        )
-    }
-
-    private func normalizedExperimentalStatus(_ status: String?) -> String {
-        guard appState.settings.showExperimentalAgentSources else {
-            return "disabled"
+    private func sourceLine(name: String, detail: String, status: String, tint: Color) -> some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.system(size: 9, weight: .heavy)).foregroundStyle(Color.tokenInk)
+                Text(detail).font(.system(size: 7, weight: .semibold)).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(status).font(.system(size: 7, weight: .heavy)).foregroundStyle(tint)
         }
-        if appState.isRefreshing {
-            return "refreshing"
-        }
-        if status == nil || status == "disabled" {
-            return "pending_refresh"
-        }
-        return status ?? "missing"
-    }
-
-    private func statusText(_ status: String?) -> String {
-        switch status {
-        case "ok": return L("已计入实验统计")
-        case "discovered_no_usage": return L("已发现，暂不可统计")
-        case "refreshing": return L("刷新中")
-        case "pending_refresh": return L("等待刷新")
-        case "disabled": return L("默认关闭")
-        case "missing_db", "missing": return L("未发现数据源")
-        case "missing_valid_rows": return L("暂无可用 usage")
-        case "schema_mismatch", "schema_unreadable", "missing_table": return L("结构待适配")
-        case "unreadable_db": return L("无法读取")
-        default: return L("等待同步")
-        }
+        .padding(.horizontal, 10)
+        .frame(height: 38)
+        .background(Color.tokenTrack.opacity(0.28), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 }

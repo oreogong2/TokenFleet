@@ -54,6 +54,11 @@ enum DataService {
         defer { MemoryPressure.relieveAllocatorPressure() }
         let settings = loadSettings()
         let previousSnapshot = try? loadSnapshot()
+        if TokenPricingCatalog.shouldPreserveSnapshot(
+            storedVersion: previousSnapshot?.totals.pricingVersion
+        ) {
+            throw newerPricingCatalogError()
+        }
         let beforeState = UsageCollector.collectionState(
             historyDays: historyDays,
             includeExperimentalAgentSources: settings.showExperimentalAgentSources
@@ -81,7 +86,7 @@ enum DataService {
             collectedSnapshot,
             previousSnapshot: previousSnapshot
         )
-        try persist(snapshot: snapshot)
+        try persist(snapshot: snapshot, previousSnapshot: previousSnapshot)
         let afterState = UsageCollector.collectionState(
             historyDays: historyDays,
             includeExperimentalAgentSources: settings.showExperimentalAgentSources
@@ -122,6 +127,11 @@ enum DataService {
         _ collectedSnapshot: UsageSnapshot,
         previousSnapshot: UsageSnapshot?
     ) throws {
+        if TokenPricingCatalog.shouldPreserveSnapshot(
+            storedVersion: previousSnapshot?.totals.pricingVersion
+        ), collectedSnapshot.totals.pricingVersion != previousSnapshot?.totals.pricingVersion {
+            throw newerPricingCatalogError()
+        }
         guard let previousCodex = previousSnapshot?.sources["Codex"],
               (previousCodex.records ?? 0) > 0
         else {
@@ -146,29 +156,86 @@ enum DataService {
         }
     }
 
-    private static func persist(snapshot: UsageSnapshot) throws {
+    private static func newerPricingCatalogError() -> NSError {
+        NSError(
+            domain: "TokenFleetCollector",
+            code: 3,
+            userInfo: [
+                NSLocalizedDescriptionKey: L("用量数据由更新的价格目录生成，已保留原统计。请使用较新版本的 TokenFleet 刷新。")
+            ]
+        )
+    }
+
+    private static func persist(
+        snapshot: UsageSnapshot,
+        previousSnapshot: UsageSnapshot?
+    ) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(snapshot)
-        try FileManager.default.createDirectory(
-            at: AppPaths.usageJSON.deletingLastPathComponent(),
-            withIntermediateDirectories: true
+        let createsUsageNotice = shouldCreateUsageRecalibrationNotice(snapshot)
+        let createsPricingNotice = shouldCreatePricingReestimationNotice(
+            snapshot: snapshot,
+            previousSnapshot: previousSnapshot
         )
-        try data.write(to: AppPaths.usageJSON, options: .atomic)
-        if let previousRevision = snapshot.sources["Codex"]?.recalibratedFromRevision,
-           let currentRevision = snapshot.sources["Codex"]?.accountingRevision,
-           previousRevision < currentRevision,
-           (snapshot.sources["Codex"]?.records ?? 0) > 0 {
+        if createsUsageNotice {
             try FileManager.default.createDirectory(
                 at: AppPaths.usageRecalibrationNoticeMarker.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
+            let currentRevision = snapshot.sources["Codex"]?.accountingRevision
+                ?? UsageCollector.codexAccountingRevision
             try String(currentRevision).write(
                 to: AppPaths.usageRecalibrationNoticeMarker,
                 atomically: true,
                 encoding: .utf8
             )
         }
+        if createsPricingNotice {
+            try FileManager.default.createDirectory(
+                at: AppPaths.pricingReestimationNoticeMarker.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let previousVersion = previousSnapshot?.totals.pricingVersion ?? "legacy-unversioned"
+            let currentVersion = snapshot.totals.pricingVersion ?? TokenPricingCatalog.version
+            try "\(previousVersion)\n\(currentVersion)\n".write(
+                to: AppPaths.pricingReestimationNoticeMarker,
+                atomically: true,
+                encoding: .utf8
+            )
+        }
+        try FileManager.default.createDirectory(
+            at: AppPaths.usageJSON.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: AppPaths.usageJSON, options: .atomic)
+    }
+
+    private static func shouldCreateUsageRecalibrationNotice(_ snapshot: UsageSnapshot) -> Bool {
+        guard let previousRevision = snapshot.sources["Codex"]?.recalibratedFromRevision,
+              let currentRevision = snapshot.sources["Codex"]?.accountingRevision,
+              previousRevision < currentRevision,
+              (snapshot.sources["Codex"]?.records ?? 0) > 0
+        else {
+            return false
+        }
+        return true
+    }
+
+    private static func shouldCreatePricingReestimationNotice(
+        snapshot: UsageSnapshot,
+        previousSnapshot: UsageSnapshot?
+    ) -> Bool {
+        guard let previousSnapshot,
+              previousSnapshot.totals.tokens > 0,
+              snapshot.totals.tokens > 0,
+              snapshot.totals.pricingVersion == TokenPricingCatalog.version
+        else {
+            return false
+        }
+        return TokenPricingCatalog.shouldReestimate(
+            storedVersion: previousSnapshot.totals.pricingVersion
+        )
     }
 
 #if TOKENSTEP_TESTING
@@ -178,13 +245,20 @@ enum DataService {
     ) throws -> UsageSnapshot {
         try validateRecalibrationCandidate(snapshot, previousSnapshot: previousSnapshot)
         let prepared = snapshotWithMigrationMetadata(snapshot, previousSnapshot: previousSnapshot)
-        try persist(snapshot: prepared)
+        try persist(snapshot: prepared, previousSnapshot: previousSnapshot)
         return prepared
     }
 #endif
 
-    static var hasPendingUsageRecalibrationNotice: Bool {
-        FileManager.default.fileExists(atPath: AppPaths.usageRecalibrationNoticeMarker.path)
+    static func hasPendingUsageRecalibrationNotice(for snapshot: UsageSnapshot) -> Bool {
+        snapshot.sources["Codex"]?.accountingRevision == UsageCollector.codexAccountingRevision
+            && (snapshot.sources["Codex"]?.records ?? 0) > 0
+            && FileManager.default.fileExists(atPath: AppPaths.usageRecalibrationNoticeMarker.path)
+    }
+
+    static func hasPendingPricingReestimationNotice(for snapshot: UsageSnapshot) -> Bool {
+        snapshot.totals.pricingVersion == TokenPricingCatalog.version
+            && FileManager.default.fileExists(atPath: AppPaths.pricingReestimationNoticeMarker.path)
     }
 
     private static func loadCollectionCheckpoint() -> CollectionCheckpoint? {
@@ -211,6 +285,10 @@ enum DataService {
 
     static func acknowledgeUsageRecalibrationNotice() {
         try? FileManager.default.removeItem(at: AppPaths.usageRecalibrationNoticeMarker)
+    }
+
+    static func acknowledgePricingReestimationNotice() {
+        try? FileManager.default.removeItem(at: AppPaths.pricingReestimationNoticeMarker)
     }
 
     static func runCollectorInHelper(
@@ -287,7 +365,10 @@ enum DataService {
 
     static func normalize(_ settings: TokenStepSettings) -> TokenStepSettings {
         let intervals = Set([0, 60, 300, 900])
-        let placement = settings.tokenIslandEnabled ? settings.tokenIslandPlacement : .menuBar
+        // A floating status-level panel can overlap Apple's and other apps'
+        // menu-bar items. beta.8 intentionally uses the native status item,
+        // which lets macOS manage placement and crowding safely.
+        let placement: TokenIslandDisplayPlacement = .menuBar
         return TokenStepSettings(
             dailyGoalTokens: max(1_000_000, settings.dailyGoalTokens),
             refreshIntervalSeconds: intervals.contains(settings.refreshIntervalSeconds) ? settings.refreshIntervalSeconds : TokenStepSettings.defaults.refreshIntervalSeconds,
@@ -296,10 +377,10 @@ enum DataService {
             autoUpdateEnabled: settings.autoUpdateEnabled,
             askBeforeDownloadingUpdates: settings.askBeforeDownloadingUpdates,
             requireVerifiedUpdates: true,
-            tokenIslandEnabled: placement != .menuBar,
+            tokenIslandEnabled: false,
             tokenIslandPlacement: placement,
+            menuBarShowsTokenCount: settings.menuBarShowsTokenCount,
             showCodexQuota: settings.showCodexQuota,
-            agentWorkRankVisibility: settings.agentWorkRankVisibility,
             showExperimentalAgentSources: settings.showExperimentalAgentSources,
             language: settings.language,
             skippedUpdateVersion: settings.skippedUpdateVersion,

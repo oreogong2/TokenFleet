@@ -2,7 +2,7 @@
 
 TokenFleet 首版是本地优先、由管理员邀请接入的社群 AI Token 用量工具。
 没有会员体系、参赛者登录、微信登录、开放注册或面向所有人的自助接入。管理员可以
-生成最多 50 人、最长 24 小时且可随时关闭的受限批次链接；持有该链接的受邀成员只
+生成单批最多 50 人、最长 24 小时且可随时关闭的受限批次链接；同一社群可创建多个批次，持有该链接的受邀成员只
 填写唯一昵称并明确同意公开。后台只为参赛者保存昵称和内部归属，不会为了接入伪造
 邮箱或共享密码。
 
@@ -19,7 +19,7 @@ macOS 首版可靠支持 Codex、Claude Code 和 CC Switch；Windows 首版支�
 Claude Code，暂不采集 CC Switch。客户端只读取各平台已声明的固定数据位置，不要求
 管理员权限，不注入其他进程，不抓网络流量，也不安装根证书。
 
-macOS 还保留了三项与本地用量展示有关的外部集成，不属于社群同步：
+macOS 还保留了两项与本地用量展示有关的外部集成，不属于社群同步：
 
 - “显示 Codex / Claude 额度”默认关闭。用户主动开启后，TokenFleet 会启动本机
   `codex app-server`子进程读取 Codex 额度；
@@ -27,10 +27,7 @@ macOS 还保留了三项与本地用量展示有关的外部集成，不属于�
   Claude Code 的 `Claude Code-credentials` 钥匙串项，仅为取得 OAuth access token
   并请求 `https://api.anthropic.com/api/oauth/usage` 显示 Claude 额度。该 token
   不会写入 TokenFleet 设置、日志或社群上报，也不会发送给 TokenFleet
-  服务器；
-- 外部 Token Rank 卡片会尝试读取 `~/.token-rank/client-state.json`，仅解码
-  公开用户 ID、昵称、头像和最后同步时间，用于显示外部榜单；不解析或使用
-  上传 URL、token 或 device secret。
+  服务器。
 
 这些功能不会改变下文的社群上传字段；社群同步不上传 Claude / Codex 登录凭证。
 
@@ -49,7 +46,7 @@ macOS 还保留了三项与本地用量展示有关的外部集成，不属于�
 
 官方客户端只上传按日、工具、模型聚合的四类 Token 和最小版本元数据。服务端
 schema 不接收 prompt、回复、代码、文件、路径、项目、repo、skill、MCP、agent、
-会话正文、Claude/Codex 登录凭证或生财 OpenToken 凭证。
+会话正文、Claude/Codex 登录凭证或任何第三方服务凭证。
 
 ## 社群榜公开什么
 
@@ -100,7 +97,7 @@ Windows 的设备 secret 必须用当前用户 DPAPI 加密且不得进入 roami
 分享 PNG 在浏览器本地从公开数据生成。二维码和链接只指向无凭证的同源 HTTPS
 公开榜，不调用第三方截图或二维码服务。
 
-生财排行榜仍由成员自行运行官方 OpenToken；TokenFleet 不读取、代理或保存其
+第三方排行榜或社区服务仍由成员自行连接；TokenFleet 不读取、代理或保存其
 专属上传地址、token 或 device secret。
 
 以上边界可以验证官方客户端和官方服务端的协议形状，但不能证明被恶意修改的

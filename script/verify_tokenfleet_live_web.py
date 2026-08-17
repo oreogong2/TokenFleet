@@ -40,9 +40,11 @@ def assert_no_horizontal_overflow(page: Page, label: str) -> None:
 
 def login_as(page: Page, email: str, password: str, *, navigate: bool = True) -> None:
     if navigate:
-        page.goto(BASE_URL)
+        page.goto(f"{BASE_URL}/admin")
         page.wait_for_load_state("networkidle")
     wait_for_heading(page, "进入社群管理后台")
+    assert "仅限管理员" in page.locator(".login-copy").inner_text()
+    assert "成员批次邀请、一次性设备码和成员昵称不能在此使用" in page.locator(".login-copy").inner_text()
     page.locator("#org-slug").fill(ORG_SLUG)
     page.locator("#email").fill(email)
     page.locator("#password").fill(password)
@@ -52,6 +54,41 @@ def login_as(page: Page, email: str, password: str, *, navigate: bool = True) ->
 
 def login(page: Page) -> None:
     login_as(page, ADMIN_EMAIL, ADMIN_PASSWORD or "")
+
+
+def verify_member_entry_boundaries(page: Page) -> None:
+    root_response = page.goto(f"{BASE_URL}/", wait_until="networkidle")
+    assert root_response.status == 200
+    page.locator(".install-contact").wait_for()
+    assert page.url == f"{BASE_URL}/install"
+    assert page.locator("#org-slug, #email, #password").count() == 0
+    assert page.get_by_role("button", name="验证并进入").count() == 0
+    assert page.get_by_text("管理员后台", exact=True).count() == 0
+    assert page.locator('a[href^="/admin"]').count() == 0
+
+    install_response = page.goto(f"{BASE_URL}/install", wait_until="networkidle")
+    assert install_response.status == 200
+    page.locator(".install-contact").wait_for()
+    assert page.locator('a[href^="/admin"]').count() == 0
+
+    rank_response = page.goto(f"{BASE_URL}/rank", wait_until="networkidle")
+    assert rank_response.status == 200
+    page.locator(".community-rank-row").first.wait_for()
+    assert page.locator('a[href^="/admin"]').count() == 0
+    profile_link = page.locator("a.community-person").first
+    profile_link.click()
+    page.locator(".community-detail-grid").wait_for()
+    assert page.locator('a[href^="/admin"]').count() == 0
+
+    join_response = page.goto(f"{BASE_URL}/join", wait_until="networkidle")
+    assert join_response.status == 200
+    page.get_by_role("heading", name="把这台设备接入 TokenFleet", exact=True).wait_for()
+    assert page.locator('a[href^="/admin"]').count() == 0
+
+    batch_response = page.goto(f"{BASE_URL}/join/batch", wait_until="networkidle")
+    assert batch_response.status == 200
+    page.get_by_role("heading", name="登记昵称，领取你的设备码", exact=True).wait_for()
+    assert page.locator('a[href^="/admin"]').count() == 0
 
 
 def verify_live_dashboard(page: Page) -> dict[str, int]:
@@ -72,7 +109,7 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     page.context.grant_permissions(
         ["clipboard-read", "clipboard-write"], origin=BASE_URL
     )
-    page.get_by_role("button", name="创建 50 人自助批次").click()
+    page.get_by_role("button", name="创建自助批次（单批最多 50）").click()
     batch_dialog = page.locator("#batch-dialog")
     batch_dialog.wait_for(state="visible")
     batch_dialog.locator('input[name="capacity"]').fill("2")
@@ -82,7 +119,7 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     batch_token_dialog.wait_for(state="visible")
     assert "invite=" not in batch_token_dialog.inner_text()
     batch_token_dialog.get_by_role(
-        "button", name="复制 50 人自助接入链接"
+        "button", name="复制本批次自助接入链接"
     ).click()
     batch_link = page.evaluate("navigator.clipboard.readText()")
     assert batch_link.startswith(f"{BASE_URL}/join/batch#invite=")
@@ -150,18 +187,25 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     page.get_by_role("link", name="← 返回成员列表", exact=True).click()
     wait_for_heading(page, "成员")
 
-    page.get_by_role("button", name="为已有成员创建设备码").click()
+    page.locator("tbody tr", has_text=new_member_name).get_by_role(
+        "button", name="补发设备码", exact=True
+    ).click()
     enrollment_dialog = page.locator("#enrollment-dialog")
     enrollment_dialog.wait_for(state="visible")
+    assert "不会重复创建成员" in enrollment_dialog.inner_text()
+    assert "不占自助批次名额" in enrollment_dialog.inner_text()
+    assert "原始码不会在后台显示或保存" in enrollment_dialog.inner_text()
     member_options = enrollment_dialog.locator(
         'select[name="user_id"] option',
         has_text=new_member_name,
     )
     assert member_options.count() == 1
-    enrollment_dialog.locator('select[name="user_id"]').select_option(
+    assert enrollment_dialog.locator('select[name="user_id"]').input_value() == (
         member_options.first.get_attribute("value")
     )
-    enrollment_dialog.get_by_role("button", name="生成一次性连接码").click()
+    enrollment_dialog.get_by_role(
+        "button", name="确认补发 60 分钟设备码"
+    ).click()
     token_dialog = page.locator("dialog.token-dialog")
     token_dialog.wait_for(state="visible")
     assert "••••" in token_dialog.locator("code").inner_text()
@@ -201,7 +245,7 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
             ("breakdown", "工具与模型", ".distribution-row"),
             ("costs", "成本", ".cost-ledger"),
         ):
-            page.goto(f"{BASE_URL}/#/{route}")
+            page.goto(f"{BASE_URL}/admin/#/{route}")
             wait_for_heading(page, heading)
             page.locator(ready_selector).first.wait_for()
             assert "edge-model-" in page.locator(".page-body").inner_text()
@@ -212,7 +256,7 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     page.get_by_role("link", name="设置与隐私", exact=True).click()
     wait_for_heading(page, "设置与隐私")
     settings_text = page.locator(".page-body").inner_text()
-    assert "生财排行榜" in settings_text
+    assert "第三方服务边界" in settings_text
     assert "不接收" in settings_text and "不保存" in settings_text and "也不转发" in settings_text
     assert page.locator(
         'input[name*="webhook" i], input[name*="token" i], input[name*="secret" i]'
@@ -235,7 +279,9 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     page.locator("#password").fill("deliberately-wrong-password")
     page.get_by_role("button", name="验证并进入").click()
     page.get_by_role("alert").wait_for()
-    assert "invalid credentials" in page.get_by_role("alert").inner_text()
+    login_error = page.get_by_role("alert").inner_text()
+    assert "管理员登录信息不正确" in login_error
+    assert "invalid credentials" not in login_error.lower()
 
     page.evaluate(
         "() => sessionStorage.setItem('tokenfleet.apiKey', 'expired.jwt.test-token')"
@@ -243,7 +289,9 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     page.reload()
     wait_for_heading(page, "进入社群管理后台")
     page.get_by_role("alert").wait_for()
-    assert "invalid or expired access token" in page.get_by_role("alert").inner_text()
+    session_error = page.get_by_role("alert").inner_text()
+    assert "管理员会话无效或已过期" in session_error
+    assert "invalid or expired access token" not in session_error.lower()
     assert not page.evaluate("() => Boolean(sessionStorage.getItem('tokenfleet.apiKey'))")
 
     public_requests: list[dict[str, str]] = []
@@ -311,6 +359,7 @@ def main() -> None:
         page.on("console", record_console_error)
         page.on("pageerror", lambda error: page_errors.append(str(error)))
         try:
+            verify_member_entry_boundaries(page)
             login(page)
             result = verify_live_dashboard(page)
         except Exception:

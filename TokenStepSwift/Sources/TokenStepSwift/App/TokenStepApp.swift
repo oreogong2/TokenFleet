@@ -3,6 +3,20 @@ import Darwin
 import SwiftUI
 
 final class TokenStepAppDelegate: NSObject, NSApplicationDelegate {
+    private let reopenHandler: @MainActor (String) -> Void
+
+    override init() {
+        reopenHandler = { reason in
+            TokenStepReopenObserver.shared.request(reason: reason)
+        }
+        super.init()
+    }
+
+    init(reopenHandler: @escaping @MainActor (String) -> Void) {
+        self.reopenHandler = reopenHandler
+        super.init()
+    }
+
     func applicationWillFinishLaunching(_ notification: Notification) {
         _ = signal(SIGPIPE, SIG_IGN)
         guard SingleInstanceGuard.claimOrTerminateDuplicate() else { return }
@@ -18,6 +32,18 @@ final class TokenStepAppDelegate: NSObject, NSApplicationDelegate {
             NSApp.applicationIconImage = icon
         }
     }
+
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        // A native status item may be hidden by macOS when the built-in display's
+        // menu bar is crowded around the camera housing. Reopening TokenFleet from
+        // Applications or Spotlight must therefore remain a reliable way back to
+        // the main window even when the menu-bar ring is not currently visible.
+        reopenHandler("application_reopen")
+        return false
+    }
 }
 
 @main
@@ -31,24 +57,28 @@ struct TokenStepApp: App {
                 .environmentObject(appState)
         } label: {
             Group {
-                if appState.shouldShowTokenIsland {
-                    Color.clear
-                        .frame(width: 1, height: 1)
-                        .accessibilityHidden(true)
-                } else {
-                    StatusBarLabelView(
-                        tokens: appState.today.totalTokens,
-                        lap: appState.todayLap,
-                        refreshing: appState.isRefreshing,
-                        theme: appState.settings.theme,
-                        language: appState.settings.language
-                    )
-                }
+                StatusBarLabelView(
+                    tokens: appState.today.totalTokens,
+                    lap: appState.todayLap,
+                    refreshing: appState.isRefreshing,
+                    theme: appState.settings.theme,
+                    language: appState.settings.language,
+                    showsTokenCount: appState.settings.menuBarShowsTokenCount
+                )
             }
             .id(appState.appearanceID)
             .onAppear {
                 TokenStepReopenObserver.shared.bind(appState: appState)
                 TokenIslandWindowPresenter.shared.bind(appState: appState)
+                #if TOKENSTEP_TESTING
+                if ProcessInfo.processInfo.environment[
+                    "TOKENFLEET_TEST_OPEN_MAIN_WINDOW"
+                ] == "1" {
+                    Task { @MainActor in
+                        MainWindowPresenter.shared.show(appState: appState)
+                    }
+                }
+                #endif
             }
         }
         .menuBarExtraStyle(.window)

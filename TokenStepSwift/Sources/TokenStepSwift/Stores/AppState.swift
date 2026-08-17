@@ -11,10 +11,6 @@ final class AppState: ObservableObject {
     @Published private(set) var isRefreshingCodexQuota = false
     @Published private(set) var codexQuota: CodexQuotaSnapshot = .unavailable
     @Published private(set) var claudeQuota: CodexQuotaSnapshot = .unavailable
-    @Published private(set) var isRefreshingTokenRank = false
-    @Published private(set) var tokenRank: TokenRankLeaderboard?
-    @Published private(set) var agentWorkRankIdentity: AgentWorkRankIdentity?
-    @Published private(set) var tokenRankError: String?
     @Published private(set) var isDownloadingUpdate = false
     @Published private(set) var updateDownloadProgress = 0.0
     @Published private(set) var updateInstallStatus = L("准备更新")
@@ -23,9 +19,17 @@ final class AppState: ObservableObject {
     @Published private(set) var updateDownloadedURL: URL?
     @Published private(set) var tokenIslandAvailable = TokenIslandDisplayDetector.isAvailable
     @Published private(set) var showsUsageRecalibrationNotice = false
+    @Published private(set) var showsPricingReestimationNotice = false
     @Published private(set) var teamSyncState: TeamSyncPersistentState?
     @Published private(set) var isTeamSyncing = false
     @Published private(set) var teamSyncActionError: String?
+    @Published private(set) var communityRank: TeamSyncCommunityRank?
+    @Published private(set) var isRefreshingCommunityRank = false
+    @Published private(set) var communityRankError: String?
+    @Published private(set) var communityLeaderboard: TeamSyncPublicLeaderboard?
+    @Published private(set) var isRefreshingCommunityLeaderboard = false
+    @Published private(set) var communityLeaderboardError: String?
+    @Published private(set) var isOpeningCommunityLeaderboard = false
     @Published var lastError: String?
 
     private var timer: Timer?
@@ -35,12 +39,34 @@ final class AppState: ObservableObject {
     private var pendingRefreshAfterCurrent = false
     private var pendingForcedRefresh = false
     private var lastQuotaRefreshAttemptAt: Date?
-    private var lastRankRefreshAttemptAt: Date?
+    private var lastCommunityRankRefreshAttemptAt: Date?
+    private var lastCommunityLeaderboardRefreshAttemptAt: Date?
     private var lastAutomaticUsageRefreshAttemptAt: Date?
     private var lastUsageObservedAt: Date?
     private let fixedCommunityServerOrigin: URL?
 
     convenience init() {
+        #if TOKENSTEP_TESTING
+        if let rawOrigin = ProcessInfo.processInfo.environment[
+            "TOKENFLEET_TEST_COMMUNITY_SERVER_ORIGIN"
+        ], !rawOrigin.isEmpty {
+            self.init(
+                communityServerOrigin:
+                    TeamSyncCommunityServerConfiguration.explicitTestingOrigin(rawOrigin)
+            )
+            if ProcessInfo.processInfo.environment[
+                "TOKENFLEET_TEST_BETA8_COMMUNITY_FIXTURE"
+            ] == "1" {
+                applyCommunityRenderFixture(
+                    rank: Beta8CommunityRenderFixture.rank(),
+                    leaderboard: Beta8CommunityRenderFixture.leaderboard()
+                )
+            } else {
+                applyEnvironmentCommunityRenderFixtureIfPresent()
+            }
+            return
+        }
+        #endif
         self.init(
             communityServerOrigin: TeamSyncCommunityServerConfiguration.productionOrigin
         )
@@ -63,7 +89,6 @@ final class AppState: ObservableObject {
         configureTimer()
         configureTeamSyncTimer()
         refreshCodexQuota()
-        refreshTokenRank()
         scheduleDeferredUpdateCheck()
     }
 
@@ -82,6 +107,29 @@ final class AppState: ObservableObject {
     var todayAgentWork: DailyAgentWork {
         let key = DateFormatter.tokenStepDay.string(from: Date())
         return agentWork(for: key)
+    }
+
+    var todayRelativePace: UsageRelativePace? {
+        relativePace(for: today)
+    }
+
+    var activeStreak: UsageStreak {
+        UsageStreakCalculator.current(
+            rows: snapshot.daily,
+            historyDays: settings.historyDays
+        )
+    }
+
+    func activeStreakMeasurement(endingOn date: String) -> UsageStreakMeasurement {
+        UsageStreakCalculator.measurement(
+            endingOn: date,
+            rows: snapshot.daily,
+            historyDays: settings.historyDays
+        )
+    }
+
+    func relativePace(for day: DailyUsage) -> UsageRelativePace? {
+        UsageRelativePaceCalculator.comparison(for: day, in: snapshot.daily)
     }
 
     var sevenDayAgentAverage: Int {
@@ -120,8 +168,15 @@ final class AppState: ObservableObject {
     }
 
     var shouldShowTokenIsland: Bool {
-        settings.tokenIslandPlacement != .menuBar
-            && TokenIslandDisplayDetector.isAvailable(for: settings.tokenIslandPlacement, size: TokenIslandWindowPresenter.collapsedSize)
+        switch settings.tokenIslandPlacement {
+        case .notchLeft, .notchRight:
+            return TokenIslandDisplayDetector.isAvailable(
+                for: settings.tokenIslandPlacement,
+                size: TokenIslandWindowPresenter.collapsedSize
+            )
+        case .automatic, .menuBar:
+            return false
+        }
     }
 
     var tokenIslandStatus: String {
@@ -129,7 +184,7 @@ final class AppState: ObservableObject {
         case .menuBar:
             return L("菜单栏模式")
         case .automatic:
-            return shouldShowTokenIsland ? L("自动：刘海旁") : L("自动：菜单栏")
+            return L("自动：菜单栏")
         case .notchLeft:
             return shouldShowTokenIsland ? L("刘海左侧") : L("菜单栏模式")
         case .notchRight:
@@ -144,15 +199,14 @@ final class AppState: ObservableObject {
         if settings.tokenIslandPlacement == .menuBar {
             return L("仅使用右上角菜单栏入口")
         }
+        if settings.tokenIslandPlacement == .automatic {
+            return L("自动模式保留紧凑菜单栏入口")
+        }
         return TokenIslandDisplayDetector.fallbackReason
     }
 
     var appearanceID: String {
         "\(settings.theme.id)-\(settings.language.resolved.id)"
-    }
-
-    var shouldShowAgentWorkRank: Bool {
-        settings.agentWorkRankVisibility.shouldShow(hasLocalIdentity: agentWorkRankIdentity != nil)
     }
 
     var communityServerOrigin: URL? {
@@ -181,12 +235,47 @@ final class AppState: ObservableObject {
     }
 
     func openCommunityLeaderboard(isScreenshotRendering: Bool) {
-        guard let url = communityLeaderboardURL(
-            isScreenshotRendering: isScreenshotRendering
-        ) else {
+        guard !isScreenshotRendering,
+              !isOpeningCommunityLeaderboard,
+              let normalPublicURL = communityLeaderboardURL(
+                  isScreenshotRendering: isScreenshotRendering
+              ),
+              let fixedCommunityServerOrigin
+        else {
             return
         }
-        NSWorkspace.shared.open(url)
+        isOpeningCommunityLeaderboard = true
+        teamSyncActionError = nil
+        Task {
+            defer { isOpeningCommunityLeaderboard = false }
+            do {
+                let grant = try await TeamSyncService.live.issueCommunityShareGrant(
+                    serverURL: fixedCommunityServerOrigin.absoluteString
+                )
+                guard isCommunitySyncEnrollmentCompatible,
+                      let shareURL = TeamSyncProtocol.personalCommunityShareURL(
+                          serverURL: fixedCommunityServerOrigin.absoluteString,
+                          isEnrolled: true,
+                          isScreenshotRendering: false,
+                          grant: grant.grant
+                      )
+                else {
+                    throw TeamSyncProtocolError.operationCancelled
+                }
+                // The fragment contains an opaque one-time value. Never log
+                // this URL, pass it through UI state, or persist it locally.
+                NSWorkspace.shared.open(shareURL)
+            } catch let error as TeamSyncProtocolError where error == .httpStatus(404) {
+                // During a staged rollout an older server can still serve the
+                // anonymous board. It must not be presented as verified share
+                // access, but browsing remains useful and safe.
+                NSWorkspace.shared.open(normalPublicURL)
+                teamSyncActionError = L("当前服务器暂不支持网页个人排名分享，已打开公开榜。")
+            } catch {
+                NSWorkspace.shared.open(normalPublicURL)
+                teamSyncActionError = L("暂时无法验证网页个人排名分享，已打开公开榜。")
+            }
+        }
     }
 
     func load() {
@@ -197,19 +286,11 @@ final class AppState: ObservableObject {
         settings = loadedSettings
         snapshot = (try? DataService.loadSnapshot()) ?? .empty
         teamSyncState = FileTeamSyncStateStore().load()
-        showsUsageRecalibrationNotice = DataService.hasPendingUsageRecalibrationNotice
+        showsUsageRecalibrationNotice = DataService.hasPendingUsageRecalibrationNotice(for: snapshot)
+        showsPricingReestimationNotice = DataService.hasPendingPricingReestimationNotice(for: snapshot)
         if !loadedSettings.showCodexQuota {
             codexQuota = .unavailable
             claudeQuota = .unavailable
-        }
-        if !loadedSettings.agentWorkRankVisibility.readsLocalIdentity {
-            clearTokenRankState()
-        } else {
-            agentWorkRankIdentity = AgentWorkRankService.loadLocalIdentity()
-            if loadedSettings.agentWorkRankVisibility == .automatic,
-               agentWorkRankIdentity == nil {
-                clearTokenRankState()
-            }
         }
         autostartEnabled = AutostartService.isEnabled
     }
@@ -283,7 +364,7 @@ final class AppState: ObservableObject {
             refresh(forceCollection: false)
         }
         refreshCodexQuota(now: now)
-        refreshTokenRank()
+        refreshCommunityRank(now: now)
     }
 
     func setForegroundRefreshSurface(_ identifier: String, visible: Bool) {
@@ -385,6 +466,11 @@ final class AppState: ObservableObject {
         showsUsageRecalibrationNotice = false
     }
 
+    func dismissPricingReestimationNotice() {
+        DataService.acknowledgePricingReestimationNotice()
+        showsPricingReestimationNotice = false
+    }
+
     func refreshTokenIslandAvailability() {
         tokenIslandAvailable = TokenIslandDisplayDetector.isAvailable(for: settings.tokenIslandPlacement, size: TokenIslandWindowPresenter.collapsedSize)
     }
@@ -415,14 +501,21 @@ final class AppState: ObservableObject {
     }
 
     func setTokenIslandEnabled(_ enabled: Bool) {
-        setTokenIslandPlacement(enabled ? .automatic : .menuBar)
+        // Retained for settings-file compatibility. The beta.8 surface is
+        // deliberately native-menu-bar only so it cannot cover other extras.
+        setTokenIslandPlacement(.menuBar)
     }
 
     func setTokenIslandPlacement(_ placement: TokenIslandDisplayPlacement) {
-        settings.tokenIslandPlacement = placement
-        settings.tokenIslandEnabled = placement != .menuBar
+        settings.tokenIslandPlacement = .menuBar
+        settings.tokenIslandEnabled = false
         saveSettingsAndReload()
         refreshTokenIslandAvailability()
+    }
+
+    func setMenuBarTokenCountVisible(_ visible: Bool) {
+        settings.menuBarShowsTokenCount = visible
+        saveSettingsAndReload()
     }
 
     func setCodexQuotaVisible(_ visible: Bool) {
@@ -434,16 +527,6 @@ final class AppState: ObservableObject {
             codexQuota = .unavailable
             claudeQuota = .unavailable
             isRefreshingCodexQuota = false
-        }
-    }
-
-    func setAgentWorkRankVisibility(_ visibility: AgentWorkRankVisibility) {
-        settings.agentWorkRankVisibility = visibility
-        saveSettingsAndReload()
-        if shouldShowAgentWorkRank {
-            refreshTokenRank(force: true)
-        } else {
-            clearTokenRankState()
         }
     }
 
@@ -533,6 +616,7 @@ final class AppState: ObservableObject {
             }
             isTeamSyncing = false
             configureTeamSyncTimer()
+            refreshCommunityRank(force: true)
         }
     }
 
@@ -553,6 +637,10 @@ final class AppState: ObservableObject {
                 settings.teamSyncServerURL = ""
                 saveSettingsAndReload()
                 teamSyncState = nil
+                communityRank = nil
+                communityRankError = nil
+                communityLeaderboard = nil
+                communityLeaderboardError = nil
             } catch {
                 teamSyncActionError = error.localizedDescription
             }
@@ -561,67 +649,149 @@ final class AppState: ObservableObject {
         }
     }
 
-    func refreshTokenRank(force: Bool = false, now: Date = Date()) {
-        guard settings.agentWorkRankVisibility.readsLocalIdentity else {
-            clearTokenRankState()
+    func refreshCommunityRank(force: Bool = false, now: Date = Date()) {
+        refreshCommunityLeaderboard(force: force, now: now)
+        guard let fixedCommunityServerOrigin,
+              TeamSyncCredentialStorageAvailability.isAvailable,
+              isCommunitySyncEnrollmentCompatible
+        else {
+            communityRank = nil
+            communityRankError = nil
+            isRefreshingCommunityRank = false
             return
         }
-        agentWorkRankIdentity = AgentWorkRankService.loadLocalIdentity()
-        guard shouldShowAgentWorkRank else {
-            clearTokenRankState()
+        guard !isRefreshingCommunityRank else { return }
+        if !force,
+           EnergyRefreshPolicy.isFresh(
+               lastAttemptAt: lastCommunityRankRefreshAttemptAt,
+               ttl: EnergyRefreshPolicy.rankTTL,
+               now: now
+           ) {
             return
         }
-        guard !isRefreshingTokenRank else { return }
-        if !force {
-            if EnergyRefreshPolicy.isFresh(
-                lastAttemptAt: lastRankRefreshAttemptAt,
-                ttl: EnergyRefreshPolicy.rankTTL,
-                now: now
-            ) {
-                return
-            }
-            if let fetchedAt = tokenRank?.fetchedAt,
-               now.timeIntervalSince(fetchedAt) < AgentWorkRankService.cacheTTL {
-                return
-            }
-        }
-        lastRankRefreshAttemptAt = now
-
-        agentWorkRankIdentity = AgentWorkRankService.loadLocalIdentity()
-        isRefreshingTokenRank = true
+        lastCommunityRankRefreshAttemptAt = now
+        isRefreshingCommunityRank = true
         Task {
-            defer {
-                isRefreshingTokenRank = false
-            }
+            defer { isRefreshingCommunityRank = false }
             do {
-                let leaderboard = try await AgentWorkRankService.fetchLeaderboard()
-                guard shouldShowAgentWorkRank else {
-                    clearTokenRankState()
-                    return
-                }
-                tokenRank = leaderboard
-                tokenRankError = nil
+                let rank = try await TeamSyncService.live.fetchCommunityRank(
+                    serverURL: fixedCommunityServerOrigin.absoluteString,
+                    now: now
+                )
+                guard isCommunitySyncEnrollmentCompatible else { return }
+                communityRank = rank
+                communityRankError = nil
+            } catch let error as TeamSyncProtocolError
+                where error == .operationCancelled {
+                return
             } catch {
-                guard shouldShowAgentWorkRank else {
-                    clearTokenRankState()
-                    return
-                }
-                if tokenRank == nil {
-                    tokenRankError = L("暂时无法读取榜单")
-                } else {
-                    tokenRankError = L("榜单同步失败，显示上次结果")
-                }
+                guard isCommunitySyncEnrollmentCompatible else { return }
+                communityRankError = L("暂时无法读取社群排名")
             }
         }
     }
 
-    func openTokenRankLeaderboardPage() {
-        NSWorkspace.shared.open(AgentWorkRankService.leaderboardPageURL)
+    func refreshCommunityLeaderboard(force: Bool = false, now: Date = Date()) {
+        guard let fixedCommunityServerOrigin,
+              isCommunitySyncEnrollmentCompatible
+        else {
+            communityLeaderboard = nil
+            communityLeaderboardError = nil
+            isRefreshingCommunityLeaderboard = false
+            return
+        }
+        guard !isRefreshingCommunityLeaderboard else { return }
+        if !force,
+           EnergyRefreshPolicy.isFresh(
+               lastAttemptAt: lastCommunityLeaderboardRefreshAttemptAt,
+               ttl: EnergyRefreshPolicy.rankTTL,
+               now: now
+           ) {
+            return
+        }
+        lastCommunityLeaderboardRefreshAttemptAt = now
+        isRefreshingCommunityLeaderboard = true
+        Task {
+            defer { isRefreshingCommunityLeaderboard = false }
+            do {
+                let leaderboard = try await TeamSyncService.live.fetchPublicLeaderboard(
+                    serverURL: fixedCommunityServerOrigin.absoluteString
+                )
+                guard isCommunitySyncEnrollmentCompatible else { return }
+                communityLeaderboard = leaderboard
+                communityLeaderboardError = nil
+            } catch {
+                guard isCommunitySyncEnrollmentCompatible else { return }
+                communityLeaderboardError = L("暂时无法读取社群榜单")
+            }
+        }
     }
 
-    func openTokenRankUserPage() {
-        NSWorkspace.shared.open(AgentWorkRankService.myPageURL)
+    #if TOKENSTEP_TESTING
+    /// Lets a manually launched native preview use deterministic public rank
+    /// responses without touching production or making a network request.
+    private func applyEnvironmentCommunityRenderFixtureIfPresent() {
+        let environment = ProcessInfo.processInfo.environment
+        guard let rankPath = environment["TOKENFLEET_TEST_COMMUNITY_RANK_JSON"],
+              let leaderboardPath = environment["TOKENFLEET_TEST_COMMUNITY_LEADERBOARD_JSON"]
+        else { return }
+
+        do {
+            let decoder = JSONDecoder()
+            let rank = try decoder.decode(
+                TeamSyncCommunityRank.self,
+                from: Data(contentsOf: URL(fileURLWithPath: rankPath))
+            )
+            let leaderboard = try decoder.decode(
+                TeamSyncPublicLeaderboard.self,
+                from: Data(contentsOf: URL(fileURLWithPath: leaderboardPath))
+            )
+            applyCommunityRenderFixture(rank: rank, leaderboard: leaderboard)
+        } catch {
+            preconditionFailure("Invalid TokenFleet native-preview community fixture: \(error)")
+        }
     }
+
+    /// Supplies deterministic, already-validated public community data to UI
+    /// render fixtures. This never exists in a production build and avoids
+    /// turning a screenshot gate into a live network request.
+    func applyCommunityRenderFixture(
+        rank: TeamSyncCommunityRank,
+        leaderboard: TeamSyncPublicLeaderboard
+    ) {
+        guard let fixedCommunityServerOrigin else {
+            preconditionFailure("Community render fixture requires a fixed server origin")
+        }
+        precondition(rank.isValid, "Community render fixture rank is invalid")
+        precondition(leaderboard.isValid, "Community render fixture leaderboard is invalid")
+
+        teamSyncState = TeamSyncPersistentState(
+            serverURL: fixedCommunityServerOrigin.absoluteString,
+            devicePublicID: "20000000-0000-4000-8000-000000000001",
+            deviceID: "beta8-render-device",
+            enrolledAt: Date(),
+            lastSyncAt: Date(),
+            lastLedgerVersion: 8
+        )
+        communityRank = rank
+        communityRankError = nil
+        isRefreshingCommunityRank = false
+        communityLeaderboard = leaderboard
+        communityLeaderboardError = nil
+        isRefreshingCommunityLeaderboard = false
+    }
+
+    /// Supplies deterministic quota data to the screenshot fixture without
+    /// invoking either local CLI or a network request.
+    func applyQuotaRenderFixture(
+        codex: CodexQuotaSnapshot,
+        claude: CodexQuotaSnapshot
+    ) {
+        codexQuota = codex
+        claudeQuota = claude
+        isRefreshingCodexQuota = false
+    }
+    #endif
 
     func setAutoUpdateEnabled(_ enabled: Bool) {
         settings.autoUpdateEnabled = enabled
@@ -734,13 +904,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func clearTokenRankState() {
-        tokenRank = nil
-        agentWorkRankIdentity = nil
-        tokenRankError = nil
-        isRefreshingTokenRank = false
-    }
-
     private func configureTimer() {
         timer?.invalidate()
         timer = nil
@@ -756,7 +919,7 @@ final class AppState: ObservableObject {
                 guard let self else { return }
                 self.refresh(forceCollection: false)
                 self.refreshCodexQuota()
-                self.refreshTokenRank()
+                self.refreshCommunityRank()
                 self.configureTimer()
             }
         }

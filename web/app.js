@@ -14,7 +14,7 @@ import {
 } from "./api.js";
 import { demoApi } from "./demo-data.js";
 import { parseCommunityRoute } from "./community-contract.js";
-import { mountCommunityApp } from "./community-app.js";
+import { mountCommunityApp } from "./community-app.js?v=beta8-member-entry-hotfix";
 import {
   aggregateTokenRows,
   adaptUsageDashboard,
@@ -35,6 +35,34 @@ const demoMode = params.get("demo") === "1";
 const api = demoMode ? demoApi : createApiClient();
 let communityCleanup = null;
 let navigationGeneration = 0;
+
+function isAdminEntry(locationRef = location) {
+  const pathname = String(locationRef?.pathname || "/").replace(/\/+$/, "") || "/";
+  return pathname === "/admin" || pathname === "/admin/index.html";
+}
+
+function memberRouteFromLocation() {
+  if (isAdminEntry()) return null;
+  const route = parseCommunityRoute(location) || { kind: "install" };
+  if (route.kind === "install" && location.pathname !== "/install") {
+    history.replaceState(null, "", `/install${location.search}`);
+  }
+  return route;
+}
+
+function adminLoginErrorMessage(error) {
+  if (error?.status === 401) {
+    return "管理员登录信息不正确，请检查社群标识、邮箱和密码后重试。";
+  }
+  return error?.message || "无法验证管理员登录信息";
+}
+
+function adminSessionErrorMessage(error) {
+  if ([401, 403].includes(error?.status)) {
+    return "管理员会话无效或已过期，请重新登录。";
+  }
+  return error?.message || "管理员后台暂时无法读取";
+}
 
 function isCurrentNavigation(generation) {
   return generation === navigationGeneration;
@@ -220,7 +248,7 @@ function renderLogin(message = "") {
     <section class="login-panel">
       <div class="eyebrow">TOKENFLEET / COMMUNITY LEDGER</div>
       <h1>进入社群管理后台</h1>
-      <p class="login-copy">使用管理员账号登录。服务端签发的会话令牌只保存在当前浏览器标签页，关闭标签页后自动清除。</p>
+      <p class="login-copy"><strong>仅限管理员。</strong>成员批次邀请、一次性设备码和成员昵称不能在此使用。请使用管理员账号登录；服务端签发的会话令牌只保存在当前浏览器标签页，关闭标签页后自动清除。</p>
       ${message ? `<div class="inline-alert" role="alert">${escapeHTML(message)}</div>` : ""}
       <form class="login-form" data-action="login">
         <label for="org-slug">社群标识<input id="org-slug" name="org_slug" autocomplete="organization" required maxlength="64" placeholder="your-community"></label>
@@ -230,8 +258,8 @@ function renderLogin(message = "") {
         <button class="primary-button" type="submit">验证并进入 ${icon("arrow", 18)}</button>
       </form>
       <a class="demo-link" href="?demo=1#/overview">没有服务端？打开隔离演示模式</a>
-      <a class="demo-link" href="#/rank">匿名查看社群榜</a>
-      <div class="privacy-strip">${icon("shield", 18)}<span>社群服务不接收 prompt、回复、代码、项目路径或生财凭证。</span></div>
+      <a class="demo-link" href="/rank">匿名查看社群榜</a>
+      <div class="privacy-strip">${icon("shield", 18)}<span>社群服务不接收 prompt、回复、代码、项目路径或任何第三方凭证。</span></div>
     </section>
   </main>`;
 }
@@ -244,14 +272,14 @@ function renderShell() {
       <a class="brand" href="#/overview" aria-label="TokenFleet 总览"><span class="brand-mark">TF</span><span><strong>TokenFleet</strong><small>COMMUNITY LEDGER</small></span></a>
       <div class="org-chip"><span class="org-avatar">${escapeHTML((org.name || "T").slice(0, 1))}</span><span><strong>${escapeHTML(org.name || "社群")}</strong><small>${escapeHTML(org.timezone || state.filters.timezone)}</small></span></div>
       <nav aria-label="主要导航">${NAVIGATION.filter(([key]) => state.me?.role === "admin" || !ADMIN_ONLY_ROUTES.has(key)).map(([key, label, iconName]) => `<a href="#/${key}" class="nav-item ${activeName === key ? "active" : ""}" aria-label="${escapeHTML(label)}" title="${escapeHTML(label)}" ${activeName === key ? 'aria-current="page"' : ""}>${icon(iconName)}<span>${label}</span></a>`).join("")}</nav>
-      <a class="nav-item" href="#/rank" aria-label="匿名社群榜" title="匿名社群榜">${icon("people")}<span>社群榜</span></a>
+      <a class="nav-item" href="/rank" aria-label="匿名社群榜" title="匿名社群榜">${icon("people")}<span>社群榜</span></a>
       <div class="sidebar-foot">
         <div class="privacy-promise"><span class="status-light"></span><span><strong>内容零采集</strong><small>仅同步 Token 聚合</small></span></div>
         <button class="nav-item logout-button" type="button" data-action="logout">${icon("logout")}<span>${demoMode ? "退出演示" : "退出"}</span></button>
       </div>
     </aside>
     <main id="main-content" class="main-content" tabindex="-1">
-      ${demoMode ? '<div class="demo-banner"><strong>隔离演示模式</strong><span>以下为固定假数据，不会写入真实服务。</span><a href="./">退出演示</a></div>' : ""}
+      ${demoMode ? `<div class="demo-banner"><strong>隔离演示模式</strong><span>以下为固定假数据，不会写入真实服务。</span><a href="${escapeHTML(location.pathname)}">退出演示</a></div>` : ""}
       <header class="page-header"><div><div class="eyebrow">${escapeHTML(org.name || "TOKENFLEET")}</div><h1>${escapeHTML(titleForRoute())}</h1><p>${escapeHTML(pageDescription())}</p></div>${["overview", "history", "breakdown", "costs"].includes(activeName) ? rangeControls() : ""}</header>
       <section class="page-body">${state.pageLoading ? renderSkeleton() : renderPage()}</section>
     </main>
@@ -352,7 +380,11 @@ function peopleTable(items, compact = false) {
     const member = `<td><a class="person-cell" href="#/people/${encodeURIComponent(person.id)}"><span class="avatar">${escapeHTML((person.name || person.email || "?").slice(0, 1))}</span><span><strong>${escapeHTML(person.name || "未命名")}${disabled ? '<i class="member-state">已禁用</i>' : ""}</strong>${compact ? "" : `<small>${escapeHTML(person.email || "")}</small>`}</span></a></td>`;
     const signature = `<td><span class="usage-signature"><strong>${escapeHTML(person.primary_tool || "暂无工具")}</strong><small>${escapeHTML(person.primary_model || "暂无模型")}</small></span></td>`;
     const rank = `<td><span class="rank-number" title="仅按当前范围 Token 排序，不代表绩效">${String(index + 1).padStart(2, "0")}</span></td>`;
-    const action = `<td><a class="row-link" href="#/people/${encodeURIComponent(person.id)}" aria-label="查看 ${escapeHTML(person.name || "成员")}">${icon("arrow", 17)}</a></td>`;
+    const enrollmentLabel = Number(person.device_count || 0) > 0 ? "添加新设备" : "补发设备码";
+    const quickEnrollment = !compact && state.me?.role === "admin" && publicEligible
+      ? `<button class="text-button small" type="button" data-action="open-enrollment" data-user-id="${escapeHTML(person.id)}" title="为这名既有成员生成一次性设备码；旧的未使用有效码会立即失效，不会新建成员或占用批次名额">${enrollmentLabel}</button>`
+      : "";
+    const action = `<td><div class="row-actions">${quickEnrollment}<a class="row-link" href="#/people/${encodeURIComponent(person.id)}" aria-label="查看 ${escapeHTML(person.name || "成员")}">${icon("arrow", 17)}</a></div></td>`;
     if (compact) {
       return `<tr>${rank}${member}${signature}<td class="usage-amount" title="Token ${formatTokens(person.total_tokens, { compact: false })}；缓存 ${formatTokens(person.cache_tokens, { compact: false })}"><strong>${formatTokens(person.total_tokens)}</strong><small>缓存 ${formatTokens(person.cache_tokens)}</small></td><td>${escapeHTML(formatCostBreakdown(person))}</td>${action}</tr>`;
     }
@@ -375,20 +407,20 @@ function renderPeople() {
   const people = normalizeCollection(state.pageData, ["items", "users"]);
   const batches = normalizeCollection(state.pageData, ["batches"]);
   const adminActions = state.me?.role === "admin"
-    ? `<div class="section-action-buttons"><a class="secondary-button small" href="#/rank">查看公开榜</a><button class="primary-button small" data-action="open-batch">${icon("plus", 17)} 创建 50 人自助批次</button><button class="secondary-button small" data-action="open-member">${icon("plus", 17)} 单独新建参赛者</button><button class="secondary-button small" data-action="open-enrollment">${icon("plus", 17)} 为已有成员创建设备码</button></div>`
+    ? `<div class="section-action-buttons"><a class="secondary-button small" href="#/rank">查看公开榜</a><button class="primary-button small" data-action="open-batch">${icon("plus", 17)} 创建自助批次（单批最多 50）</button><button class="secondary-button small" data-action="open-member">${icon("plus", 17)} 单独新建参赛者</button><button class="secondary-button small" data-action="open-enrollment">${icon("plus", 17)} 给已有成员补发设备码</button></div>`
     : "";
   const batchPanel = state.me?.role === "admin" ? invitationBatchPanel(batches) : "";
   return `<div class="section-actions"><div class="section-count"><strong>${people.length}</strong><span>名已登记成员</span></div>${adminActions}</div>${batchPanel}<article class="panel full-panel">${peopleTable(people)}</article><dialog id="batch-dialog">${batchDialog()}</dialog><dialog id="member-dialog">${memberDialog()}</dialog><dialog id="enrollment-dialog">${enrollmentDialog(people)}</dialog>`;
 }
 
 function invitationBatchPanel(batches) {
-  if (!batches.length) return `<article class="panel invitation-batch-panel"><div class="panel-head"><div><span class="panel-kicker">SELF-SERVICE BATCHES</span><h2>自助接入批次</h2></div></div><div class="empty-state compact"><span>50</span><p>还没有批次链接。创建后只需把同一个链接发到社群，成员自己登记唯一昵称并领取个人设备码。</p></div></article>`;
+  if (!batches.length) return `<article class="panel invitation-batch-panel"><div class="panel-head"><div><span class="panel-kicker">SELF-SERVICE BATCHES</span><h2>自助接入批次</h2></div></div><div class="empty-state compact"><span>50</span><p>还没有批次链接。单批最多 50，可创建多个批次进入同一社群；成员自己登记唯一昵称并领取个人设备码。</p></div></article>`;
   const statusLabels = { open: "开放中", full: "已满额", expired: "已过期", closed: "已关闭" };
   return `<article class="panel invitation-batch-panel"><div class="panel-head"><div><span class="panel-kicker">SELF-SERVICE BATCHES</span><h2>自助接入批次</h2></div><small>批次令牌只在创建时返回一次</small></div><div class="invitation-batch-list">${batches.map((batch) => `<div class="invitation-batch-row"><div><span class="status-badge ${batch.status === "open" ? "status-active" : "status-disabled"}">${escapeHTML(statusLabels[batch.status] || batch.status)}</span><strong>${Number(batch.claimed_count || 0)} / ${Number(batch.capacity || 0)} 人已领取</strong><small>有效期至 ${escapeHTML(formatExpiry(batch.expires_at))}</small></div>${batch.status === "open" ? `<button class="danger-button small" type="button" data-action="close-invitation-batch" data-batch-id="${escapeHTML(batch.id)}">关闭批次</button>` : ""}</div>`).join("")}</div></article>`;
 }
 
 function batchDialog() {
-  return `<form method="dialog" class="dialog-card" data-action="create-invitation-batch"><div class="dialog-head"><div><span class="panel-kicker">ONE LINK / MANY MEMBERS</span><h2>创建自助接入批次</h2></div><button class="icon-button" type="button" data-action="close-dialog" aria-label="关闭">×</button></div><p>生成一个可发到社群的链接。每人填写唯一公开昵称，系统再给他单独的 60 分钟一次性设备码。</p><label>最多人数<input name="capacity" type="number" min="1" max="50" value="50" required></label><label>批次有效期<select name="expires_in_hours" required><option value="1">1 小时</option><option value="6">6 小时</option><option value="12">12 小时</option><option value="24" selected>24 小时</option></select></label><div class="inline-alert">链接最多 50 人。关闭、过期或满额后，外部统一显示“批次不可用”，不会暴露具体原因。</div><div class="dialog-actions"><button class="text-button" type="button" data-action="close-dialog">取消</button><button class="primary-button small" type="submit" value="default">生成批次链接</button></div></form>`;
+  return `<form method="dialog" class="dialog-card" data-action="create-invitation-batch"><div class="dialog-head"><div><span class="panel-kicker">ONE LINK / MANY MEMBERS</span><h2>创建自助接入批次</h2></div><button class="icon-button" type="button" data-action="close-dialog" aria-label="关闭">×</button></div><p>生成一个可发到社群的链接。每人填写唯一公开昵称，系统再给他单独的 60 分钟一次性设备码。</p><label>单批人数<input name="capacity" type="number" min="1" max="50" value="50" required></label><label>批次有效期<select name="expires_in_hours" required><option value="1">1 小时</option><option value="6">6 小时</option><option value="12">12 小时</option><option value="24" selected>24 小时</option></select></label><div class="inline-alert"><strong>单批最多 50，可创建多个批次进入同一社群。</strong>关闭、过期或满额后，外部统一显示“批次不可用”，不会暴露具体原因。</div><div class="dialog-actions"><button class="text-button" type="button" data-action="close-dialog">取消</button><button class="primary-button small" type="submit" value="default">生成批次链接</button></div></form>`;
 }
 
 function memberDialog() {
@@ -396,7 +428,7 @@ function memberDialog() {
 }
 
 function enrollmentDialog(people) {
-  return `<form method="dialog" class="dialog-card" data-action="create-enrollment"><div class="dialog-head"><div><span class="panel-kicker">ONE-TIME ENROLLMENT</span><h2>创建设备连接码</h2></div><button class="icon-button" type="button" data-action="close-dialog" aria-label="关闭">×</button></div><p>连接码只显示一次，24 小时后过期。它只允许所选成员登记一台新设备。</p><label>成员<select name="user_id" required><option value="">选择成员</option>${people.filter((person) => person.status === "active" && person.role === "member").map((person) => `<option value="${escapeHTML(person.id)}">${escapeHTML(person.name)}${person.email ? ` · ${escapeHTML(person.email)}` : " · 无后台账号"}</option>`).join("")}</select></label><p class="form-note">同一社群内昵称唯一；请按昵称选择成员，避免把新设备绑到别人名下。</p><div class="dialog-actions"><button class="text-button" type="button" data-action="close-dialog">取消</button><button class="primary-button small" type="submit" value="default">生成一次性连接码</button></div></form>`;
+  return `<form method="dialog" class="dialog-card" data-action="create-enrollment"><div class="dialog-head"><div><span class="panel-kicker">SAFE REISSUE</span><h2>给已有成员补发设备码</h2></div><button class="icon-button" type="button" data-action="close-dialog" aria-label="关闭">×</button></div><p>适合成员领取后漏保存，或需要连接另一台设备。新码 60 分钟有效、只能用一次；生成后，该成员此前仍未使用且未过期的旧码会立即失效。</p><label>确认成员<select name="user_id" required><option value="">选择已有成员</option>${people.filter((person) => person.status === "active" && person.role === "member").map((person) => `<option value="${escapeHTML(person.id)}">${escapeHTML(person.name)} · ${Number(person.device_count || 0)} 台设备${person.email ? ` · ${escapeHTML(person.email)}` : ""}</option>`).join("")}</select></label><div class="inline-alert">同一成员只保留一个有效未用码；不会重复创建成员，不占自助批次名额，已使用码及其审计记录不会改变。</div><p class="form-note">请核对昵称和现有设备数量，生成后立即通过私密渠道发送；原始码不会在后台显示或保存。</p><div class="dialog-actions"><button class="text-button" type="button" data-action="close-dialog">取消</button><button class="primary-button small" type="submit" value="default">确认补发 60 分钟设备码</button></div></form>`;
 }
 
 function renderPersonDetail() {
@@ -414,8 +446,11 @@ function renderPersonDetail() {
   const publicAction = state.me?.role === "admin" && person.role === "member"
     ? `<button type="button" class="switch-control" role="switch" aria-checked="${person.public_profile_enabled === true}" aria-label="${escapeHTML(person.name || "成员")}参与社群榜" data-action="toggle-public-profile" data-user-id="${escapeHTML(person.id)}" data-enabled="${person.public_profile_enabled !== true}" data-active="${!disabled}" ${disabled ? 'disabled title="请先重新启用成员"' : ""}><span aria-hidden="true"></span><b>${disabled && person.public_profile_enabled ? "已禁用（公开页隐藏）" : person.public_profile_enabled === true ? "公开榜已开启" : "参与社群榜"}</b></button>`
     : "";
+  const enrollmentAction = state.me?.role === "admin" && person.role === "member" && !disabled
+    ? `<button class="secondary-button small" type="button" data-action="open-enrollment" data-user-id="${escapeHTML(person.id)}">${devices.length > 0 ? "添加新设备" : "补发设备码"}</button>`
+    : "";
   const costText = formatCostBreakdown(person);
-  return `<a class="back-link" href="#/people">← 返回成员列表</a><section class="person-hero"><span class="avatar large">${escapeHTML((person.name || "?").slice(0, 1))}</span><div><h2>${escapeHTML(person.name || "未命名成员")}</h2><p>${person.email ? escapeHTML(person.email) : '<span class="muted-label">无后台登录账号</span>'}</p></div><div class="person-status-actions"><span class="status-badge ${disabled ? "status-disabled" : "status-active"}">${disabled ? "已禁用" : "正常"}</span>${publicAction}${statusAction}</div></section><div class="metric-grid three">${metricCard("Token 合计", { text: formatTokens(total), full: formatTokens(total, { compact: false }) }, "当前查询范围内的设备合计", "ink")}${metricCard("设备", { text: String(devices.length), full: devices.length }, `${devices.filter((item) => item.enabled).length} 台启用`, "green")}${metricCard("API 等价估算", { text: costText, full: costText }, costEstimateNote(person, "按币种分别估算，不等于真实账单"), "blue")}</div><div class="two-column"><article class="panel"><div class="panel-head"><div><span class="panel-kicker">DEVICES</span><h2>名下设备</h2></div></div>${deviceList(devices)}</article><article class="panel"><div class="panel-head"><div><span class="panel-kicker">MODEL LEDGER</span><h2>最近模型</h2></div></div>${distribution(aggregateBy(usage, "model"), "blue")}</article></div>`;
+  return `<a class="back-link" href="#/people">← 返回成员列表</a><section class="person-hero"><span class="avatar large">${escapeHTML((person.name || "?").slice(0, 1))}</span><div><h2>${escapeHTML(person.name || "未命名成员")}</h2><p>${person.email ? escapeHTML(person.email) : '<span class="muted-label">无后台登录账号</span>'}</p></div><div class="person-status-actions"><span class="status-badge ${disabled ? "status-disabled" : "status-active"}">${disabled ? "已禁用" : "正常"}</span>${enrollmentAction}${publicAction}${statusAction}</div></section><div class="metric-grid three">${metricCard("Token 合计", { text: formatTokens(total), full: formatTokens(total, { compact: false }) }, "当前查询范围内的设备合计", "ink")}${metricCard("设备", { text: String(devices.length), full: devices.length }, `${devices.filter((item) => item.enabled).length} 台启用`, "green")}${metricCard("API 标准价估算", { text: costText, full: costText }, costEstimateNote(person, "按已识别模型和计价组成分别估算，不等于真实账单"), "blue")}</div><div class="two-column"><article class="panel"><div class="panel-head"><div><span class="panel-kicker">DEVICES</span><h2>名下设备</h2></div></div>${deviceList(devices)}</article><article class="panel"><div class="panel-head"><div><span class="panel-kicker">MODEL LEDGER</span><h2>最近模型</h2></div></div>${distribution(aggregateBy(usage, "model"), "blue")}</article></div><dialog id="enrollment-dialog">${enrollmentDialog([{ ...person, device_count: devices.length }])}</dialog>`;
 }
 
 function deviceList(items) {
@@ -488,7 +523,7 @@ function renderCosts() {
 function renderSettings() {
   const org = state.pageData || state.me?.organization || {};
   const admin = state.me?.role === "admin";
-  return `<div class="settings-layout"><div><article class="panel settings-card"><div class="panel-head"><div><span class="panel-kicker">COMMUNITY</span><h2>社群口径</h2></div></div><form data-action="save-organization"><label>社群名称<input name="name" value="${escapeHTML(org.name || "")}" ${admin ? "" : "disabled"}></label><div class="form-grid"><label>默认时区<select name="timezone" ${admin ? "" : "disabled"}>${["Asia/Shanghai", "Asia/Singapore", "UTC", "America/Los_Angeles"].map((zone) => `<option ${zone === org.timezone ? "selected" : ""}>${zone}</option>`).join("")}</select></label><label>数据保留天数<input type="number" name="retention_days" min="30" max="3650" value="${escapeHTML(org.retention_days || 365)}" ${admin ? "" : "disabled"}></label></div>${admin ? '<button class="primary-button small" type="submit">保存社群设置</button>' : '<p class="form-note">仅管理员可以修改。</p>'}</form></article><article class="panel settings-card"><div class="panel-head"><div><span class="panel-kicker">SHENGCAI RANK</span><h2>生财排行榜</h2></div></div><div class="boundary-card"><span class="boundary-icon">↗</span><div><strong>由每位成员的官方 OpenToken 独立连接</strong><p>TokenFleet 不接收、不保存、也不转发个人专属 URL、token 或 device secret。社群服务不可用时，不会影响成员上榜。</p></div></div></article></div><aside><article class="privacy-manifesto"><span class="panel-kicker">DATA MINIMIZATION</span><h2>我们只知道多少，<br><em>不知道说了什么。</em></h2><ul><li><span>采集</span>日期、时区、工具、模型、四类 Token、匿名设备 ID</li><li><span>不采集</span>prompt、回复、代码、文件、项目路径、会话正文</li><li><span>不评价</span>Token 不作为个人绩效或产出指标</li></ul></article><article class="panel key-card"><span class="panel-kicker">SESSION SECURITY</span><h2>当前浏览器凭证</h2><p>短期会话令牌只保存在 sessionStorage。关闭这个标签页后会自动清除。</p><button class="danger-button full" data-action="logout">清除并退出</button></article></aside></div>`;
+  return `<div class="settings-layout"><div><article class="panel settings-card"><div class="panel-head"><div><span class="panel-kicker">COMMUNITY</span><h2>社群口径</h2></div></div><form data-action="save-organization"><label>社群名称<input name="name" value="${escapeHTML(org.name || "")}" ${admin ? "" : "disabled"}></label><div class="form-grid"><label>默认时区<select name="timezone" ${admin ? "" : "disabled"}>${["Asia/Shanghai", "Asia/Singapore", "UTC", "America/Los_Angeles"].map((zone) => `<option ${zone === org.timezone ? "selected" : ""}>${zone}</option>`).join("")}</select></label><label>数据保留天数<input type="number" name="retention_days" min="30" max="3650" value="${escapeHTML(org.retention_days || 365)}" ${admin ? "" : "disabled"}></label></div>${admin ? '<button class="primary-button small" type="submit">保存社群设置</button>' : '<p class="form-note">仅管理员可以修改。</p>'}</form></article><article class="panel settings-card"><div class="panel-head"><div><span class="panel-kicker">EXTERNAL CONNECTIONS</span><h2>第三方服务边界</h2></div></div><div class="boundary-card"><span class="boundary-icon">↗</span><div><strong>第三方排行榜或社区服务由成员自行连接</strong><p>TokenFleet 不接收、不保存、也不转发个人专属 URL、访问令牌或设备密钥。TokenFleet 社群服务不可用时，不会改变其他服务的连接状态。</p></div></div></article></div><aside><article class="privacy-manifesto"><span class="panel-kicker">DATA MINIMIZATION</span><h2>我们只知道多少，<br><em>不知道说了什么。</em></h2><ul><li><span>采集</span>日期、时区、工具、模型、四类 Token、匿名设备 ID</li><li><span>不采集</span>prompt、回复、代码、文件、项目路径、会话正文</li><li><span>不评价</span>Token 不作为个人绩效或产出指标</li></ul></article><article class="panel key-card"><span class="panel-kicker">SESSION SECURITY</span><h2>当前浏览器凭证</h2><p>短期会话令牌只保存在 sessionStorage。关闭这个标签页后会自动清除。</p><button class="danger-button full" data-action="logout">清除并退出</button></article></aside></div>`;
 }
 
 function emptyInline(message) {
@@ -665,7 +700,7 @@ function toast(message, type = "success", generation = navigationGeneration) {
 
 async function boot(generation = beginNavigation()) {
   if (!isCurrentNavigation(generation)) return;
-  const publicRoute = parseCommunityRoute(location);
+  const publicRoute = memberRouteFromLocation();
   if (publicRoute) {
     const joinCode = publicRoute.kind === "join" ? takeJoinCode() : "";
     const batchInvitationToken = publicRoute.kind === "batch"
@@ -698,14 +733,14 @@ async function boot(generation = beginNavigation()) {
     await loadPage(generation);
   } catch (error) {
     if (!isCurrentNavigation(generation)) return;
-    renderLogin(error?.message || "凭证验证失败");
+    renderLogin(adminSessionErrorMessage(error));
   }
 }
 
 window.addEventListener("hashchange", async () => {
   captureJoinCode();
   const generation = beginNavigation();
-  if (parseCommunityRoute(location)) {
+  if (memberRouteFromLocation()) {
     await boot(generation);
     return;
   }
@@ -752,7 +787,7 @@ document.addEventListener("submit", async (event) => {
     } catch (error) {
       if (!isCurrentNavigation(generation)) return;
       clearApiKey();
-      renderLogin(error?.message || "无法验证这个 API Key");
+      renderLogin(adminLoginErrorMessage(error));
     }
   }
 
@@ -817,10 +852,11 @@ document.addEventListener("submit", async (event) => {
   if (action === "create-enrollment") {
     if (event.submitter?.value === "cancel") return;
     try {
-      const result = await api.createEnrollment({ user_id: data.user_id, label: data.label, expires_in_hours: 24 });
+      const result = await api.createEnrollment({ user_id: data.user_id, expires_in_minutes: 60 });
       if (!isCurrentNavigation(generation)) return;
       form.closest("dialog")?.close();
       showOneTimeConnection(result, generation);
+      toast("新设备码已生成；旧的未使用有效码已失效，成员数和批次名额未变化", "success", generation);
     } catch (error) {
       if (isCurrentNavigation(generation)) toast(error.message, "error", generation);
     }
@@ -898,7 +934,12 @@ document.addEventListener("click", async (event) => {
   if (action === "retry") await loadPage(generation);
   if (action === "open-member") document.querySelector("#member-dialog")?.showModal();
   if (action === "open-batch") document.querySelector("#batch-dialog")?.showModal();
-  if (action === "open-enrollment") document.querySelector("#enrollment-dialog")?.showModal();
+  if (action === "open-enrollment") {
+    const dialog = document.querySelector("#enrollment-dialog");
+    const select = dialog?.querySelector('select[name="user_id"]');
+    if (select && target.dataset.userId) select.value = target.dataset.userId;
+    dialog?.showModal();
+  }
   if (action === "close-invitation-batch") {
     if (target.dataset.pending === "true" || !target.dataset.batchId) return;
     if (!confirm("关闭这个自助批次？尚未领取的人将统一看到“批次不可用”，已生成的个人设备码不受影响。")) return;
@@ -1057,7 +1098,7 @@ function showOneTimeBatchInvite(result, generation = navigationGeneration) {
   const batch = result.batch || {};
   const dialog = document.createElement("dialog");
   dialog.className = "token-dialog";
-  dialog.innerHTML = `<div class="dialog-card"><div class="dialog-head"><div><span class="panel-kicker">COPY ONCE / SHARE PRIVATELY</span><h2>自助批次链接已生成</h2></div><button class="icon-button" type="button" data-dialog-close aria-label="关闭">×</button></div><div class="batch-link-summary"><strong>${Number(batch.claimed_count || 0)} / ${Number(batch.capacity || 50)}</strong><span>已领取 · 有效期至 ${escapeHTML(formatExpiry(batch.expires_at))}</span></div><button class="primary-button" type="button" data-copy-batch-link>复制 50 人自助接入链接</button><p>批次令牌不会显示在页面或写入浏览器存储。把同一个链接发到社群即可；每位成员必须填写唯一昵称，并只会拿到自己的个人设备码。</p><p class="form-note">若链接被外传，可在成员页立即关闭批次；系统对外不会区分已满、已关、过期或无效。</p></div>`;
+  dialog.innerHTML = `<div class="dialog-card"><div class="dialog-head"><div><span class="panel-kicker">COPY ONCE / SHARE PRIVATELY</span><h2>自助批次链接已生成</h2></div><button class="icon-button" type="button" data-dialog-close aria-label="关闭">×</button></div><div class="batch-link-summary"><strong>${Number(batch.claimed_count || 0)} / ${Number(batch.capacity || 50)}</strong><span>本批已领取 · 有效期至 ${escapeHTML(formatExpiry(batch.expires_at))}</span></div><button class="primary-button" type="button" data-copy-batch-link>复制本批次自助接入链接</button><p>批次令牌不会显示在页面或写入浏览器存储。单批最多 50，可继续创建多个批次进入同一社群；每位成员只会拿到自己的个人设备码。</p><p class="form-note">若链接被外传，可在成员页立即关闭批次；系统对外不会区分已满、已关、过期或无效。</p></div>`;
   if (!isCurrentNavigation(generation)) return;
   document.body.append(dialog);
   const batchLink = () => `${location.origin}/join/batch#invite=${encodeURIComponent(rawToken)}`;
@@ -1065,7 +1106,7 @@ function showOneTimeBatchInvite(result, generation = navigationGeneration) {
   dialog.querySelector("[data-copy-batch-link]").addEventListener("click", async () => {
     await navigator.clipboard.writeText(batchLink());
     if (!isCurrentNavigation(generation)) return;
-    toast("50 人自助接入链接已复制", "success", generation);
+    toast("本批次自助接入链接已复制", "success", generation);
   });
   dialog.addEventListener("close", () => {
     rawToken = "";

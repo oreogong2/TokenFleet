@@ -54,7 +54,11 @@ struct TokenStepThemePalette {
 enum TokenStepTheme: String, CaseIterable, Identifiable, Codable {
     case green
     case ocean
+    case teal
+    case indigo
     case violet
+    case rose
+    case coral
     case amber
     case graphite
 
@@ -64,7 +68,11 @@ enum TokenStepTheme: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .green: return L("青绿")
         case .ocean: return L("海蓝")
+        case .teal: return L("信号青")
+        case .indigo: return L("靛蓝")
         case .violet: return L("紫藤")
+        case .rose: return L("玫瑰")
+        case .coral: return L("珊瑚")
         case .amber: return L("琥珀")
         case .graphite: return L("石墨")
         }
@@ -74,7 +82,11 @@ enum TokenStepTheme: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .green: return L("默认")
         case .ocean: return L("清爽")
+        case .teal: return L("信号")
+        case .indigo: return L("沉静")
         case .violet: return "Agent"
+        case .rose: return L("明快")
+        case .coral: return L("活力")
         case .amber: return L("温暖")
         case .graphite: return L("专注")
         }
@@ -118,6 +130,42 @@ enum TokenStepTheme: String, CaseIterable, Identifiable, Codable {
                 ring3: .init(red: 2 / 255, green: 132 / 255, blue: 199 / 255),
                 ring4: .init(red: 7 / 255, green: 89 / 255, blue: 133 / 255)
             )
+        case .teal:
+            return TokenStepThemePalette(
+                canvas: .init(red: 244 / 255, green: 250 / 255, blue: 249 / 255),
+                surface: .init(red: 255 / 255, green: 255 / 255, blue: 255 / 255),
+                accent: .init(red: 16 / 255, green: 163 / 255, blue: 163 / 255),
+                accentDark: .init(red: 15 / 255, green: 118 / 255, blue: 110 / 255),
+                accentSoft: .init(red: 153 / 255, green: 246 / 255, blue: 228 / 255),
+                track: .init(red: 229 / 255, green: 240 / 255, blue: 238 / 255),
+                lowActivity: .init(red: 204 / 255, green: 251 / 255, blue: 241 / 255),
+                activity1: .init(red: 153 / 255, green: 246 / 255, blue: 228 / 255),
+                activity2: .init(red: 45 / 255, green: 212 / 255, blue: 191 / 255),
+                activity3: .init(red: 20 / 255, green: 184 / 255, blue: 166 / 255),
+                activity4: .init(red: 15 / 255, green: 118 / 255, blue: 110 / 255),
+                ring1: .init(red: 45 / 255, green: 212 / 255, blue: 191 / 255),
+                ring2: .init(red: 20 / 255, green: 184 / 255, blue: 166 / 255),
+                ring3: .init(red: 13 / 255, green: 148 / 255, blue: 136 / 255),
+                ring4: .init(red: 17 / 255, green: 94 / 255, blue: 89 / 255)
+            )
+        case .indigo:
+            return TokenStepThemePalette(
+                canvas: .init(red: 247 / 255, green: 248 / 255, blue: 254 / 255),
+                surface: .init(red: 255 / 255, green: 255 / 255, blue: 255 / 255),
+                accent: .init(red: 66 / 255, green: 88 / 255, blue: 208 / 255),
+                accentDark: .init(red: 49 / 255, green: 46 / 255, blue: 129 / 255),
+                accentSoft: .init(red: 199 / 255, green: 210 / 255, blue: 254 / 255),
+                track: .init(red: 235 / 255, green: 237 / 255, blue: 247 / 255),
+                lowActivity: .init(red: 224 / 255, green: 231 / 255, blue: 255 / 255),
+                activity1: .init(red: 199 / 255, green: 210 / 255, blue: 254 / 255),
+                activity2: .init(red: 129 / 255, green: 140 / 255, blue: 248 / 255),
+                activity3: .init(red: 79 / 255, green: 70 / 255, blue: 229 / 255),
+                activity4: .init(red: 49 / 255, green: 46 / 255, blue: 129 / 255),
+                ring1: .init(red: 129 / 255, green: 140 / 255, blue: 248 / 255),
+                ring2: .init(red: 79 / 255, green: 70 / 255, blue: 229 / 255),
+                ring3: .init(red: 67 / 255, green: 56 / 255, blue: 202 / 255),
+                ring4: .init(red: 49 / 255, green: 46 / 255, blue: 129 / 255)
+            )
         case .violet:
             return TokenStepThemePalette(
                 canvas: .init(red: 250 / 255, green: 248 / 255, blue: 255 / 255),
@@ -135,6 +183,42 @@ enum TokenStepTheme: String, CaseIterable, Identifiable, Codable {
                 ring2: .init(red: 139 / 255, green: 92 / 255, blue: 246 / 255),
                 ring3: .init(red: 109 / 255, green: 40 / 255, blue: 217 / 255),
                 ring4: .init(red: 76 / 255, green: 29 / 255, blue: 149 / 255)
+            )
+        case .rose:
+            return TokenStepThemePalette(
+                canvas: .init(red: 255 / 255, green: 247 / 255, blue: 250 / 255),
+                surface: .init(red: 255 / 255, green: 255 / 255, blue: 255 / 255),
+                accent: .init(red: 219 / 255, green: 79 / 255, blue: 134 / 255),
+                accentDark: .init(red: 159 / 255, green: 18 / 255, blue: 57 / 255),
+                accentSoft: .init(red: 251 / 255, green: 207 / 255, blue: 232 / 255),
+                track: .init(red: 245 / 255, green: 233 / 255, blue: 239 / 255),
+                lowActivity: .init(red: 252 / 255, green: 231 / 255, blue: 243 / 255),
+                activity1: .init(red: 251 / 255, green: 207 / 255, blue: 232 / 255),
+                activity2: .init(red: 244 / 255, green: 114 / 255, blue: 182 / 255),
+                activity3: .init(red: 219 / 255, green: 39 / 255, blue: 119 / 255),
+                activity4: .init(red: 159 / 255, green: 18 / 255, blue: 57 / 255),
+                ring1: .init(red: 244 / 255, green: 114 / 255, blue: 182 / 255),
+                ring2: .init(red: 219 / 255, green: 39 / 255, blue: 119 / 255),
+                ring3: .init(red: 190 / 255, green: 24 / 255, blue: 93 / 255),
+                ring4: .init(red: 136 / 255, green: 19 / 255, blue: 55 / 255)
+            )
+        case .coral:
+            return TokenStepThemePalette(
+                canvas: .init(red: 255 / 255, green: 248 / 255, blue: 245 / 255),
+                surface: .init(red: 255 / 255, green: 255 / 255, blue: 253 / 255),
+                accent: .init(red: 226 / 255, green: 111 / 255, blue: 85 / 255),
+                accentDark: .init(red: 163 / 255, green: 55 / 255, blue: 38 / 255),
+                accentSoft: .init(red: 254 / 255, green: 202 / 255, blue: 202 / 255),
+                track: .init(red: 244 / 255, green: 236 / 255, blue: 233 / 255),
+                lowActivity: .init(red: 255 / 255, green: 228 / 255, blue: 220 / 255),
+                activity1: .init(red: 254 / 255, green: 202 / 255, blue: 202 / 255),
+                activity2: .init(red: 251 / 255, green: 146 / 255, blue: 120 / 255),
+                activity3: .init(red: 234 / 255, green: 88 / 255, blue: 67 / 255),
+                activity4: .init(red: 163 / 255, green: 55 / 255, blue: 38 / 255),
+                ring1: .init(red: 251 / 255, green: 146 / 255, blue: 120 / 255),
+                ring2: .init(red: 234 / 255, green: 88 / 255, blue: 67 / 255),
+                ring3: .init(red: 194 / 255, green: 65 / 255, blue: 45 / 255),
+                ring4: .init(red: 124 / 255, green: 45 / 255, blue: 31 / 255)
             )
         case .amber:
             return TokenStepThemePalette(

@@ -35,7 +35,7 @@ struct ShareRhythmCardView: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 13) {
-            TokenStepMark(size: 50)
+            TokenFleetSignalMark(size: 50)
                 .shadow(color: palette.accent.opacity(0.22), radius: 12, x: 0, y: 0)
 
             VStack(alignment: .leading, spacing: 3) {

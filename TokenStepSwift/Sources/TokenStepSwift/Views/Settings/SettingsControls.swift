@@ -37,7 +37,7 @@ struct SettingsCard<Content: View>: View {
     var height: CGFloat
     var content: Content
 
-    init(title: String, symbol: String, height: CGFloat = 260, @ViewBuilder content: () -> Content) {
+    init(title: String, symbol: String, height: CGFloat = 150, @ViewBuilder content: () -> Content) {
         self.title = title
         self.symbol = symbol
         self.height = height
@@ -45,35 +45,33 @@ struct SettingsCard<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 7) {
                 Image(systemName: symbol)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(Color.tokenGreenDark)
-                    .frame(width: 30, height: 30)
+                    .frame(width: 22, height: 22)
                     .background(Color.tokenMint.opacity(0.22), in: Circle())
                 Text(title)
-                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
                 Spacer()
             }
-            .frame(height: 32, alignment: .center)
+            .frame(height: 24, alignment: .center)
 
             content
                 .frame(maxWidth: .infinity, alignment: .topLeading)
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 22)
-        .padding(.top, 24)
-        .padding(.bottom, 22)
-        .frame(height: height)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .frame(minHeight: height, alignment: .top)
         .frame(maxWidth: .infinity)
-        .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.black.opacity(0.06)))
-        .shadow(color: Color.black.opacity(0.055), radius: 22, x: 0, y: 14)
+        .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.black.opacity(0.08)))
     }
 }
 
@@ -101,7 +99,7 @@ struct ThemeSwatchButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 7) {
+            VStack(spacing: 4) {
                 ZStack {
                     Circle()
                         .fill(
@@ -115,7 +113,7 @@ struct ThemeSwatchButton: View {
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: 38, height: 38)
+                        .frame(width: 32, height: 32)
                         .shadow(color: theme.palette.accentDark.color.opacity(selected ? 0.22 : 0.10), radius: 8, x: 0, y: 4)
 
                     if selected {
@@ -135,7 +133,7 @@ struct ThemeSwatchButton: View {
                 }
             }
                 .frame(maxWidth: .infinity)
-                .frame(height: 80)
+                .frame(height: 66)
                 .background(selected ? theme.palette.accentSoft.color.opacity(0.22) : Color.tokenTrack.opacity(0.24), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -175,7 +173,7 @@ struct LanguageOptionButton: View {
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 40)
+            .frame(height: 34)
             .padding(.horizontal, 10)
             .background(selected ? Color.tokenMint.opacity(0.24) : Color.tokenTrack.opacity(0.28), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(selected ? Color.tokenGreen.opacity(0.32) : Color.black.opacity(0.04)))
@@ -244,6 +242,28 @@ struct SettingsToggleRow: View {
                 .font(.callout.weight(.bold))
                 .foregroundStyle(Color.tokenInk.opacity(0.78))
             Spacer()
+            ScreenshotSafeToggle(isOn: $isOn)
+        }
+    }
+}
+
+struct ScreenshotSafeToggle: View {
+    @Environment(\.isScreenshotRendering) private var isScreenshotRendering
+    @Binding var isOn: Bool
+
+    var body: some View {
+        if isScreenshotRendering {
+            ZStack(alignment: isOn ? .trailing : .leading) {
+                Capsule()
+                    .fill(isOn ? Color.tokenGreen : Color.tokenTrack)
+                    .frame(width: 32, height: 18)
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 14, height: 14)
+                    .padding(2)
+            }
+            .accessibilityLabel(isOn ? L("已开启") : L("已关闭"))
+        } else {
             Toggle("", isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)

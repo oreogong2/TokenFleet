@@ -1,264 +1,354 @@
 import SwiftUI
 
+/// The beta.8 chart intentionally uses one Token axis. Cache coverage stays
+/// available as an explanatory detail, but it never shares a visual scale with
+/// Token volume.
 struct TodayAgentWorkCard: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.isScreenshotRendering) private var isScreenshotRendering
     @State private var period: AgentWorkPeriod = .today
-    @State private var sourceFilter: AgentWorkSourceFilter = .all
-
-    private var work: DailyAgentWork {
-        appState.todayAgentWork
-    }
+    @State private var dimension: AgentWorkDimension = .tool
+    @State private var selectedValue = AgentWorkSelection.all
 
     var body: some View {
-        TokenCard {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                sourceFilterRow
-                metricStrip
-
-                AgentWorkActivityChart(
-                    hours: chartHours,
-                    legendSources: legendSources,
-                    period: period,
-                    unbucketedTokens: selectedUnbucketedTokens
-                )
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            readingSummary
+            filterRow
+            metricStrip
+            AgentWorkTokenChart(bars: chartBars, period: period)
+            cacheDetail
+        }
+        .padding(15)
+        .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.black.opacity(0.07)))
+        .onChange(of: dimension) { _ in selectedValue = AgentWorkSelection.all }
+        .onChange(of: period) { _ in
+            if !availableValues.contains(selectedValue) {
+                selectedValue = AgentWorkSelection.all
             }
         }
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 20) {
-            VStack(alignment: .leading, spacing: 5) {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(L("Agent 工作强度"))
-                    .font(.title3.weight(.heavy))
+                    .font(.headline.weight(.heavy))
                     .foregroundStyle(Color.tokenInk)
-                Text(AgentWorkCopy.disclaimer)
+                Text(L("看清 Token 主要在什么时间产生；不代表工时或生产力。"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-
             Spacer(minLength: 12)
-
             HStack(spacing: 4) {
                 ForEach(AgentWorkPeriod.allCases) { item in
-                    AgentWorkSegmentButton(
-                        title: item.title,
-                        selected: period == item
-                    ) {
+                    AgentWorkSegmentButton(title: item.title, selected: period == item) {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
                             period = item
                         }
                     }
                 }
             }
-            .padding(4)
+            .padding(3)
             .background(Color.tokenTrack.opacity(0.42), in: Capsule())
         }
     }
 
-    private var sourceFilterRow: some View {
+    private var readingSummary: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(L("一句话看懂"))
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(Color.tokenGreenDark)
+            Text(summarySentence)
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(Color.tokenInk)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.tokenMint.opacity(0.18), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var filterRow: some View {
         HStack(spacing: 8) {
-            ForEach(AgentWorkSourceFilter.allCases) { item in
-                AgentWorkFilterButton(
-                    title: item.title,
-                    selected: sourceFilter == item,
-                    color: item.tint
-                ) {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
-                        sourceFilter = item
+            HStack(spacing: 4) {
+                ForEach(AgentWorkDimension.allCases) { item in
+                    AgentWorkSegmentButton(title: item.title, selected: dimension == item) {
+                        withAnimation(.spring(response: 0.26, dampingFraction: 0.88)) {
+                            dimension = item
+                        }
                     }
                 }
             }
+            .padding(3)
+            .background(Color.tokenTrack.opacity(0.42), in: Capsule())
+
+            if isScreenshotRendering {
+                HStack(spacing: 7) {
+                    Text(selectedValue == AgentWorkSelection.all ? dimension.allLabel : selectedValue)
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundStyle(Color.tokenInk.opacity(0.76))
+                    Spacer(minLength: 6)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 7, weight: .heavy))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 9)
+                .frame(minWidth: 150, maxWidth: 220, minHeight: 28)
+                .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Color.black.opacity(0.09)))
+            } else {
+                Picker(dimension.filterLabel, selection: $selectedValue) {
+                    Text(dimension.allLabel).tag(AgentWorkSelection.all)
+                    ForEach(availableValues, id: \.self) { value in
+                        Text(value).tag(value)
+                    }
+                }
+                .labelsHidden()
+                .frame(minWidth: 150, maxWidth: 220)
+            }
+
+            Text(LFormat("%d 个%@ · 可继续扩展", availableValues.count, dimension.countNoun))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
     }
 
     private var metricStrip: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 7) {
             AgentWorkMetricTile(
-                title: L("Agent Token"),
+                title: period == .today ? L("今日 Token") : L("近 7 日 Token"),
                 value: TokenStepFormat.tokens(selectedPeriodTokens, compact: true),
-                detail: period.metricDetail,
-                symbol: "bolt.horizontal.circle.fill",
-                color: .tokenGreen
+                detail: selectionDescription
             )
             AgentWorkMetricTile(
-                title: AgentWorkCopy.recordedHours,
-                value: "\(selectedActiveHours)/\(period.maximumHours)",
-                detail: AgentWorkCopy.recordedHourDetail,
-                symbol: "clock.fill",
-                color: Color(red: 0.20, green: 0.52, blue: 0.92)
+                title: period == .today ? L("活跃小时") : L("活跃天数"),
+                value: period == .today ? "\(activeBarCount) / 24" : localizedDays(activeBarCount),
+                detail: L("有 Token 记录")
             )
             AgentWorkMetricTile(
-                title: L("近 7 日均"),
-                value: TokenStepFormat.tokens(selectedSevenDayAverage, compact: true),
-                detail: AgentWorkCopy.calendarDayAverage,
-                symbol: "calendar.badge.clock",
-                color: Color(red: 0.50, green: 0.28, blue: 0.92)
+                title: period == .today ? L("峰值时段") : L("峰值日期"),
+                value: peakLabel,
+                detail: peakTokens > 0 ? TokenStepFormat.tokens(peakTokens, compact: true) : "--"
             )
             AgentWorkMetricTile(
-                title: AgentWorkCopy.cacheHitRate,
-                value: cacheRateText(selectedCacheHitRate),
-                detail: selectedCacheHitRate == nil
-                    ? AgentWorkCopy.coverageUnavailable
-                    : AgentWorkCopy.completeCoverageOnly,
-                symbol: "arrow.triangle.2.circlepath",
-                color: .tokenGreenDark
+                title: period == .today ? L("较近 7 日均值") : L("日均 Token"),
+                value: comparisonText,
+                detail: L("按 7 个日历日计算")
             )
         }
     }
 
-    private var trailingSevenDayWorks: [DailyAgentWork] {
+    private var cacheDetail: some View {
+        DisclosureGroup {
+            Text(cacheExplanation)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 6)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(Color.tokenGreenDark)
+                Text(L("缓存详情"))
+                    .font(.caption.weight(.heavy))
+                Text(cacheRateText(selectedCacheHitRate))
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(Color.tokenGreenDark)
+            }
+        }
+        .tint(Color.tokenGreenDark)
+    }
+
+    private var trailingDates: [String] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
-        let todayKey = DateFormatter.tokenStepDay.string(from: Date())
-        guard let today = DateFormatter.tokenStepDay.date(from: todayKey) else {
-            return [work]
-        }
+        let today = calendar.startOfDay(for: Date())
         return (0..<7).reversed().compactMap { offset in
-            guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else {
-                return nil
-            }
-            return appState.agentWork(for: DateFormatter.tokenStepDay.string(from: date))
+            calendar.date(byAdding: .day, value: -offset, to: today)
+                .map(DateFormatter.tokenStepDay.string(from:))
         }
+    }
+
+    private var periodDates: [String] {
+        period == .today ? [DateFormatter.tokenStepDay.string(from: Date())] : trailingDates
     }
 
     private var periodWorks: [DailyAgentWork] {
+        periodDates.map(appState.agentWork(for:))
+    }
+
+    private var periodUsage: [DailyUsage] {
+        periodDates.map { date in
+            appState.snapshot.daily.last(where: { $0.date == date })
+                ?? DailyUsage(date: date, tools: [:], totalTokens: 0, cost: 0)
+        }
+    }
+
+    private var availableValues: [String] {
+        var totals: [String: Int] = [:]
+        switch dimension {
+        case .tool:
+            for work in periodWorks {
+                for source in work.sources where source.tokens > 0 {
+                    totals[source.source, default: 0] += source.tokens
+                }
+            }
+        case .model:
+            for day in periodUsage {
+                for (model, tokens) in day.models where tokens > 0 {
+                    totals[model, default: 0] += tokens
+                }
+            }
+        }
+        return totals.sorted {
+            if $0.value == $1.value { return $0.key < $1.key }
+            return $0.value > $1.value
+        }.map(\.key)
+    }
+
+    private var chartBars: [AgentWorkTokenBar] {
         switch period {
         case .today:
-            return [work]
+            let work = appState.todayAgentWork
+            return (0..<24).map { hour in
+                let bucket = work.bucket(hour: hour)
+                return AgentWorkTokenBar(
+                    id: String(format: "%02d", hour),
+                    shortLabel: String(format: "%02d", hour),
+                    fullLabel: String(format: "%02d:00–%02d:00", hour, (hour + 1) % 24),
+                    tokens: tokens(in: bucket)
+                )
+            }
         case .sevenDays:
-            return trailingSevenDayWorks
+            return Array(zip(periodDates, periodUsage)).map { date, day in
+                AgentWorkTokenBar(
+                    id: date,
+                    shortLabel: shortDate(date),
+                    fullLabel: date,
+                    tokens: selectedTokens(in: day)
+                )
+            }
         }
     }
 
     private var selectedPeriodTokens: Int {
-        periodWorks.map(selectedTokens(in:)).reduce(0, +)
-    }
-
-    private var selectedSevenDayAverage: Int {
-        trailingSevenDayWorks.map(selectedTokens(in:)).reduce(0, +) / 7
-    }
-
-    private var selectedActiveHours: Int {
-        periodWorks.reduce(0) { partial, work in
-            partial + work.hourlyBuckets.filter { selectedTokens(in: $0) > 0 }.count
-        }
-    }
-
-    private var selectedBucketedTokens: Int {
-        periodWorks
-            .flatMap(\.hourlyBuckets)
-            .map(selectedTokens(in:))
-            .reduce(0, +)
+        chartBars.map(\.tokens).reduce(0, +) + selectedUnbucketedTokens
     }
 
     private var selectedUnbucketedTokens: Int {
-        max(0, selectedPeriodTokens - selectedBucketedTokens)
+        guard period == .today else { return 0 }
+        let work = appState.todayAgentWork
+        guard selectedValue == AgentWorkSelection.all else {
+            // A legacy unbucketed total has no reliable tool/model assignment.
+            return 0
+        }
+        return work.unbucketedTokens
+    }
+
+    private var activeBarCount: Int {
+        chartBars.filter { $0.tokens > 0 }.count
+    }
+
+    private var peakBar: AgentWorkTokenBar? {
+        chartBars.max {
+            if $0.tokens == $1.tokens { return $0.id > $1.id }
+            return $0.tokens < $1.tokens
+        }
+    }
+
+    private var peakTokens: Int { peakBar?.tokens ?? 0 }
+
+    private var peakLabel: String {
+        guard let peakBar, peakBar.tokens > 0 else { return "--" }
+        return peakBar.fullLabel
+    }
+
+    private var selectedSevenDayAverage: Int {
+        let total = trailingDates.reduce(0) { partial, date in
+            let day = appState.snapshot.daily.last(where: { $0.date == date })
+                ?? DailyUsage(date: date, tools: [:], totalTokens: 0, cost: 0)
+            return partial + selectedTokens(in: day)
+        }
+        return total / 7
+    }
+
+    private var comparisonText: String {
+        guard period == .today else {
+            return TokenStepFormat.tokens(selectedPeriodTokens / 7, compact: true)
+        }
+        let average = selectedSevenDayAverage
+        guard average > 0 else { return L("样本不足") }
+        let delta = Double(selectedPeriodTokens - average) / Double(average) * 100
+        let prefix = delta >= 0 ? "+" : "−"
+        return prefix + TokenStepFormat.percent(abs(delta))
+    }
+
+    private var summarySentence: String {
+        guard let peakBar, peakBar.tokens > 0 else {
+            return L("当前筛选下还没有可统计的 Token 时段。")
+        }
+        if period == .today {
+            return LFormat("今天有 %d 个小时产生 Token，峰值在 %@", activeBarCount, peakBar.fullLabel)
+        }
+        return LFormat("近 7 天有 %d 个活跃日，峰值在 %@", activeBarCount, peakBar.fullLabel)
+    }
+
+    private var selectionDescription: String {
+        selectedValue == AgentWorkSelection.all ? dimension.allLabel : selectedValue
+    }
+
+    private var selectedHourlyRows: [AgentWorkHourlySource] {
+        periodWorks.flatMap(\.hourlyBuckets).flatMap(\.sources).filter(matchesSelection)
     }
 
     private var selectedCacheHitRate: Double? {
-        if sourceFilter == .all {
-            let activeWorks = periodWorks.filter { $0.totalTokens > 0 }
-            guard !activeWorks.isEmpty,
-                  activeWorks.allSatisfy(\.cacheCoverageComplete)
-            else {
-                return nil
-            }
-            let totalInput = activeWorks.map(\.inputTokens).reduce(0, +)
-            guard totalInput > 0 else { return nil }
-            let cachedInput = activeWorks.map(\.cachedInputTokens).reduce(0, +)
-            return Double(cachedInput) / Double(totalInput)
-        }
-
-        guard selectedUnbucketedTokens == 0 else { return nil }
-        let sources = periodWorks
-            .flatMap(\.hourlyBuckets)
-            .flatMap(\.sources)
-            .filter { sourceFilter.includes($0.source) && $0.tokens > 0 }
-        guard !sources.isEmpty,
-              sources.allSatisfy(\.cacheCoverageComplete)
-        else {
-            return nil
-        }
-        let totalInput = sources.map(\.inputTokens).reduce(0, +)
+        let rows = selectedHourlyRows.filter { $0.tokens > 0 }
+        guard !rows.isEmpty, rows.allSatisfy(\.cacheCoverageComplete) else { return nil }
+        let totalInput = rows.map(\.inputTokens).reduce(0, +)
         guard totalInput > 0 else { return nil }
-        return Double(sources.map(\.cachedInputTokens).reduce(0, +)) / Double(totalInput)
+        return Double(rows.map(\.cachedInputTokens).reduce(0, +)) / Double(totalInput)
     }
 
-    private var chartHours: [AgentWorkChartHour] {
-        var hourly = Array(repeating: [String: AgentWorkChartSource](), count: 24)
-
-        for work in periodWorks {
-            for bucket in work.hourlyBuckets where (0..<24).contains(bucket.hour) {
-                for source in bucket.sources where sourceFilter.includes(source.source) {
-                    var aggregate = hourly[bucket.hour][source.source]
-                        ?? AgentWorkChartSource(
-                            source: source.source,
-                            tokens: 0,
-                            inputTokens: 0,
-                            cachedInputTokens: 0,
-                            outputTokens: 0,
-                            cacheCoverageComplete: true
-                        )
-                    aggregate.tokens += max(0, source.tokens)
-                    aggregate.inputTokens += max(0, source.inputTokens)
-                    aggregate.cachedInputTokens += max(0, source.cachedInputTokens)
-                    aggregate.outputTokens += max(0, source.outputTokens)
-                    aggregate.cacheCoverageComplete = aggregate.cacheCoverageComplete
-                        && source.cacheCoverageComplete
-                    hourly[bucket.hour][source.source] = aggregate
-                }
-            }
+    private var cacheExplanation: String {
+        guard let rate = selectedCacheHitRate else {
+            return L("当前筛选的缓存口径不完整；缓存不会进入工作强度主图。")
         }
+        return LFormat("输入中有 %@ 复用了缓存。该指标只用于解释费用，不代表工作强度高低。", cacheRateText(rate))
+    }
 
-        return (0..<24).map { hour in
-            AgentWorkChartHour(
-                hour: hour,
-                sources: hourly[hour].values
-                    .filter { $0.tokens > 0 }
-                    .sorted {
-                        if $0.tokens == $1.tokens {
-                            return $0.source < $1.source
-                        }
-                        return $0.tokens > $1.tokens
-                    }
-            )
+    private func matchesSelection(_ row: AgentWorkHourlySource) -> Bool {
+        guard selectedValue != AgentWorkSelection.all else { return true }
+        switch dimension {
+        case .tool: return row.source == selectedValue
+        case .model: return row.model == selectedValue
         }
     }
 
-    private var legendSources: [AgentWorkLegendSource] {
-        var tokensBySource: [String: Int] = [:]
-        for work in periodWorks {
-            for source in work.sources where sourceFilter.includes(source.source) {
-                tokensBySource[source.source, default: 0] += source.tokens
-            }
+    private func tokens(in bucket: AgentWorkHourBucket) -> Int {
+        bucket.sources.filter(matchesSelection).map(\.tokens).reduce(0, +)
+    }
+
+    private func selectedTokens(in day: DailyUsage) -> Int {
+        guard selectedValue != AgentWorkSelection.all else { return day.totalTokens }
+        switch dimension {
+        case .tool: return day.tools[selectedValue] ?? 0
+        case .model: return day.models[selectedValue] ?? 0
         }
-        return tokensBySource
-            .filter { $0.value > 0 }
-            .map { AgentWorkLegendSource(source: $0.key, tokens: $0.value) }
-            .sorted {
-                if $0.tokens == $1.tokens {
-                    return $0.source < $1.source
-                }
-                return $0.tokens > $1.tokens
-            }
     }
 
-    private func selectedTokens(in work: DailyAgentWork) -> Int {
-        guard sourceFilter != .all else { return work.totalTokens }
-        return work.sources
-            .filter { sourceFilter.includes($0.source) }
-            .map(\.tokens)
-            .reduce(0, +)
+    private func shortDate(_ value: String) -> String {
+        guard let date = DateFormatter.tokenStepDay.date(from: value) else { return value }
+        let formatter = DateFormatter()
+        formatter.locale = TokenStepLocalization.locale
+        formatter.dateFormat = TokenStepLocalization.language == .en ? "EEE" : "E"
+        return formatter.string(from: date)
     }
 
-    private func selectedTokens(in bucket: AgentWorkHourBucket) -> Int {
-        bucket.sources
-            .filter { sourceFilter.includes($0.source) }
-            .map(\.tokens)
-            .reduce(0, +)
+    private func localizedDays(_ count: Int) -> String {
+        TokenStepLocalization.language == .en ? "\(count)d" : "\(count) 天"
     }
 }
 
@@ -266,9 +356,7 @@ struct PopoverAgentWorkStrip: View {
     @EnvironmentObject private var appState: AppState
     static let destination: AppSection = .today
 
-    private var work: DailyAgentWork {
-        appState.todayAgentWork
-    }
+    private var work: DailyAgentWork { appState.todayAgentWork }
 
     var body: some View {
         Button {
@@ -276,7 +364,6 @@ struct PopoverAgentWorkStrip: View {
         } label: {
             HStack(spacing: 8) {
                 Label(AgentWorkCopy.agentActivity, systemImage: "bolt.horizontal.circle.fill")
-                    .labelStyle(.titleAndIcon)
                 Text(popoverSummary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -303,8 +390,7 @@ struct PopoverAgentWorkStrip: View {
             TokenStepFormat.tokens(work.totalTokens, compact: true),
             AgentWorkCopy.recordedShort("\(work.activeHours)/24"),
             "\(AgentWorkCopy.cacheShort) \(cacheRateText(work.cacheHitRate))"
-        ]
-        .joined(separator: " · ")
+        ].joined(separator: " · ")
     }
 }
 
@@ -312,421 +398,105 @@ private struct AgentWorkMetricTile: View {
     var title: String
     var value: String
     var detail: String
-    var symbol: String
-    var color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                Image(systemName: symbol)
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(color)
-                Text(title)
-                    .font(.caption.weight(.heavy))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             Text(value)
-                .font(.system(size: 23, weight: .heavy, design: .rounded))
+                .font(.system(size: 17, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.tokenInk)
                 .lineLimit(1)
-                .minimumScaleFactor(0.62)
+                .minimumScaleFactor(0.56)
                 .monospacedDigit()
             Text(detail)
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.68)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.tokenTrack.opacity(0.24), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(Color.black.opacity(0.025))
-        )
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.tokenTrack.opacity(0.24), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
-private struct AgentWorkActivityChart: View {
-    var hours: [AgentWorkChartHour]
-    var legendSources: [AgentWorkLegendSource]
+private struct AgentWorkTokenChart: View {
+    var bars: [AgentWorkTokenBar]
     var period: AgentWorkPeriod
-    var unbucketedTokens: Int
+    @State private var hoveredID: String?
 
-    @State private var hoveredHour: Int?
-
-    private var maxTokens: Int {
-        max(1, hours.map(\.tokens).max() ?? 0)
-    }
-
-    private var hasBucketedData: Bool {
-        hours.contains { $0.tokens > 0 }
-    }
-
-    private var hasCacheLine: Bool {
-        hours.contains { $0.cacheHitRate != nil }
-    }
+    private var maximum: Int { max(1, bars.map(\.tokens).max() ?? 0) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(period.chartTitle)
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text(period == .today ? L("每小时 Token") : L("每日 Token"))
                     .font(.callout.weight(.heavy))
                     .foregroundStyle(Color.tokenInk)
-                Spacer(minLength: 10)
-                Text(chartContext)
+                Spacer()
+                Text(hoverSummary)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
                     .monospacedDigit()
             }
 
-            if hasBucketedData {
-                ZStack(alignment: .trailing) {
-                    AgentWorkPlot(
-                        hours: hours,
-                        maxTokens: maxTokens,
-                        hasCacheLine: hasCacheLine,
-                        displayDivisor: period == .sevenDays ? 7 : 1,
-                        hoveredHour: $hoveredHour
-                    )
-                    .padding(.trailing, hasCacheLine ? 34 : 0)
-
-                    if hasCacheLine {
-                        AgentWorkCacheAxis()
-                    }
-                }
-                .frame(height: 184)
-
-                HStack {
-                    AgentWorkAxisLabel("00")
-                    Spacer()
-                    AgentWorkAxisLabel("06")
-                    Spacer()
-                    AgentWorkAxisLabel("12")
-                    Spacer()
-                    AgentWorkAxisLabel("18")
-                    Spacer()
-                    AgentWorkAxisLabel("24")
-                }
-                .padding(.trailing, hasCacheLine ? 34 : 0)
-            } else {
-                HStack(spacing: 9) {
-                    Image(systemName: "questionmark.circle.fill")
-                        .font(.callout.weight(.heavy))
-                    Text(unbucketedTokens > 0 ? AgentWorkCopy.noTimedData : AgentWorkCopy.noAgentWork)
-                        .font(.callout.weight(.semibold))
-                }
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, minHeight: 184)
-                .background(Color.tokenTrack.opacity(0.18), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-            }
-
-            footer
-        }
-        .padding(14)
-        .background(Color.tokenSurface.opacity(0.64), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.black.opacity(0.055))
-        )
-        .animation(.easeOut(duration: 0.24), value: hours.map(\.tokens))
-    }
-
-    private var chartContext: String {
-        guard let hoveredHour,
-              let hour = hours.first(where: { $0.hour == hoveredHour })
-        else {
-            return hasCacheLine ? AgentWorkCopy.chartLegendHint : AgentWorkCopy.tokenBarHint
-        }
-        let displayedTokens = period == .sevenDays
-            ? max(hour.tokens > 0 ? 1 : 0, Int((Double(hour.tokens) / 7).rounded()))
-            : hour.tokens
-        var parts = [
-            String(format: "%02d:00", hour.hour),
-            TokenStepFormat.tokens(displayedTokens, compact: true)
-                + (period == .sevenDays ? AgentWorkCopy.averageSuffix : "")
-        ]
-        let sources = agentWorkSourceBreakdown(
-            hour.sources,
-            displayDivisor: period == .sevenDays ? 7 : 1,
-            limit: 2
-        )
-        if !sources.isEmpty {
-            parts.append(sources)
-        }
-        if let rate = hour.cacheHitRate {
-            parts.append("\(AgentWorkCopy.cacheShort) \(cacheRateText(rate))")
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private var footer: some View {
-        HStack(spacing: 12) {
-            ForEach(Array(legendSources.prefix(4))) { source in
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(tokenToolColor(source.source))
-                        .frame(width: 8, height: 8)
-                    Text(source.source)
-                        .lineLimit(1)
-                }
-            }
-
-            if legendSources.count > 4 {
-                Text("+\(legendSources.count - 4)")
-            }
-
-            if hasCacheLine {
-                HStack(spacing: 5) {
-                    Capsule()
-                        .fill(Color.tokenGreenDark)
-                        .frame(width: 15, height: 2)
-                    Text(AgentWorkCopy.cacheHitRate)
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            if unbucketedTokens > 0 {
-                Text(
-                    period == .sevenDays
-                        ? AgentWorkCopy.unbucketedSevenDayTotal(
-                            TokenStepFormat.tokens(unbucketedTokens, compact: true)
-                        )
-                        : AgentWorkCopy.unbucketed(
-                            TokenStepFormat.tokens(unbucketedTokens, compact: true)
-                        )
-                )
-                    .foregroundStyle(Color.orange)
-                    .help(AgentWorkCopy.unbucketedHelp)
-            }
-        }
-        .font(.caption2.weight(.bold))
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
-        .minimumScaleFactor(0.68)
-    }
-}
-
-private struct AgentWorkPlot: View {
-    var hours: [AgentWorkChartHour]
-    var maxTokens: Int
-    var hasCacheLine: Bool
-    var displayDivisor: Int
-    @Binding var hoveredHour: Int?
-
-    var body: some View {
-        GeometryReader { proxy in
-            let slotWidth = proxy.size.width / 24
-
-            ZStack {
-                AgentWorkGrid()
-
-                if let hoveredHour {
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Color.tokenMint.opacity(0.20))
-                        .frame(width: max(6, slotWidth - 2), height: proxy.size.height)
-                        .position(
-                            x: slotWidth * (CGFloat(hoveredHour) + 0.5),
-                            y: proxy.size.height / 2
-                        )
-                }
-
-                ForEach(hours) { hour in
-                    let height = hour.tokens > 0
-                        ? max(3, proxy.size.height * CGFloat(hour.tokens) / CGFloat(max(maxTokens, 1)))
-                        : 2
-                    AgentWorkStackedBar(
-                        sources: hour.sources,
-                        totalTokens: hour.tokens,
-                        empty: hour.tokens == 0
-                    )
-                    .frame(
-                        width: min(18, max(5, slotWidth * 0.58)),
-                        height: height
-                    )
-                    .position(
-                        x: slotWidth * (CGFloat(hour.hour) + 0.5),
-                        y: proxy.size.height - height / 2
-                    )
-                }
-
-                if hasCacheLine {
-                    AgentCacheHitLineShape(values: hours.map(\.cacheHitRate))
-                        .stroke(
-                            Color.tokenGreenDark,
-                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
-                        )
-                        .shadow(color: Color.tokenGreen.opacity(0.16), radius: 4)
-
-                    ForEach(hours) { hour in
-                        if let rate = hour.cacheHitRate {
-                            Circle()
-                                .fill(Color.tokenSurface)
-                                .overlay(Circle().stroke(Color.tokenGreenDark, lineWidth: 2))
-                                .frame(width: 7, height: 7)
-                                .position(
-                                    x: slotWidth * (CGFloat(hour.hour) + 0.5),
-                                    y: cachePointY(rate: rate, height: proxy.size.height)
-                                )
-                        }
-                    }
-                }
-
-                ForEach(hours) { hour in
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .frame(width: slotWidth, height: proxy.size.height)
-                        .position(
-                            x: slotWidth * (CGFloat(hour.hour) + 0.5),
-                            y: proxy.size.height / 2
-                        )
-                        .onHover { hovering in
-                            if hovering {
-                                hoveredHour = hour.hour
-                            } else if hoveredHour == hour.hour {
-                                hoveredHour = nil
-                            }
-                        }
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(accessibilityText(for: hour))
-                }
-            }
-        }
-    }
-
-    private func accessibilityText(for hour: AgentWorkChartHour) -> String {
-        let displayedTokens = max(
-            hour.tokens > 0 ? 1 : 0,
-            Int((Double(hour.tokens) / Double(max(displayDivisor, 1))).rounded())
-        )
-        var text = "\(String(format: "%02d:00", hour.hour)), \(TokenStepFormat.tokens(displayedTokens))"
-        if displayDivisor > 1 {
-            text += AgentWorkCopy.averageSuffix
-        }
-        let sources = agentWorkSourceBreakdown(
-            hour.sources,
-            displayDivisor: displayDivisor,
-            limit: nil
-        )
-        if !sources.isEmpty {
-            text += ", \(sources)"
-        }
-        if let rate = hour.cacheHitRate {
-            text += ", \(AgentWorkCopy.cacheHitRate) \(cacheRateText(rate))"
-        }
-        return text
-    }
-}
-
-private struct AgentWorkGrid: View {
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(0..<5, id: \.self) { index in
-                Rectangle()
-                    .fill(Color.tokenTrack.opacity(index == 4 ? 0.72 : 0.44))
-                    .frame(height: 1)
-                if index < 4 {
-                    Spacer()
-                }
-            }
-        }
-    }
-}
-
-private struct AgentWorkStackedBar: View {
-    var sources: [AgentWorkChartSource]
-    var totalTokens: Int
-    var empty: Bool
-
-    var body: some View {
-        if empty {
-            Capsule()
-                .fill(Color.tokenTrack.opacity(0.72))
-        } else {
             GeometryReader { proxy in
-                VStack(spacing: 0) {
-                    ForEach(Array(sources.reversed())) { source in
-                        Rectangle()
-                            .fill(tokenToolColor(source.source))
-                            .frame(
-                                height: proxy.size.height
-                                    * CGFloat(source.tokens)
-                                    / CGFloat(max(totalTokens, 1))
-                            )
+                let spacing: CGFloat = period == .today ? 3 : 10
+                let width = max(5, (proxy.size.width - spacing * CGFloat(max(bars.count - 1, 0))) / CGFloat(max(bars.count, 1)))
+                HStack(alignment: .bottom, spacing: spacing) {
+                    ForEach(bars) { bar in
+                        let height = bar.tokens > 0
+                            ? max(5, proxy.size.height * CGFloat(bar.tokens) / CGFloat(maximum))
+                            : 2
+                        RoundedRectangle(cornerRadius: min(4, width / 2), style: .continuous)
+                            .fill(bar.tokens > 0 ? Color.tokenGreen : Color.tokenTrack)
+                            .frame(width: width, height: height)
+                            .frame(width: width, height: proxy.size.height, alignment: .bottom)
+                            .contentShape(Rectangle())
+                            .onHover { hovering in hoveredID = hovering ? bar.id : (hoveredID == bar.id ? nil : hoveredID) }
+                            .help("\(bar.fullLabel)\n\(TokenStepFormat.tokens(bar.tokens))")
                     }
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .stroke(Color.white.opacity(0.42), lineWidth: 0.5)
-            )
-        }
-    }
-}
+            .frame(height: 96)
 
-private struct AgentCacheHitLineShape: Shape {
-    var values: [Double?]
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        var hasCurrentSegment = false
-        let slotWidth = rect.width / CGFloat(max(values.count, 1))
-
-        for (index, value) in values.enumerated() {
-            guard let value else {
-                hasCurrentSegment = false
-                continue
+            HStack {
+                if period == .today {
+                    ForEach(["00", "06", "12", "18", "24"], id: \.self) { label in
+                        Text(label)
+                        if label != "24" { Spacer() }
+                    }
+                } else {
+                    ForEach(bars) { bar in
+                        Text(bar.shortLabel).frame(maxWidth: .infinity)
+                    }
+                }
             }
-            let point = CGPoint(
-                x: slotWidth * (CGFloat(index) + 0.5),
-                y: cachePointY(rate: value, height: rect.height)
-            )
-            if hasCurrentSegment {
-                path.addLine(to: point)
-            } else {
-                path.move(to: point)
-                hasCurrentSegment = true
-            }
-        }
-        return path
-    }
-}
-
-private struct AgentWorkCacheAxis: View {
-    var body: some View {
-        VStack {
-            Text("100%")
-            Spacer()
-            Text("0%")
-        }
-        .font(.system(size: 9, weight: .bold, design: .rounded))
-        .foregroundStyle(Color.tokenGreenDark.opacity(0.72))
-        .monospacedDigit()
-        .frame(width: 30)
-        .padding(.vertical, 1)
-        .accessibilityHidden(true)
-    }
-}
-
-private struct AgentWorkAxisLabel: View {
-    var title: String
-
-    init(_ title: String) {
-        self.title = title
-    }
-
-    var body: some View {
-        Text(title)
             .font(.caption2.weight(.bold))
             .foregroundStyle(.secondary)
             .monospacedDigit()
+        }
+        .padding(10)
+        .background(Color.tokenSurface.opacity(0.64), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(Color.black.opacity(0.055)))
     }
+
+    private var hoverSummary: String {
+        guard let hoveredID, let bar = bars.first(where: { $0.id == hoveredID }) else {
+            return L("柱子越高，表示这个时段使用的 Token 越多")
+        }
+        return "\(bar.fullLabel) · \(TokenStepFormat.tokens(bar.tokens, compact: true))"
+    }
+}
+
+private struct AgentWorkTokenBar: Identifiable {
+    var id: String
+    var shortLabel: String
+    var fullLabel: String
+    var tokens: Int
 }
 
 private struct AgentWorkSegmentButton: View {
@@ -739,8 +509,8 @@ private struct AgentWorkSegmentButton: View {
             Text(title)
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(selected ? Color.tokenSurface : Color.tokenInk.opacity(0.62))
-                .padding(.horizontal, 12)
-                .frame(height: 28)
+                .padding(.horizontal, 9)
+                .frame(height: 25)
                 .background(selected ? Color.tokenInk : Color.clear, in: Capsule())
         }
         .buttonStyle(.plain)
@@ -748,280 +518,45 @@ private struct AgentWorkSegmentButton: View {
     }
 }
 
-private struct AgentWorkFilterButton: View {
-    var title: String
-    var selected: Bool
-    var color: Color
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(selected ? Color.tokenSurface : color)
-                    .frame(width: 7, height: 7)
-                Text(title)
-                    .lineLimit(1)
-            }
-            .font(.caption.weight(.heavy))
-            .foregroundStyle(selected ? Color.tokenSurface : Color.tokenInk.opacity(0.68))
-            .padding(.horizontal, 11)
-            .frame(height: 30)
-            .background(
-                selected ? color : Color.tokenTrack.opacity(0.25),
-                in: Capsule()
-            )
-            .overlay(
-                Capsule()
-                    .stroke(selected ? Color.clear : Color.black.opacity(0.045))
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
-    }
-}
-
-private struct AgentWorkChartSource: Identifiable {
-    var id: String { source }
-    var source: String
-    var tokens: Int
-    var inputTokens: Int
-    var cachedInputTokens: Int
-    var outputTokens: Int
-    var cacheCoverageComplete: Bool
-}
-
-private struct AgentWorkChartHour: Identifiable {
-    var id: Int { hour }
-    var hour: Int
-    var sources: [AgentWorkChartSource]
-
-    var tokens: Int {
-        sources.map(\.tokens).reduce(0, +)
-    }
-
-    var cacheHitRate: Double? {
-        let activeSources = sources.filter { $0.tokens > 0 }
-        guard !activeSources.isEmpty,
-              activeSources.allSatisfy(\.cacheCoverageComplete)
-        else {
-            return nil
-        }
-        let input = activeSources.map(\.inputTokens).reduce(0, +)
-        guard input > 0 else { return nil }
-        return Double(activeSources.map(\.cachedInputTokens).reduce(0, +)) / Double(input)
-    }
-}
-
-private struct AgentWorkLegendSource: Identifiable {
-    var id: String { source }
-    var source: String
-    var tokens: Int
+private enum AgentWorkSelection {
+    static let all = "__all__"
 }
 
 private enum AgentWorkPeriod: String, CaseIterable, Identifiable {
     case today
     case sevenDays
-
     var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .today: return AgentWorkCopy.today
-        case .sevenDays: return AgentWorkCopy.sevenDays
-        }
-    }
-
-    var metricDetail: String {
-        switch self {
-        case .today: return AgentWorkCopy.today
-        case .sevenDays: return AgentWorkCopy.sevenDayTotal
-        }
-    }
-
-    var maximumHours: Int {
-        switch self {
-        case .today: return 24
-        case .sevenDays: return 168
-        }
-    }
-
-    var chartTitle: String {
-        switch self {
-        case .today: return AgentWorkCopy.hourlyDistribution
-        case .sevenDays: return AgentWorkCopy.sevenDayHourlyDistribution
-        }
-    }
+    var title: String { self == .today ? AgentWorkCopy.today : AgentWorkCopy.sevenDays }
 }
 
-private enum AgentWorkSourceFilter: String, CaseIterable, Identifiable {
-    case all
-    case codex
-    case hermes
-    case other
-
+private enum AgentWorkDimension: String, CaseIterable, Identifiable {
+    case tool
+    case model
     var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .all: return AgentWorkCopy.all
-        case .codex: return "Codex"
-        case .hermes: return "Hermes"
-        case .other: return AgentWorkCopy.other
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .all: return Color.tokenInk
-        case .codex: return tokenToolColor("Codex")
-        case .hermes: return tokenToolColor("Hermes Agent")
-        case .other: return Color(red: 0.20, green: 0.52, blue: 0.92)
-        }
-    }
-
-    func includes(_ source: String) -> Bool {
-        let normalized = source.lowercased()
-        let isCodex = normalized == "codex" || normalized.hasPrefix("codex via")
-        let isHermes = normalized.contains("hermes")
-        switch self {
-        case .all:
-            return true
-        case .codex:
-            return isCodex
-        case .hermes:
-            return isHermes
-        case .other:
-            return !isCodex && !isHermes
-        }
-    }
+    var title: String { self == .tool ? L("按工具") : L("按模型") }
+    var filterLabel: String { self == .tool ? L("筛选工具") : L("筛选模型") }
+    var allLabel: String { self == .tool ? L("全部工具") : L("全部模型") }
+    var countNoun: String { self == .tool ? L("工具") : L("模型") }
 }
 
 enum AgentWorkCopy {
-    static var today: String {
-        localized("今日", "Today", "今日")
-    }
-
-    static var sevenDays: String {
-        localized("近 7 天", "Last 7 Days", "近 7 天")
-    }
-
-    static var sevenDayTotal: String {
-        localized("7 个日历日合计", "7 calendar days total", "7 個日曆日合計")
-    }
-
-    static var all: String {
-        localized("全部", "All", "全部")
-    }
-
-    static var other: String {
-        localized("其他", "Other", "其他")
-    }
-
-    static var disclaimer: String {
-        localized(
-            "按本机 Token 记录展示活跃节奏，不代表实际工时或生产力。",
-            "Shows local Token activity, not actual work time or productivity.",
-            "按本機 Token 記錄展示活躍節奏，不代表實際工時或生產力。"
-        )
-    }
-
-    static var agentActivity: String {
-        localized("Agent 活跃", "Agent Activity", "Agent 活躍")
-    }
-
-    static var recordedHours: String {
-        localized("有记录小时", "Hours with Records", "有記錄小時")
-    }
-
-    static var recordedHourDetail: String {
-        localized("有 Token 记录，非工时", "Token records, not work time", "有 Token 記錄，非工時")
-    }
-
+    static var today: String { localized("今日", "Today", "今日") }
+    static var sevenDays: String { localized("近 7 天", "Last 7 Days", "近 7 天") }
+    static var agentActivity: String { localized("Agent 活跃", "Agent Activity", "Agent 活躍") }
+    static var recordedHours: String { localized("有记录小时", "Hours with Records", "有記錄小時") }
+    static var cacheShort: String { localized("缓存", "Cache", "快取") }
     static func recordedShort(_ value: String) -> String {
         localized("记录 \(value)", "Recorded \(value)", "記錄 \(value)")
     }
-
-    static var calendarDayAverage: String {
-        localized("按 7 个日历日折算", "Across 7 calendar days", "按 7 個日曆日折算")
-    }
-
-    static var cacheHitRate: String {
-        localized("缓存命中率", "Cache Hit Rate", "快取命中率")
-    }
-
-    static var cacheShort: String {
-        localized("缓存", "Cache", "快取")
-    }
-
-    static var completeCoverageOnly: String {
-        localized("仅展示完整口径", "Complete coverage only", "僅展示完整口徑")
-    }
-
-    static var coverageUnavailable: String {
-        localized("口径不完整", "Incomplete coverage", "口徑不完整")
-    }
-
-    static var hourlyDistribution: String {
-        localized("24 小时 Token 记录", "24-Hour Token Records", "24 小時 Token 記錄")
-    }
-
-    static var sevenDayHourlyDistribution: String {
-        localized("近 7 天分时日均", "7-Day Hourly Average", "近 7 天分時日均")
-    }
-
-    static var chartLegendHint: String {
-        localized("柱形为 Token · 折线为缓存", "Bars: Tokens · Line: Cache", "柱形為 Token · 折線為快取")
-    }
-
-    static var tokenBarHint: String {
-        localized("柱形为 Token", "Bars: Tokens", "柱形為 Token")
-    }
-
-    static var noTimedData: String {
-        localized("已有 Token，但缺少可用时段", "Tokens found, but hourly timing is unavailable", "已有 Token，但缺少可用時段")
-    }
-
-    static var noAgentWork: String {
-        localized("这个时段还没有可统计的 Agent Token", "No countable Agent Tokens in this period", "這個時段還沒有可統計的 Agent Token")
-    }
-
-    static var averageSuffix: String {
-        localized(" 日均", " daily avg", " 日均")
-    }
-
-    static var unbucketedHelp: String {
-        localized(
-            "这些 Token 有总量，但缺少可靠时间戳，因此没有放进小时柱。",
-            "These Tokens have totals but no reliable timestamps, so they are excluded from hourly bars.",
-            "這些 Token 有總量，但缺少可靠時間戳，因此沒有放進小時柱。"
-        )
-    }
-
-    static func unbucketed(_ value: String) -> String {
-        localized("未分时 \(value)", "Unbucketed \(value)", "未分時 \(value)")
-    }
-
-    static func unbucketedSevenDayTotal(_ value: String) -> String {
-        localized(
-            "未分时 7 天合计 \(value)",
-            "Unbucketed 7d total \(value)",
-            "未分時 7 天合計 \(value)"
-        )
-    }
-
     static func hourLabel(_ hour: Int) -> String {
         localized("\(hour)时", "\(hour)h", "\(hour)時")
     }
 
     private static func localized(_ zhHans: String, _ en: String, _ zhHant: String) -> String {
         switch TokenStepLocalization.language {
-        case .en:
-            return en
-        case .zhHant:
-            return zhHant
-        case .zhHans, .system:
-            return zhHans
+        case .en: return en
+        case .zhHant: return zhHant
+        case .zhHans, .system: return zhHans
         }
     }
 }
@@ -1029,30 +564,4 @@ enum AgentWorkCopy {
 private func cacheRateText(_ rate: Double?) -> String {
     guard let rate else { return "--" }
     return TokenStepFormat.percent(min(max(rate, 0), 1) * 100)
-}
-
-private func agentWorkSourceBreakdown(
-    _ sources: [AgentWorkChartSource],
-    displayDivisor: Int,
-    limit: Int?
-) -> String {
-    let activeSources = sources.filter { $0.tokens > 0 }
-    let visibleCount = min(limit ?? activeSources.count, activeSources.count)
-    var parts = activeSources.prefix(visibleCount).map { source in
-        let displayedTokens = max(
-            1,
-            Int((Double(source.tokens) / Double(max(displayDivisor, 1))).rounded())
-        )
-        return "\(source.source) \(TokenStepFormat.tokens(displayedTokens, compact: true))"
-    }
-    if visibleCount < activeSources.count {
-        parts.append("+\(activeSources.count - visibleCount)")
-    }
-    return parts.joined(separator: " + ")
-}
-
-private func cachePointY(rate: Double, height: CGFloat) -> CGFloat {
-    let inset: CGFloat = 6
-    let clamped = min(max(rate, 0), 1)
-    return height - inset - CGFloat(clamped) * max(1, height - inset * 2)
 }

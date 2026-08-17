@@ -72,6 +72,28 @@ final class UsageCollectorCCSwitchTests: XCTestCase {
         XCTAssertTrue(snapshot.models.isEmpty)
     }
 
+    func testAdditionalToolsAreLabeledAsProxyOnlyAndExperimental() throws {
+        let database = try makeFixtureDatabase(rowsSQL: """
+        insert into proxy_request_logs (
+            request_id, provider_id, app_type, model,
+            input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+            total_cost_usd, status_code, created_at, data_source, request_model, pricing_model
+        ) values
+            ('kimi-proxy', 'provider-a', 'kimi-code', 'kimi-k2', 10, 2, 0, 0, '0.01', 200, 1717200000, 'proxy', 'kimi-k2', 'kimi-k2'),
+            ('deepseek-proxy', 'provider-b', 'deepseek', 'deepseek-chat', 20, 3, 0, 0, '0.02', 200, 1717200000, 'proxy', 'deepseek-chat', 'deepseek-chat'),
+            ('cursor-proxy', 'provider-c', 'cursor', 'gpt-5.4', 30, 4, 0, 0, '0.03', 200, 1717200000, 'proxy', 'gpt-5.4', 'gpt-5.4');
+        """)
+
+        let snapshot = UsageCollector.collectCCSwitchProxyUsageSnapshot(databaseURL: database)
+
+        XCTAssertEqual(snapshot.daily.first?.tools["Kimi via CC Switch (experimental)"], 12)
+        XCTAssertEqual(snapshot.daily.first?.tools["DeepSeek via CC Switch (experimental)"], 23)
+        XCTAssertEqual(snapshot.daily.first?.tools["Cursor via CC Switch (experimental)"], 34)
+        XCTAssertNil(snapshot.daily.first?.tools["Kimi"])
+        XCTAssertNil(snapshot.daily.first?.tools["DeepSeek"])
+        XCTAssertNil(snapshot.daily.first?.tools["Cursor"])
+    }
+
     func testLargeCCSwitchResultDoesNotBlockOnSQLiteOutput() throws {
         let rowCount = 1_500
         let rows = (0..<rowCount).map { index in

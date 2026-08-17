@@ -24,5 +24,7 @@ config/autostart-default-applied
 
 TokenStepSwift/.build/
 TokenStepSwift/dist/
-TokenUsageMenuApp/dist/
 release/
+output/playwright/
+.playwright-cli/
+.gstack/

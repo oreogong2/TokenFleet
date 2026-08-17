@@ -14,7 +14,7 @@ TEST_MODE="${TOKENFLEET_SOURCE_TEST_MODE:-0}"
 TEST_STABLE_FIXTURE="${TOKENFLEET_SOURCE_TEST_STABLE_FIXTURE:-0}"
 TEST_STABLE_SHA1="${TOKENFLEET_SOURCE_TEST_STABLE_SHA1:-}"
 TEST_FAIL_STATE_COMMIT="${TOKENFLEET_SOURCE_TEST_FAIL_STATE_COMMIT:-}"
-VERSION="${TOKENFLEET_VERSION:-0.1.0-beta.7}"
+VERSION="${TOKENFLEET_VERSION:-0.1.0-beta.8}"
 BUILD_ROOT=""
 INSTALL_STAGE_ROOT=""
 STATE_TRANSACTION_ROOT=""
@@ -25,7 +25,7 @@ TARGET_APP=""
 
 usage() {
   cat <<'USAGE'
-TokenFleet source installer (macOS 14+, Apple Silicon)
+TokenFleet source installer (macOS 14+, Apple Silicon or Intel)
 
 Local-only, ad-hoc signed (default; community sync is disabled):
   ./script/install_from_source.sh
@@ -112,10 +112,18 @@ else
   }
 fi
 
-if [[ "$(/usr/bin/uname -s)" != "Darwin" || "$(/usr/bin/uname -m)" != "arm64" ]]; then
-  tokenfleet_source_error "source installation currently requires an Apple Silicon Mac"
+SOURCE_ARCHITECTURE="$(/usr/bin/uname -m)"
+if [[ "$(/usr/bin/uname -s)" != "Darwin" ]]; then
+  tokenfleet_source_error "source installation requires macOS"
   exit 2
 fi
+case "$SOURCE_ARCHITECTURE" in
+  arm64|x86_64) ;;
+  *)
+    tokenfleet_source_error "unsupported Mac architecture"
+    exit 2
+    ;;
+esac
 
 for command_path in \
   /usr/bin/codesign \
@@ -350,6 +358,7 @@ if [[ "$MODE" == "community" ]]; then
   TOKENFLEET_TEAM_ID="" \
   TOKENFLEET_CREDENTIAL_BACKEND="$TOKENFLEET_SOURCE_BACKEND_ENABLED" \
   TOKENFLEET_EXTERNAL_SIGNING_STAGE="1" \
+  TOKENFLEET_ARCHITECTURES="$SOURCE_ARCHITECTURE" \
   TOKENFLEET_APP_OUTPUT_ROOT="$BUILD_ROOT" \
     "$ROOT_DIR/script/build_swiftui_and_run.sh" --no-launch
 else
@@ -359,6 +368,7 @@ else
   TOKENFLEET_COMMUNITY_SERVER_URL="" \
   TOKENFLEET_TEAM_ID="" \
   TOKENFLEET_CREDENTIAL_BACKEND="$TOKENFLEET_SOURCE_BACKEND_DISABLED" \
+  TOKENFLEET_ARCHITECTURES="$SOURCE_ARCHITECTURE" \
   TOKENFLEET_APP_OUTPUT_ROOT="$BUILD_ROOT" \
     "$ROOT_DIR/script/build_swiftui_and_run.sh" --no-launch
 fi
@@ -392,6 +402,8 @@ if [[ "$MODE" == "community" ]]; then
       if [[ "$ASSUME_YES" != true ]]; then
         echo "Community sync needs one non-exportable self-signed identity in your login Keychain."
         echo "It is used only to keep TokenFleet's local Keychain ACL stable across source upgrades."
+        echo "（中文说明：社群同步需要在你的登录钥匙串里创建一把不可导出的本机 App 签名钥匙，"
+        echo "  仅用于保持升级后权限稳定；钥匙只存在这台 Mac 上，绝不上传。）"
         printf 'Create it now? [y/N] '
         IFS= read -r answer
         case "$answer" in
@@ -419,6 +431,10 @@ if [[ "$MODE" == "community" ]]; then
   if [[ "$TEST_STABLE_FIXTURE" == "1" ]]; then
     tokenfleet_source_test_sign_stable_app "$BUILT_APP" "$IDENTITY_FINGERPRINT"
   else
+    echo "接下来 macOS 可能弹出系统对话框：「codesign 想要访问你的钥匙串中的密钥」。"
+    echo "这是系统在为本机刚才那把签名钥匙做授权：钥匙只存在你自己的登录钥匙串里、不可导出、不会上传。"
+    echo "请输入这台 Mac 的登录密码——密码只交给 macOS 系统本身，TokenFleet 无法读取。"
+    echo "建议点「始终允许」，之后升级就不会再弹这个窗。"
     tokenfleet_source_sign_stable_app "$BUILT_APP" "$IDENTITY_FINGERPRINT" "$KEYCHAIN"
   fi
   tokenfleet_install_verify_stable_app \

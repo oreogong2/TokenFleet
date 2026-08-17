@@ -17,8 +17,15 @@ final class DailyUsageSchemaTests: XCTestCase {
         let row = try JSONDecoder().decode(DailyUsage.self, from: data)
 
         XCTAssertNil(row.atomicUsage)
+        XCTAssertNil(row.pricingCoverage)
+        XCTAssertNil(row.pricingVersion)
         XCTAssertEqual(row.tools["Claude Code"], 70)
         XCTAssertEqual(row.models["gpt-5"], 40)
+    }
+
+    func testLegacyMissingPricingCoverageDoesNotPresentZeroCostAsPriced() {
+        XCTAssertEqual(TokenStepFormat.estimatedMoney(0, coverage: nil), L("未计价"))
+        XCTAssertEqual(TokenStepFormat.estimatedMoney(0, coverage: 0), L("未计价"))
     }
 
     func testExactAtomicUsageRoundTripsAllTokenComponents() throws {
@@ -38,7 +45,10 @@ final class DailyUsageSchemaTests: XCTestCase {
                 )
             ],
             totalTokens: 1_250,
-            cost: 0.42
+            cost: 0.42,
+            pricedTokens: 1_000,
+            unpricedTokens: 250,
+            pricingVersion: "public-usd-2026-08-13"
         )
 
         let data = try JSONEncoder().encode(original)
@@ -47,6 +57,8 @@ final class DailyUsageSchemaTests: XCTestCase {
         XCTAssertEqual(decoded.atomicUsage, original.atomicUsage)
         XCTAssertEqual(decoded.atomicUsage?.first?.breakdownComplete, true)
         XCTAssertEqual(decoded.totalTokens, original.totalTokens)
+        XCTAssertEqual(try XCTUnwrap(decoded.pricingCoverage), 0.8, accuracy: 0.000_001)
+        XCTAssertEqual(decoded.pricingVersion, "public-usd-2026-08-13")
         XCTAssertNotNil(decoded.atomicUsage)
     }
 
@@ -77,10 +89,69 @@ final class DailyUsageSchemaTests: XCTestCase {
         XCTAssertEqual(decoded.atomicUsage, [])
     }
 
+    func testLegacyHourlyAgentSourceDefaultsMissingModelToUnknown() throws {
+        let data = Data(#"""
+        {
+          "source":"Codex",
+          "tokens":120,
+          "input_tokens":80,
+          "cached_input_tokens":20,
+          "output_tokens":40,
+          "cache_coverage_complete":true
+        }
+        """#.utf8)
+
+        let row = try JSONDecoder().decode(AgentWorkHourlySource.self, from: data)
+
+        XCTAssertEqual(row.source, "Codex")
+        XCTAssertEqual(row.model, "unknown")
+        XCTAssertEqual(row.tokens, 120)
+    }
+
     func testLegacySettingsDefaultTeamSyncToOffWithoutServer() throws {
         let settings = try JSONDecoder().decode(TokenStepSettings.self, from: Data("{}".utf8))
 
         XCTAssertFalse(settings.teamSyncEnabled)
         XCTAssertEqual(settings.teamSyncServerURL, "")
+        XCTAssertFalse(settings.menuBarShowsTokenCount)
+    }
+
+    func testMenuBarTokenCountPreferenceRoundTrips() throws {
+        var settings = TokenStepSettings.defaults
+        settings.menuBarShowsTokenCount = true
+
+        let decoded = try JSONDecoder().decode(
+            TokenStepSettings.self,
+            from: JSONEncoder().encode(settings)
+        )
+
+        XCTAssertTrue(decoded.menuBarShowsTokenCount)
+    }
+
+    func testLegacyFloatingIslandSettingsMigrateToNativeMenuBarWithoutLosingCountPreference() {
+        var settings = TokenStepSettings.defaults
+        settings.tokenIslandEnabled = true
+        settings.tokenIslandPlacement = .notchLeft
+        settings.menuBarShowsTokenCount = true
+
+        let normalized = DataService.normalize(settings)
+
+        XCTAssertFalse(normalized.tokenIslandEnabled)
+        XCTAssertEqual(normalized.tokenIslandPlacement, .menuBar)
+        XCTAssertTrue(normalized.menuBarShowsTokenCount)
+    }
+
+    func testCollectedSourceCountExcludesDisabledMissingAndUnsupportedCollectors() {
+        var snapshot = UsageSnapshot.empty
+        snapshot.sources = [
+            "Codex": SourceInfo(status: "ok", records: 3),
+            "Codex SQLite Fallback": SourceInfo(status: "ok_sqlite", records: 2),
+            "Claude Code": SourceInfo(status: "missing", records: 0),
+            "CC Switch Proxy": SourceInfo(status: "disabled", records: 0),
+            "WorkBuddy": SourceInfo(status: "unsupported_privacy_boundary", records: 0),
+            "Empty Successful Source": SourceInfo(status: "ok", records: 0)
+        ]
+
+        XCTAssertEqual(snapshot.collectedSourceCount, 2)
     }
 }

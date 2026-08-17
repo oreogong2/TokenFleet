@@ -7,24 +7,57 @@ struct StatusBarLabelView: View {
     var refreshing: Bool
     var theme: TokenStepTheme
     var language: TokenStepLanguage
+    var showsTokenCount: Bool
 
     var body: some View {
-        HStack(spacing: 7) {
-            Image(nsImage: StatusBarIconRenderer.progressRing(progress: min(max(lap.rawProgress, 0), 1), lap: 1, refreshing: refreshing))
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 22, height: 22)
-                .accessibilityLabel("\(L("今日目标进度")) \(TokenStepFormat.percent(lap.rawProgress * 100))")
-                .id("\(theme.id)-\(language.resolved.id)")
+        HStack(alignment: .center, spacing: showsTokenCount ? 6 : 0) {
+            TokenFleetMenuBarProgressRing(
+                progress: lap.currentLapProgress,
+                refreshing: refreshing
+            )
 
-            Text(TokenStepFormat.tokens(tokens, compact: true, language: language))
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(Color.primary)
+            if showsTokenCount {
+                Text(TokenStepFormat.tokens(tokens, compact: true, language: language))
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
         }
-        .padding(.horizontal, 2)
-        .frame(height: 24)
-        .id("\(theme.id)-\(language.resolved.id)")
+        .padding(.horizontal, showsTokenCount ? 2 : 1)
+        .frame(height: 22)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "TokenFleet · \(TokenStepFormat.tokens(tokens, compact: true, language: language)) · "
+                + "\(L("今日目标进度")) \(TokenStepFormat.percent(lap.rawProgress * 100))"
+        )
+        .id("\(theme.id)-\(language.resolved.id)-\(showsTokenCount)")
+    }
+}
+
+/// A compact, template-color goal ring for macOS's native menu bar.
+/// Keeping it to 16 points makes it readable without consuming status-item space.
+private struct TokenFleetMenuBarProgressRing: View {
+    var progress: Double
+    var refreshing: Bool
+
+    private var clampedProgress: Double {
+        min(max(progress, 0), 1)
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.primary.opacity(0.26), lineWidth: 2.5)
+            Circle()
+                .trim(from: 0, to: clampedProgress)
+                .stroke(
+                    Color.primary.opacity(refreshing ? 0.46 : 0.96),
+                    style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 16, height: 16)
+        .accessibilityHidden(true)
     }
 }
 
@@ -46,97 +79,75 @@ struct TokenStepBackdrop: View {
     }
 }
 
-struct TokenStepMark: View {
+struct TokenFleetSignalMark: View {
     var size: CGFloat = 48
 
     var body: some View {
-        if let icon = TokenStepAppIconImage.image {
-            Image(nsImage: icon)
-                .resizable()
-                .interpolation(.high)
-                .aspectRatio(1, contentMode: .fit)
-                .frame(width: size, height: size)
-        } else {
-            TokenStepVectorMark(size: size)
+        ZStack {
+            Circle()
+                .fill(Color.tokenSurface)
+                .overlay(
+                    Circle()
+                        .stroke(Color.tokenGreen.opacity(0.18), lineWidth: max(1, size * 0.018))
+                )
+
+            Circle()
+                .trim(from: 0.06, to: 0.78)
+                .stroke(
+                    Color.tokenGreenDark,
+                    style: StrokeStyle(lineWidth: max(2, size * 0.13), lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
         }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }
 
-private enum TokenStepAppIconImage {
-    static var image: NSImage? {
-        if let url = Bundle.main.url(forResource: "TokenFleetIcon", withExtension: "icns"),
-           let image = NSImage(contentsOf: url) {
-            return image
-        }
+/// One clean ring keeps the confirmed "one hundred million per lap" memory
+/// without restoring the old multi-ring fitness skin.
+struct TokenFleetGoalDial: View {
+    var tokens: Int
+    var goal: Int
+    var size: CGFloat = 168
 
-        if let image = NSImage(named: "TokenFleetIcon") {
-            return image
-        }
-
-        if let fallback = NSApp.applicationIconImage, fallback.isValid {
-            return fallback
-        }
-        return nil
+    private var lap: TokenStepLapProgress {
+        TokenStepLapProgress(tokens: tokens, goal: goal)
     }
-}
-
-private struct TokenStepVectorMark: View {
-    var size: CGFloat
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-                .fill(Color.tokenSurface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-                        .stroke(Color.black.opacity(0.05), lineWidth: max(0.8, size * 0.015))
-                )
-
-            SelectedAppIconArcShape()
-                .stroke(
-                    Color(red: 64 / 255, green: 196 / 255, blue: 99 / 255),
-                    style: StrokeStyle(lineWidth: size * 0.074, lineCap: .round, lineJoin: .round)
-                )
-                .frame(width: size, height: size)
-
             Circle()
-                .fill(Color(red: 64 / 255, green: 196 / 255, blue: 99 / 255))
-                .frame(width: size * 0.105, height: size * 0.105)
-                .position(x: size * 0.707, y: size * 0.311)
+                .stroke(Color.tokenTrack.opacity(0.9), lineWidth: size * 0.105)
+            Circle()
+                .trim(from: 0, to: min(max(lap.currentLapProgress, 0), 1))
+                .stroke(
+                    lap.color,
+                    style: StrokeStyle(lineWidth: size * 0.105, lineCap: .butt)
+                )
+                .rotationEffect(.degrees(-90))
 
-            stepBlock(x: 0.285, y: 0.625, width: 0.074, height: 0.076, color: Color(red: 155 / 255, green: 233 / 255, blue: 168 / 255))
-            stepBlock(x: 0.393, y: 0.533, width: 0.074, height: 0.168, color: Color(red: 64 / 255, green: 196 / 255, blue: 99 / 255))
-            stepBlock(x: 0.500, y: 0.445, width: 0.074, height: 0.256, color: Color(red: 48 / 255, green: 161 / 255, blue: 78 / 255))
-            stepBlock(x: 0.607, y: 0.348, width: 0.074, height: 0.354, color: Color(red: 33 / 255, green: 110 / 255, blue: 57 / 255))
+            VStack(spacing: max(4, size * 0.028)) {
+                Text(TokenStepFormat.tokens(tokens, compact: true))
+                    .font(.system(size: size * 0.17, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.tokenInk)
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.58)
+                    .lineLimit(1)
+                    .frame(maxWidth: size * 0.62)
+
+                Text(lap.lapTitle)
+                    .font(.system(size: max(10, size * 0.07), weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.tokenGreenDark)
+                    .monospacedDigit()
+            }
         }
         .frame(width: size, height: size)
-    }
-
-    private func stepBlock(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, color: Color) -> some View {
-        RoundedRectangle(cornerRadius: size * 0.022, style: .continuous)
-            .fill(color)
-            .frame(width: size * width, height: size * height)
-            .position(x: size * (x + width / 2), y: size * (y + height / 2))
-    }
-}
-
-private struct SelectedAppIconArcShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        let unit = min(rect.width, rect.height)
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX + unit * 0.211, y: rect.minY + unit * 0.645))
-        path.addCurve(
-            to: CGPoint(x: rect.minX + unit * 0.683, y: rect.minY + unit * 0.284),
-            control1: CGPoint(x: rect.minX + unit * 0.215, y: rect.minY + unit * 0.365),
-            control2: CGPoint(x: rect.minX + unit * 0.475, y: rect.minY + unit * 0.176)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(L("今日 Token 消耗")) \(TokenStepFormat.tokens(tokens)) · "
+                + lap.lapStatusText
         )
-        path.move(to: CGPoint(x: rect.minX + unit * 0.746, y: rect.minY + unit * 0.358))
-        path.addCurve(
-            to: CGPoint(x: rect.minX + unit * 0.655, y: rect.minY + unit * 0.804),
-            control1: CGPoint(x: rect.minX + unit * 0.858, y: rect.minY + unit * 0.475),
-            control2: CGPoint(x: rect.minX + unit * 0.812, y: rect.minY + unit * 0.690)
-        )
-        return path
     }
 }
 
@@ -195,22 +206,32 @@ struct UsageRecalibrationNotice: View {
     }
 }
 
-struct ProgressRingView: View {
-    var progress: Double
-    var lineWidth: CGFloat = 18
-    var color: Color = .tokenGreen
+struct PricingReestimationNotice: View {
+    var dismiss: () -> Void
 
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.tokenTrack, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-            Circle()
-                .trim(from: 0, to: min(max(progress, 0), 1))
-                .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .shadow(color: color.opacity(0.10), radius: 5, x: 0, y: 3)
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "dollarsign.arrow.circlepath")
+                .foregroundStyle(Color.tokenGreen)
+                .padding(.top, 1)
+            Text(L("TokenFleet 已在本次用量刷新中采用新的公开价格目录。价格目录本身只影响金额估算；Token 仍来自本地用量记录，估算不等于账单。"))
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(Color.tokenInk.opacity(0.82))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L("关闭"))
         }
-        .aspectRatio(1, contentMode: .fit)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(Color.tokenMint.opacity(0.20), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.tokenGreen.opacity(0.18))
+        )
     }
 }
 
@@ -243,10 +264,10 @@ struct TokenCard<Content: View>: View {
 
     var body: some View {
         content
-            .padding(24)
+            .padding(16)
             .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.black.opacity(0.07)))
-            .shadow(color: Color.black.opacity(0.05), radius: 18, x: 0, y: 10)
+            .shadow(color: Color.black.opacity(0.035), radius: 10, x: 0, y: 5)
     }
 }
 
@@ -577,56 +598,60 @@ struct ContributionWallView: View {
     var rows: [DailyUsage]
     var goal: Int
     var weeks: Int = 34
-
-    private var rowByDate: [String: DailyUsage] {
-        Dictionary(uniqueKeysWithValues: rows.map { ($0.date, $0) })
-    }
+    var cellSize: CGFloat = 15
+    var cellSpacing: CGFloat = 5
+    var showsSummary = true
 
     var body: some View {
-        let calendar = Calendar(identifier: .gregorian)
-        let today = calendar.startOfDay(for: Date())
-        let rawStart = calendar.date(byAdding: .day, value: -(weeks * 7 - 1), to: today) ?? today
-        let weekday = calendar.component(.weekday, from: rawStart)
-        let mondayOffset = (weekday + 5) % 7
-        let start = calendar.date(byAdding: .day, value: -mondayOffset, to: rawStart) ?? rawStart
+        let columnCount = max(1, weeks)
+        let visibleRows = UsageCalendarWindow.contributionRows(from: rows, weeks: columnCount)
+        let todayKey = DateFormatter.tokenStepDay.string(from: Date())
 
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 5) {
-                ForEach(0..<weeks, id: \.self) { week in
-                    VStack(spacing: 5) {
+        VStack(alignment: .leading, spacing: showsSummary ? 16 : 0) {
+            HStack(alignment: .top, spacing: cellSpacing) {
+                ForEach(0..<columnCount, id: \.self) { week in
+                    VStack(spacing: cellSpacing) {
                         ForEach(0..<7, id: \.self) { dayIndex in
-                            let day = calendar.date(byAdding: .day, value: week * 7 + dayIndex, to: start) ?? today
-                            let key = DateFormatter.tokenStepDay.string(from: day)
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(day > today ? Color.clear : contributionColor(tokens: rowByDate[key]?.totalTokens ?? 0, goal: goal))
-                                .frame(width: 15, height: 15)
-                                .overlay {
-                                    if calendar.isDate(day, inSameDayAs: today) {
-                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                            .stroke(Color.tokenGreenDark, lineWidth: 1.5)
+                            let slot = week * 7 + dayIndex
+                            if visibleRows.indices.contains(slot) {
+                                let row = visibleRows[slot]
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(contributionColor(tokens: row.totalTokens, goal: goal))
+                                    .frame(width: cellSize, height: cellSize)
+                                    .overlay {
+                                        if row.date == todayKey {
+                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                .stroke(Color.tokenGreenDark, lineWidth: 1.5)
+                                        }
                                     }
-                                }
+                            } else {
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color.clear)
+                                    .frame(width: cellSize, height: cellSize)
+                            }
                         }
                     }
                 }
             }
 
-            HStack {
-                MetricPill(label: L("活跃"), value: localizedDays(rows.filter { $0.totalTokens > 0 }.count))
-                MetricPill(label: L("达标"), value: localizedDays(rows.filter { $0.totalTokens >= goal }.count))
-                MetricPill(label: L("最高"), value: TokenStepFormat.tokens(rows.map(\.totalTokens).max() ?? 0, compact: true))
-                Spacer()
-                Text(L("少"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                ForEach([0, Int(Double(goal) * 0.25), Int(Double(goal) * 0.7), goal, goal * 2, goal * 3], id: \.self) { value in
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(contributionColor(tokens: value, goal: goal))
-                        .frame(width: 15, height: 15)
+            if showsSummary {
+                HStack {
+                    MetricPill(label: L("活跃"), value: localizedDays(rows.filter { $0.totalTokens > 0 }.count))
+                    MetricPill(label: L("达标"), value: localizedDays(rows.filter { $0.totalTokens >= goal }.count))
+                    MetricPill(label: L("最高"), value: TokenStepFormat.tokens(rows.map(\.totalTokens).max() ?? 0, compact: true))
+                    Spacer()
+                    Text(L("少"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach([0, Int(Double(goal) * 0.25), Int(Double(goal) * 0.7), goal, goal * 2, goal * 3], id: \.self) { value in
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(contributionColor(tokens: value, goal: goal))
+                            .frame(width: cellSize, height: cellSize)
+                    }
+                    Text(L("多"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
-                Text(L("多"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -650,6 +675,17 @@ func contributionColor(tokens: Int, goal: Int) -> Color {
     }
 }
 
+func localizedStreakDays(days: Int, isLowerBound: Bool) -> String {
+    let prefix = isLowerBound ? "≥" : ""
+    return TokenStepLocalization.language == .en
+        ? "\(prefix)\(days)d"
+        : "\(prefix)\(days) 天"
+}
+
+func localizedStreakDescription(days: Int, isLowerBound: Bool) -> String {
+    LFormat(isLowerBound ? "至少连续活跃 %d 天" : "连续活跃 %d 天", days)
+}
+
 func tokenToolColor(_ tool: String) -> Color {
     switch tool {
     case "Codex":
@@ -660,8 +696,6 @@ func tokenToolColor(_ tool: String) -> Color {
         return Color(red: 0.50, green: 0.28, blue: 0.92)
     case "ZCode":
         return Color(red: 0.20, green: 0.52, blue: 0.92)
-    case "WorkBuddy":
-        return Color(red: 0.94, green: 0.63, blue: 0.16)
     case "Codex via CC Switch", "Claude Code via CC Switch", "Gemini via CC Switch":
         return Color(red: 0.10, green: 0.64, blue: 0.72)
     default:
@@ -670,7 +704,7 @@ func tokenToolColor(_ tool: String) -> Color {
 }
 
 func orderedToolEntries(_ tools: [String: Int]) -> [(name: String, tokens: Int)] {
-    let preferred = ["Codex", "Claude Code", "ZCode", "Hermes", "Hermes Agent", "WorkBuddy", "Codex via CC Switch", "Claude Code via CC Switch"]
+    let preferred = ["Codex", "Claude Code", "ZCode", "Hermes", "Hermes Agent", "Codex via CC Switch", "Claude Code via CC Switch"]
     var entries: [(name: String, tokens: Int)] = preferred.compactMap { name in
         guard let value = tools[name], value > 0 else { return nil }
         return (name, value)

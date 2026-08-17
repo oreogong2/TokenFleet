@@ -72,9 +72,17 @@ enum UsageCollector {
         let hermes = includeExperimentalAgentSources
             ? collectHermesUsage(databaseURL: hermesDatabaseURL)
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let workBuddy = includeExperimentalAgentSources
-            ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        // WorkBuddy project logs can colocate usage with message and tool
+        // content. beta.8 deliberately does not open those paths until a
+        // stable usage-only contract exists.
+        let workBuddy = CollectorResult(
+            records: [],
+            source: SourceInfo(
+                status: "unsupported_privacy_boundary",
+                files: nil,
+                records: 0
+            )
+        )
         if codexOutcome.usedIncrementalStore {
             cache.files = cache.files.filter { $0.value.tool != "Codex" && livePaths.contains($0.key) }
         } else {
@@ -134,10 +142,6 @@ enum UsageCollector {
                 homeURL.appendingPathComponent(".zcode/cli/db/db.sqlite"),
                 homeURL.appendingPathComponent(".hermes/state.db")
             ]))
-            urls.append(contentsOf: [
-                homeURL.appendingPathComponent(".workbuddy/projects", isDirectory: true),
-                homeURL.appendingPathComponent("Library/Application Support/WorkBuddyExtension", isDirectory: true)
-            ].flatMap { jsonlFiles(under: $0, modifiedSince: cutoff) })
         }
 
         let files = Dictionary(grouping: urls, by: \.path)
@@ -419,9 +423,14 @@ enum UsageCollector {
         let hermes = includeExperimentalAgentSources
             ? hermesDatabaseURL.map { collectHermesUsage(databaseURL: $0) } ?? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let workBuddy = includeExperimentalAgentSources
-            ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs ?? [], modifiedSince: nil)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let workBuddy = CollectorResult(
+            records: [],
+            source: SourceInfo(
+                status: "unsupported_privacy_boundary",
+                files: nil,
+                records: 0
+            )
+        )
         let deduped = deduplicateCrossSource(
             nativeRecords: codex.records + claude.records,
             proxyRecords: ccSwitch.records
@@ -1835,7 +1844,7 @@ enum UsageCollector {
                 tool: ccSwitchToolName(appType: appType),
                 model: modelKey(row["display_model"] as? String),
                 usage: usage,
-                costUSD: doubleValue(row["total_cost_usd"] as Any),
+                costUSD: positiveDoubleValue(row["total_cost_usd"] as Any),
                 source: .ccSwitchProxy,
                 requestID: nonEmptyString(row["request_id"] as? String),
                 sessionID: nonEmptyString(row["session_id"] as? String),
@@ -2076,122 +2085,6 @@ enum UsageCollector {
         )
     }
 
-    private static func collectWorkBuddyUsage(
-        rootURLs: [URL]? = nil,
-        modifiedSince cutoffDate: Date?
-    ) -> CollectorResult {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let roots = rootURLs ?? [
-            home.appendingPathComponent(".workbuddy/projects", isDirectory: true),
-            home.appendingPathComponent("Library/Application Support/WorkBuddyExtension", isDirectory: true)
-        ]
-        let discoveredRoots = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
-        let files = discoveredRoots.flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
-        var records: [UsageRecord] = []
-
-        for file in files {
-            var lineNumber = 0
-            try? forEachLine(in: file, matchingAny: ["\"usage\"", "\"rawUsage\""]) { line in
-                lineNumber += 1
-                guard let data = line.data(using: .utf8),
-                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let timestamp = object["timestamp"],
-                      let day = dayString(fromEpoch: timestamp),
-                      let usage = workBuddyUsage(from: object),
-                      usage.totalTokens > 0
-                else {
-                    return
-                }
-
-                let providerData = object["providerData"] as? [String: Any]
-                let recordType = object["type"] as? String
-                records.append(UsageRecord(
-                    date: day,
-                    timestamp: isoString(fromEpoch: timestamp),
-                    tool: "WorkBuddy",
-                    model: modelKey(
-                        providerData?["requestModelId"] as? String
-                            ?? providerData?["requestModelName"] as? String
-                            ?? providerData?["model"] as? String
-                    ),
-                    usage: usage,
-                    source: .workbuddy,
-                    requestID: nonEmptyString(providerData?["conversationRequestId"] as? String),
-                    sessionID: nonEmptyString(object["sessionId"] as? String),
-                    sourcePath: file.path,
-                    lineNumber: lineNumber,
-                    modelRequestCount: 1,
-                    toolCallCount: recordType == "function_call" ? 1 : 0
-                ))
-            }
-        }
-
-        let status: String
-        if discoveredRoots.isEmpty {
-            status = "missing"
-        } else if files.isEmpty {
-            status = "discovered_no_usage"
-        } else if records.isEmpty {
-            status = "missing_valid_rows"
-        } else {
-            status = "ok"
-        }
-        return CollectorResult(
-            records: records,
-            source: SourceInfo(
-                status: status,
-                files: files.count,
-                records: records.count
-            )
-        )
-    }
-
-    private static func workBuddyUsage(from object: [String: Any]) -> TokenUsageCounts? {
-        let message = object["message"] as? [String: Any]
-        let providerData = object["providerData"] as? [String: Any]
-        let usage = message?["usage"] as? [String: Any]
-            ?? providerData?["rawUsage"] as? [String: Any]
-            ?? providerData?["usage"] as? [String: Any]
-        guard let usage else { return nil }
-
-        let rawInput = firstIntegerValue(
-            in: usage,
-            keys: ["input_tokens", "inputTokens", "prompt_tokens"]
-        )
-        let output = firstIntegerValue(
-            in: usage,
-            keys: ["output_tokens", "outputTokens", "completion_tokens"]
-        )
-        let cacheRead = firstIntegerValue(
-            in: usage,
-            keys: ["cache_read_input_tokens", "cached_tokens", "prompt_cache_hit_tokens"]
-        )
-        let reasoning = firstIntegerValue(
-            in: usage,
-            keys: ["reasoning_tokens", "completion_thinking_tokens"]
-        )
-        let explicitTotal = firstIntegerValue(
-            in: usage,
-            keys: ["total_tokens", "totalTokens"]
-        )
-        return canonicalUsageCounts(
-            rawInputTokens: rawInput,
-            outputTokens: output,
-            cacheReadInputTokens: cacheRead,
-            reasoningOutputTokens: reasoning,
-            inputIncludesCachedTokens: true,
-            explicitTotalTokens: explicitTotal,
-            explicitTotalIsAuthoritative: true
-        )
-    }
-
-    private static func firstIntegerValue(in object: [String: Any], keys: [String]) -> Int {
-        for key in keys where object.keys.contains(key) {
-            return max(0, integerValue(object[key] as Any))
-        }
-        return 0
-    }
-
     private static func deduplicateCrossSource(
         nativeRecords: [UsageRecord],
         proxyRecords: [UsageRecord]
@@ -2224,30 +2117,26 @@ enum UsageCollector {
             matchedNativeIndices: &matchedNativeIndices
         )
 
-        // Similar timing/model/token vectors alone are not proof of identity: concurrent
-        // requests can legitimately look the same. A shared session is the minimum
-        // fallback correlation when request/response IDs are unavailable.
-        let remainingProxyIndices = deduplicableProxyIndices.filter { !matchedProxyIndices.contains($0) }
-        let remainingNativeIndices = nativeRecords.indices.filter { !matchedNativeIndices.contains($0) }
-        let sessionPairs = uniqueDedupePairs(
-            proxyIndices: remainingProxyIndices,
-            nativeIndices: Array(remainingNativeIndices)
-        ) { proxyIndex, nativeIndex in
-            isSameDedupeDomain(
-                proxyRecord: proxyRecords[proxyIndex],
-                nativeRecord: nativeRecords[nativeIndex]
-            ) && hasSessionIdentityMatch(
-                proxyRecord: proxyRecords[proxyIndex],
-                nativeRecord: nativeRecords[nativeIndex]
-            )
-        }
-        applyDedupePairs(
-            sessionPairs,
-            proxyRecords: proxyRecords,
-            enrichedNativeRecords: &enrichedNativeRecords,
-            matchedProxyIndices: &matchedProxyIndices,
-            matchedNativeIndices: &matchedNativeIndices
-        )
+        let possibleOverlapRecords = deduplicableProxyIndices.filter { proxyIndex in
+            guard !matchedProxyIndices.contains(proxyIndex) else { return false }
+            return nativeRecords.indices.contains { nativeIndex in
+                guard !matchedNativeIndices.contains(nativeIndex) else { return false }
+                return isSameDedupeDomain(
+                    proxyRecord: proxyRecords[proxyIndex],
+                    nativeRecord: nativeRecords[nativeIndex]
+                ) && areTimestampsClose(
+                    proxyRecords[proxyIndex].timestamp,
+                    nativeRecords[nativeIndex].timestamp,
+                    seconds: 10
+                ) && modelsCompatible(
+                    proxyRecords[proxyIndex].model,
+                    nativeRecords[nativeIndex].model
+                ) && usageVectorsClose(
+                    proxyRecord: proxyRecords[proxyIndex],
+                    nativeRecord: nativeRecords[nativeIndex]
+                )
+            }
+        }.count
 
         let keptProxyRecords = proxyRecords.indices
             .filter { !matchedProxyIndices.contains($0) }
@@ -2257,6 +2146,7 @@ enum UsageCollector {
             rawProxyRecords: proxyRecords.count,
             keptProxyRecords: keptProxyRecords.count,
             dedupedProxyRecords: matchedProxyIndices.count,
+            possibleOverlapRecords: possibleOverlapRecords,
             skippedProxyRecords: skippedProxyRecords
         )
     }
@@ -2311,6 +2201,7 @@ enum UsageCollector {
         var annotated = source
         annotated.rawRecords = result.rawProxyRecords
         annotated.dedupedRecords = result.dedupedProxyRecords
+        annotated.possibleOverlapRecords = result.possibleOverlapRecords
         annotated.skippedRecords = result.skippedProxyRecords
         annotated.strategy = "request_level_dedupe"
         annotated.records = result.keptProxyRecords
@@ -2345,19 +2236,6 @@ enum UsageCollector {
         let proxyIDs = Set([proxyRecord.requestID, proxyRecord.responseID].compactMap(nonEmptyString))
         let nativeIDs = Set([nativeRecord.requestID, nativeRecord.responseID].compactMap(nonEmptyString))
         return !proxyIDs.isDisjoint(with: nativeIDs)
-    }
-
-    private static func hasSessionIdentityMatch(proxyRecord: UsageRecord, nativeRecord: UsageRecord) -> Bool {
-        guard let proxySessionID = nonEmptyString(proxyRecord.sessionID),
-              let nativeSessionID = nonEmptyString(nativeRecord.sessionID),
-              proxySessionID == nativeSessionID,
-              areTimestampsClose(proxyRecord.timestamp, nativeRecord.timestamp, seconds: 10),
-              modelsCompatible(proxyRecord.model, nativeRecord.model),
-              usageVectorsClose(proxyRecord: proxyRecord, nativeRecord: nativeRecord)
-        else {
-            return false
-        }
-        return true
     }
 
     private static func enrichedRecord(
@@ -2475,8 +2353,9 @@ enum UsageCollector {
         var models = [ModelKey: UsageAccumulator]()
 
         for record in records {
-            let cost = record.costUSD ?? estimateCost(usage: record.usage, tool: record.tool, model: record.model)
-            daily[record.date, default: DailyAccumulator(date: record.date)].add(record: record, cost: cost)
+            let resolvedCost = resolveCost(for: record)
+            daily[record.date, default: DailyAccumulator(date: record.date)]
+                .add(record: record, resolvedCost: resolvedCost)
             let recordHour = record.timestampEpoch.map(hour(fromEpoch:))
                 ?? hour(fromISO: record.timestamp)
             if let hour = recordHour {
@@ -2487,12 +2366,15 @@ enum UsageCollector {
                 agentWork[record.date, default: AgentWorkAccumulator(date: record.date)]
                     .add(record: record, hour: recordHour)
             }
-            tools[record.tool, default: UsageAccumulator()].add(record.usage, cost: cost)
-            models[ModelKey(tool: record.tool, model: record.model), default: UsageAccumulator()].add(record.usage, cost: cost)
+            tools[record.tool, default: UsageAccumulator()].add(record.usage, cost: resolvedCost.costUSD)
+            models[ModelKey(tool: record.tool, model: record.model), default: UsageAccumulator()]
+                .add(record.usage, cost: resolvedCost.costUSD)
         }
 
         let totalTokens = tools.values.map(\.usage.totalTokens).reduce(0, +)
         let totalCost = tools.values.map(\.cost).reduce(0, +)
+        let totalPricedTokens = daily.values.map(\.pricedTokens).reduce(0, +)
+        let totalUnpricedTokens = daily.values.map(\.unpricedTokens).reduce(0, +)
 
         let dailyRows = daily.values
             .sorted { $0.date < $1.date }
@@ -2503,7 +2385,10 @@ enum UsageCollector {
                     models: item.models,
                     atomicUsage: item.atomicUsage,
                     totalTokens: item.totalTokens,
-                    cost: rounded(item.cost, digits: 4)
+                    cost: rounded(item.cost, digits: 4),
+                    pricedTokens: item.pricedTokens,
+                    unpricedTokens: item.unpricedTokens,
+                    pricingVersion: TokenPricingCatalog.version
                 )
             }
 
@@ -2544,7 +2429,10 @@ enum UsageCollector {
             totals: UsageTotals(
                 tokens: totalTokens,
                 cost: rounded(totalCost, digits: 2),
-                activeDays: dailyRows.filter { $0.totalTokens > 0 }.count
+                activeDays: dailyRows.filter { $0.totalTokens > 0 }.count,
+                pricedTokens: totalTokens > 0 ? totalPricedTokens : nil,
+                unpricedTokens: totalTokens > 0 ? totalUnpricedTokens : nil,
+                pricingVersion: TokenPricingCatalog.version
             ),
             daily: dailyRows,
             rhythms: rhythmRows,
@@ -2557,7 +2445,7 @@ enum UsageCollector {
 
     private static func isAgentWorkRecord(_ record: UsageRecord) -> Bool {
         switch record.source {
-        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes, .workbuddy:
+        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes:
             return true
         case .unknown:
             return false
@@ -3043,6 +2931,11 @@ enum UsageCollector {
         return 0
     }
 
+    private static func positiveDoubleValue(_ value: Any) -> Double? {
+        let number = doubleValue(value)
+        return number.isFinite && number > 0 ? number : nil
+    }
+
     private static func nonEmptyString(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3162,6 +3055,12 @@ enum UsageCollector {
             return "Codex via CC Switch"
         case "gemini":
             return "Gemini via CC Switch"
+        case "kimi", "kimi-cli", "kimi-code":
+            return "Kimi via CC Switch (experimental)"
+        case "deepseek":
+            return "DeepSeek via CC Switch (experimental)"
+        case "cursor":
+            return "Cursor via CC Switch (experimental)"
         default:
             return "\(value.isEmpty ? "unknown" : value) via CC Switch (experimental)"
         }
@@ -3232,62 +3131,48 @@ enum UsageCollector {
         return try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
     }
 
-    private static func estimateCost(usage: TokenUsageCounts, tool: String, model: String) -> Double {
-        let lower = model.lowercased()
-        if tool == "Codex", lower.contains("gpt-5.5") {
-            return openAICostByParts(usage: usage, input: 5, cachedInput: 0.5, output: 30)
+    private static func resolveCost(for record: UsageRecord) -> ResolvedRecordCost {
+        if let sourceCost = record.costUSD,
+           sourceCost.isFinite,
+           sourceCost > 0 {
+            return ResolvedRecordCost(
+                costUSD: sourceCost,
+                pricedTokens: record.usage.totalTokens,
+                unpricedTokens: 0
+            )
         }
-        if tool == "Codex", lower.contains("gpt-5.4") {
-            return openAICostByParts(usage: usage, input: 2.5, cachedInput: 0.25, output: 15)
-        }
-        if lower.contains("opus") {
-            return costByParts(usage: usage, input: 5, output: 25, cacheCreation: 6.25, cacheRead: 0.5)
-        }
-        if lower.contains("sonnet") {
-            return costByParts(usage: usage, input: 3, output: 15, cacheCreation: 3.75, cacheRead: 0.3)
-        }
-        if tool == "Claude Code" {
-            return Double(usage.totalTokens) / 1_000_000 * 3
-        }
-        return Double(usage.totalTokens) / 1_000_000
-    }
 
-    private static func openAICostByParts(
-        usage: TokenUsageCounts,
-        input: Double,
-        cachedInput: Double,
-        output: Double
-    ) -> Double {
-        let cached = max(0, usage.cacheReadInputTokens)
-        let cacheCreation = max(0, usage.cacheCreationInputTokens)
-        let uncachedInput = max(0, usage.inputTokens - cached - cacheCreation)
-        if uncachedInput == 0,
-           cached == 0,
-           cacheCreation == 0,
-           usage.outputTokens == 0,
-           usage.totalTokens > 0 {
-            return Double(usage.totalTokens) / 1_000_000 * input
-        }
-        return Double(uncachedInput + cacheCreation) / 1_000_000 * input
-            + Double(cached) / 1_000_000 * cachedInput
-            + Double(usage.outputTokens) / 1_000_000 * output
-    }
-
-    private static func costByParts(
-        usage: TokenUsageCounts,
-        input: Double,
-        output: Double,
-        cacheCreation: Double,
-        cacheRead: Double
-    ) -> Double {
-        let uncachedInput = max(
-            0,
-            usage.inputTokens - usage.cacheCreationInputTokens - usage.cacheReadInputTokens
+        let usage = record.usage
+        let normalizedUsage = TokenPricingUsage(
+            inputTokens: max(
+                0,
+                usage.inputTokens
+                    - usage.cacheCreationInputTokens
+                    - usage.cacheReadInputTokens
+            ),
+            outputTokens: usage.outputTokens,
+            cacheReadTokens: usage.cacheReadInputTokens,
+            cacheWriteTokens: usage.cacheCreationInputTokens,
+            totalTokens: usage.totalTokens,
+            breakdownComplete: usage.cacheCoverageComplete
         )
-        return Double(uncachedInput) / 1_000_000 * input
-            + Double(usage.outputTokens) / 1_000_000 * output
-            + Double(usage.cacheCreationInputTokens) / 1_000_000 * cacheCreation
-            + Double(usage.cacheReadInputTokens) / 1_000_000 * cacheRead
+        guard let estimate = TokenPricingCatalog.estimate(
+            tool: record.tool,
+            model: record.model,
+            usage: normalizedUsage,
+            date: record.date
+        ) else {
+            return ResolvedRecordCost(
+                costUSD: 0,
+                pricedTokens: 0,
+                unpricedTokens: record.usage.totalTokens
+            )
+        }
+        return ResolvedRecordCost(
+            costUSD: estimate.costUSD,
+            pricedTokens: estimate.pricedTokens,
+            unpricedTokens: estimate.unpricedTokens
+        )
     }
 
     private static func percent(_ value: Int, of total: Int) -> Double {
@@ -4319,7 +4204,6 @@ private enum UsageRecordSource: String, Codable, Equatable {
     case ccSwitchProxy
     case zcode
     case hermes
-    case workbuddy
     case unknown
 }
 
@@ -4328,6 +4212,7 @@ private struct CrossSourceDedupeResult {
     var rawProxyRecords: Int
     var keptProxyRecords: Int
     var dedupedProxyRecords: Int
+    var possibleOverlapRecords: Int
     var skippedProxyRecords: Int
 }
 
@@ -4432,6 +4317,12 @@ private struct UsageAccumulator {
     }
 }
 
+private struct ResolvedRecordCost {
+    var costUSD: Double
+    var pricedTokens: Int
+    var unpricedTokens: Int
+}
+
 private struct DailyAccumulator {
     var date: String
     var tools: [String: Int] = [:]
@@ -4439,14 +4330,18 @@ private struct DailyAccumulator {
     var atomic: [ModelKey: DailyAtomicAccumulator] = [:]
     var totalTokens = 0
     var cost = 0.0
+    var pricedTokens = 0
+    var unpricedTokens = 0
 
-    mutating func add(record: UsageRecord, cost: Double) {
+    mutating func add(record: UsageRecord, resolvedCost: ResolvedRecordCost) {
         tools[record.tool, default: 0] += record.usage.totalTokens
         models[record.model, default: 0] += record.usage.totalTokens
         atomic[ModelKey(tool: record.tool, model: record.model), default: DailyAtomicAccumulator()]
             .add(record.usage)
         totalTokens += record.usage.totalTokens
-        self.cost += cost
+        cost += resolvedCost.costUSD
+        pricedTokens += resolvedCost.pricedTokens
+        unpricedTokens += resolvedCost.unpricedTokens
     }
 
     var atomicUsage: [DailyAtomicUsage] {
@@ -4498,7 +4393,7 @@ private struct AgentWorkAccumulator {
     var modelRequestCount = 0
     var toolCallCount = 0
     var sources: [String: AgentWorkSourceAccumulator] = [:]
-    var hourlySources: [Int: [String: AgentWorkHourlySourceAccumulator]] = [:]
+    var hourlySources: [Int: [ModelKey: AgentWorkHourlySourceAccumulator]] = [:]
 
     mutating func add(record: UsageRecord, hour: Int?) {
         totalTokens += record.usage.totalTokens
@@ -4509,7 +4404,14 @@ private struct AgentWorkAccumulator {
         if let hour {
             activeHours.insert(hour)
             var sourceRows = hourlySources[hour] ?? [:]
-            sourceRows[record.tool, default: AgentWorkHourlySourceAccumulator(source: record.tool)]
+            let key = ModelKey(tool: record.tool, model: record.model)
+            sourceRows[
+                key,
+                default: AgentWorkHourlySourceAccumulator(
+                    source: record.tool,
+                    model: record.model
+                )
+            ]
                 .add(record: record)
             hourlySources[hour] = sourceRows
         } else {
@@ -4543,6 +4445,9 @@ private struct AgentWorkAccumulator {
                         .filter { $0.tokens > 0 }
                         .sorted {
                             if $0.tokens == $1.tokens {
+                                if $0.source == $1.source {
+                                    return $0.model < $1.model
+                                }
                                 return $0.source < $1.source
                             }
                             return $0.tokens > $1.tokens
@@ -4579,6 +4484,7 @@ private struct AgentWorkSourceAccumulator {
 
 private struct AgentWorkHourlySourceAccumulator {
     var source: String
+    var model: String
     var tokens = 0
     var inputTokens = 0
     var cachedInputTokens = 0
@@ -4596,6 +4502,7 @@ private struct AgentWorkHourlySourceAccumulator {
     var hourlySource: AgentWorkHourlySource {
         AgentWorkHourlySource(
             source: source,
+            model: model,
             tokens: tokens,
             inputTokens: inputTokens,
             cachedInputTokens: cachedInputTokens,

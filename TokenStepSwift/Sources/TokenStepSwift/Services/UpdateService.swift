@@ -203,9 +203,19 @@ enum UpdateService {
     }
 
     static var currentVersion: String {
-        (Bundle.main.object(forInfoDictionaryKey: "TokenFleetReleaseVersion") as? String)
+        #if TOKENSTEP_TESTING
+        let testingVersion = ProcessInfo.processInfo.environment["TOKENFLEET_TEST_RELEASE_VERSION"]
+        #else
+        let testingVersion: String? = nil
+        #endif
+        return (Bundle.main.object(forInfoDictionaryKey: "TokenFleetReleaseVersion") as? String)
             ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
+            ?? testingVersion
             ?? "0.0.0"
+    }
+
+    static var isConfigured: Bool {
+        latestReleaseURL != nil
     }
 
     static func checkForUpdates(currentVersion: String = Self.currentVersion) async throws -> UpdateCheckResult {
@@ -248,9 +258,16 @@ enum UpdateService {
         } catch {
             throw UpdateError.checkFailed
         }
-        guard !release.draft, !release.prerelease else { return .upToDate }
+        guard !release.draft else { return .upToDate }
+        let installedVersion = Version(currentVersion)
+        // A beta/RC installation remains on the prerelease channel and may
+        // advance to a newer prerelease or a stable release. Stable installs
+        // never opt into prereleases implicitly.
+        guard !release.prerelease || installedVersion.isPrerelease else {
+            return .upToDate
+        }
         let version = release.tagName.strippingVersionPrefix
-        guard Version(version) > Version(currentVersion) else { return .upToDate }
+        guard Version(version) > installedVersion else { return .upToDate }
         guard let asset = release.assets.first(where: {
                   let name = $0.name.lowercased()
                   return name.hasPrefix("tokenfleet-")
@@ -956,6 +973,10 @@ struct Version: Comparable {
         } else {
             prerelease = nil
         }
+    }
+
+    var isPrerelease: Bool {
+        prerelease != nil
     }
 
     static func < (lhs: Version, rhs: Version) -> Bool {

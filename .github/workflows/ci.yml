@@ -150,7 +150,7 @@ jobs:
           .ci-venv/bin/python script/verify_tokenfleet_live_web.py
 
   desktop:
-    name: Native client and distribution identity
+    name: Apple Silicon client and universal distribution
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -169,6 +169,31 @@ jobs:
         run: |
           SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
           TOKENFLEET_SWIFT_SDK="$SDK_PATH" bash script/verify_tokenstep_swift.sh
+
+      - name: Run x86_64 share render and complete Swift gate under Rosetta
+        run: |
+          if ! arch -x86_64 /usr/bin/true; then
+            sudo /usr/sbin/softwareupdate --install-rosetta --agree-to-license
+          fi
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" \
+          TOKENFLEET_SWIFT_TEST_ARCHITECTURE="x86_64" \
+          TOKENFLEET_REQUIRE_SHARE_CARD_RENDER="1" \
+            bash script/verify_tokenstep_swift.sh
+
+      - name: Build and verify Intel + Apple Silicon app slices
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" \
+          TOKENFLEET_ARCHITECTURES="arm64 x86_64" \
+            bash script/build_swiftui_and_run.sh --no-launch
+          for binary in \
+            TokenStepSwift/dist/TokenFleet.app/Contents/MacOS/TokenFleet \
+            TokenStepSwift/dist/TokenFleet.app/Contents/Helpers/TokenFleetHelper; do
+            architectures="$(lipo -archs "$binary")"
+            [[ " $architectures " == *" arm64 "* ]]
+            [[ " $architectures " == *" x86_64 "* ]]
+          done
 
       - name: Verify free source installation safety in an isolated Keychain
         run: |
@@ -202,6 +227,65 @@ jobs:
             exit 1
           fi
 
+  desktop-intel:
+    name: Intel client, collector, sync, and source lifecycle
+    runs-on: macos-15-intel
+    timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Prove this job is running on Intel hardware
+        run: |
+          [[ "$(uname -m)" == "x86_64" ]]
+          sysctl -n machdep.cpu.brand_string
+
+      - name: Install desktop verification tools
+        run: brew install ripgrep
+
+      - name: Run non-GPU XCTest natively on Intel
+        run: |
+          # This Intel runner exposes no Metal device, so ImageRenderer aborts
+          # before XCTest can report a skip. The same x86_64 render/copy/save
+          # fixture runs under Rosetta in the GPU-capable Apple Silicon job.
+          swift test --package-path TokenStepSwift --parallel --skip ScreenshotExporterTests
+          swift test --package-path TokenStepSwift --filter 'ScreenshotExporterTests.test(EveryExportFailureNamesItsStage|GeneratedImageEncodesAsPNGAndJPGWithoutTIFFRoundTrip)'
+
+      - name: Run collector, pricing, and sync gates natively on Intel
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" \
+          TOKENFLEET_REQUIRE_SHARE_CARD_RENDER="0" \
+            bash script/verify_tokenstep_swift.sh
+
+      - name: Build native Intel App and Helper
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" \
+          TOKENFLEET_ARCHITECTURES="x86_64" \
+            bash script/build_swiftui_and_run.sh --no-launch
+          for binary in \
+            TokenStepSwift/dist/TokenFleet.app/Contents/MacOS/TokenFleet \
+            TokenStepSwift/dist/TokenFleet.app/Contents/Helpers/TokenFleetHelper; do
+            [[ "$(lipo -archs "$binary")" == "x86_64" ]]
+          done
+
+      - name: Exercise source install, upgrade, rollback, and uninstall on Intel
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" \
+          TOKENFLEET_ARCHITECTURES="x86_64" \
+            bash script/verify_source_distribution.sh
+
+      - name: Run desktop identity and packaging preflight on Intel
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          TOKENFLEET_SWIFT_SDK="$SDK_PATH" \
+          TOKENFLEET_ARCHITECTURES="x86_64" \
+            bash script/verify_tokenfleet_desktop_identity.sh
+
   windows-client:
     name: Windows participant client
     runs-on: windows-latest
@@ -226,3 +310,23 @@ jobs:
       - name: Validate the PowerShell source installer without installing
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -ValidateOnly
+
+      - name: Exercise Windows install, upgrade, preview, and uninstall
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -NoPathUpdate
+          $launcher = Join-Path $env:LOCALAPPDATA "TokenFleet\bin\tokenfleet.cmd"
+          & $launcher preview --json
+          if ($LASTEXITCODE -ne 0) { throw "TokenFleet preview failed" }
+          & $launcher status --json
+          if ($LASTEXITCODE -ne 0) { throw "TokenFleet status failed" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -NoPathUpdate
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\uninstall.ps1 -Yes
+          if (Test-Path (Join-Path $env:LOCALAPPDATA "TokenFleet")) { throw "TokenFleet uninstall left the install root behind" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -NoPathUpdate
+          schtasks.exe /Create /SC DAILY /ST 23:59 /TN "TokenFleet Community Sync" /TR "cmd.exe /c exit 0" /F | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "TokenFleet scheduled-task fixture could not be created" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\uninstall.ps1 -Yes
+          if (Get-ScheduledTask -TaskName "TokenFleet Community Sync" -ErrorAction SilentlyContinue) { throw "TokenFleet uninstall left the scheduled task behind" }
+          if (Test-Path (Join-Path $env:LOCALAPPDATA "TokenFleet")) { throw "TokenFleet second uninstall left the install root behind" }

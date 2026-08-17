@@ -7,8 +7,12 @@ struct StatsView: View {
     var body: some View {
         VStack(spacing: 22) {
             HStack(spacing: 18) {
-                StatHeroMetric(label: L("Token 消耗"), value: TokenStepFormat.tokens(selectedTokens), symbol: "figure.walk")
-                StatHeroMetric(label: L("消耗金额"), value: TokenStepFormat.money(selectedCost), symbol: "dollarsign.circle")
+                StatHeroMetric(label: L("Token 消耗"), value: TokenStepFormat.tokens(selectedTokens), symbol: "waveform.path.ecg")
+                StatHeroMetric(
+                    label: "\(L("费用估算")) · \(TokenStepFormat.pricingCoverage(selectedPricingCoverage))",
+                    value: TokenStepFormat.estimatedMoney(selectedCost, coverage: selectedPricingCoverage),
+                    symbol: "dollarsign.circle"
+                )
                 StatHeroMetric(label: L("活跃天数"), value: localizedDays(selectedActiveDays), symbol: "flame")
             }
 
@@ -99,8 +103,7 @@ struct StatsView: View {
     }
 
     private var selectedRows: [DailyUsage] {
-        guard let days = range.days else { return appState.snapshot.daily }
-        return Array(appState.snapshot.daily.suffix(days))
+        UsageCalendarWindow.rows(from: appState.snapshot.daily, days: range.days)
     }
 
     private var selectedTokens: Int {
@@ -109,6 +112,20 @@ struct StatsView: View {
 
     private var selectedCost: Double {
         selectedRows.reduce(0) { $0 + $1.cost }
+    }
+
+    private var selectedPricingCoverage: Double? {
+        let pricedValues = selectedRows.compactMap(\.pricedTokens)
+        let unpricedValues = selectedRows.compactMap(\.unpricedTokens)
+        guard pricedValues.count == selectedRows.count,
+              unpricedValues.count == selectedRows.count
+        else {
+            return nil
+        }
+        let priced = pricedValues.reduce(0, +)
+        let unpriced = unpricedValues.reduce(0, +)
+        guard priced + unpriced > 0 else { return 1 }
+        return Double(priced) / Double(priced + unpriced)
     }
 
     private var selectedActiveDays: Int {

@@ -1,0 +1,962 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TokenFleet beta.8 功能对照与勾选</title>
+  <style>
+    :root {
+      --canvas: #f4f1e8;
+      --paper: #fffdf7;
+      --paper-strong: #ffffff;
+      --ink: #14221d;
+      --muted: #68746e;
+      --line: #d8ddd6;
+      --green: #087445;
+      --green-strong: #055d37;
+      --green-soft: #def2e5;
+      --cyan: #0b817a;
+      --cyan-soft: #dff3f0;
+      --amber: #a85f00;
+      --amber-soft: #faebc8;
+      --rose: #9b3f51;
+      --rose-soft: #f8e0e4;
+      --slate: #526069;
+      --slate-soft: #e9edf0;
+      --shadow: 0 18px 44px rgba(21, 44, 34, 0.08);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font-family: "SF Pro Rounded", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    button, input { font: inherit; }
+
+    button { color: inherit; }
+
+    .shell {
+      width: min(1480px, calc(100% - 40px));
+      margin: 28px auto 80px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      min-height: 315px;
+      padding: 42px 46px;
+      color: #f7fbf8;
+      background: #14261f;
+      border: 1px solid #213b31;
+      border-radius: 30px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: 44px;
+      top: 42px;
+      width: 128px;
+      height: 128px;
+      border: 22px solid #2c9e6c;
+      border-right-color: #efc568;
+      border-bottom-color: #24443a;
+      border-radius: 50%;
+      opacity: .9;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: #6fdaa3;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 900px;
+      margin: 0;
+      font-size: clamp(36px, 5vw, 66px);
+      line-height: 1.04;
+      letter-spacing: -.045em;
+    }
+
+    .hero-copy {
+      max-width: 920px;
+      margin: 20px 0 0;
+      color: #bdc9c3;
+      font-size: 16px;
+    }
+
+    .hero strong { color: #fff; }
+
+    .baselines {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 24px;
+    }
+
+    .baseline {
+      padding: 8px 11px;
+      color: #d5e1db;
+      background: #20362d;
+      border: 1px solid #345347;
+      border-radius: 9px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .progress-panel {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(120px, 1fr));
+      gap: 10px;
+      max-width: 610px;
+      margin-top: 30px;
+    }
+
+    .metric {
+      padding: 14px 16px;
+      background: #1c352b;
+      border: 1px solid #305144;
+      border-radius: 14px;
+    }
+
+    .metric small {
+      display: block;
+      color: #94aaa0;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .metric b {
+      display: block;
+      margin-top: 3px;
+      font-size: 28px;
+      line-height: 1.1;
+    }
+
+    .progress-track {
+      height: 8px;
+      margin-top: 22px;
+      overflow: hidden;
+      background: #29443a;
+      border-radius: 999px;
+    }
+
+    .progress-fill {
+      width: 0;
+      height: 100%;
+      background: #5fd08e;
+      border-radius: inherit;
+      transition: width .25s ease;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 10px;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: minmax(230px, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      margin: 18px 0 28px;
+      padding: 14px;
+      background: rgba(255, 253, 247, .96);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 10px 30px rgba(21, 44, 34, .08);
+      backdrop-filter: blur(18px);
+    }
+
+    .search-wrap {
+      position: relative;
+    }
+
+    .search-wrap span {
+      position: absolute;
+      left: 15px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    .search {
+      width: 100%;
+      height: 44px;
+      padding: 0 14px 0 42px;
+      color: var(--ink);
+      background: #f7f7f2;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      outline: none;
+    }
+
+    .search:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 3px rgba(8, 116, 69, .12);
+    }
+
+    .toolbar-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .action,
+    .filter {
+      min-height: 40px;
+      padding: 0 13px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .action:hover,
+    .filter:hover { border-color: #9bb4a9; }
+
+    .action.primary {
+      color: #fff;
+      background: var(--green);
+      border-color: var(--green);
+    }
+
+    .filter.active {
+      color: #fff;
+      background: var(--ink);
+      border-color: var(--ink);
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0 0 24px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: end;
+      margin: 36px 2px 14px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: -.025em;
+    }
+
+    .section-head p {
+      margin: 4px 0 0;
+      color: var(--muted);
+    }
+
+    .priority-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .priority-card {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 13px;
+      min-height: 126px;
+      padding: 20px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--green);
+      border-radius: 16px;
+      box-shadow: 0 7px 18px rgba(21, 44, 34, .035);
+    }
+
+    .priority-card[data-status="gate"] { border-left-color: var(--amber); }
+    .priority-card[data-status="preserve"] { border-left-color: var(--cyan); }
+
+    .priority-card.is-checked,
+    .matrix-row.is-checked {
+      opacity: .62;
+      background: #f1f2ed;
+    }
+
+    .priority-card.is-checked .item-title,
+    .matrix-row.is-checked .item-title { text-decoration: line-through; }
+
+    .check {
+      width: 28px;
+      height: 28px;
+      margin: 1px 0 0;
+      accent-color: var(--green);
+      cursor: pointer;
+    }
+
+    .item-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 830;
+      line-height: 1.42;
+    }
+
+    .item-note {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 25px;
+      padding: 3px 9px;
+      border-radius: 7px;
+      font-size: 11px;
+      font-weight: 850;
+      letter-spacing: .02em;
+    }
+
+    .badge.preview { color: var(--green-strong); background: var(--green-soft); }
+    .badge.preserve { color: #096661; background: var(--cyan-soft); }
+    .badge.gate { color: #7a4500; background: var(--amber-soft); }
+    .badge.done { color: #3f4f47; background: #e4e8e4; }
+    .badge.replace { color: #4b4263; background: #e9e4f6; }
+    .badge.unsupported { color: #82364a; background: var(--rose-soft); }
+
+    .group {
+      margin-top: 14px;
+      overflow: hidden;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 24px rgba(21, 44, 34, .035);
+    }
+
+    .group summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 20px 22px;
+      list-style: none;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .group summary::-webkit-details-marker { display: none; }
+
+    .group summary h3 {
+      margin: 0;
+      font-size: 19px;
+    }
+
+    .group-count {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .group summary::after {
+      content: "+";
+      width: 28px;
+      height: 28px;
+      color: #fff;
+      background: var(--ink);
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+      font-weight: 500;
+    }
+
+    .group[open] summary::after { content: "−"; }
+
+    .matrix-head,
+    .matrix-row {
+      display: grid;
+      grid-template-columns: minmax(240px, 1.25fr) minmax(130px, .7fr) minmax(140px, .75fr) minmax(260px, 1.4fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .matrix-head {
+      padding: 11px 22px;
+      color: var(--muted);
+      background: #f2f2ec;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      font-size: 11px;
+      font-weight: 850;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .matrix-row {
+      padding: 17px 22px;
+      border-bottom: 1px solid #e5e8e3;
+    }
+
+    .matrix-row:last-child { border-bottom: 0; }
+
+    .capability {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 11px;
+    }
+
+    .cell {
+      color: #4f5d56;
+      font-size: 13px;
+    }
+
+    .cell.beta8 {
+      color: var(--ink);
+      font-weight: 650;
+    }
+
+    .cell .badge { margin-bottom: 7px; }
+
+    .empty-state {
+      display: none;
+      padding: 46px;
+      text-align: center;
+      color: var(--muted);
+      background: var(--paper);
+      border: 1px dashed #aebbb4;
+      border-radius: 18px;
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 18px;
+      padding: 15px;
+      background: #e9e7df;
+      border-radius: 14px;
+    }
+
+    .legend div {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend b {
+      display: block;
+      color: var(--ink);
+      margin-bottom: 2px;
+    }
+
+    .footnote {
+      margin: 36px 0 0;
+      padding: 22px 24px;
+      color: #d9e4de;
+      background: #183128;
+      border-radius: 18px;
+    }
+
+    .footnote strong { color: #fff; }
+
+    .toast {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 50;
+      max-width: 340px;
+      padding: 13px 17px;
+      color: #fff;
+      background: var(--ink);
+      border: 1px solid #3e5a4e;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translateY(12px);
+      pointer-events: none;
+      transition: .2s ease;
+    }
+
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 1080px) {
+      .toolbar { grid-template-columns: 1fr; }
+      .toolbar-actions { justify-content: flex-start; }
+      .legend { grid-template-columns: repeat(3, 1fr); }
+      .matrix-head { display: none; }
+      .matrix-row { grid-template-columns: 1fr 1fr; }
+      .capability { grid-column: 1 / -1; }
+      .cell.beta8 { grid-column: 1 / -1; }
+    }
+
+    @media (max-width: 760px) {
+      .shell { width: min(100% - 22px, 1480px); margin-top: 11px; }
+      .hero { padding: 30px 24px; }
+      .hero::after { display: none; }
+      .progress-panel { grid-template-columns: 1fr; }
+      .priority-grid { grid-template-columns: 1fr; }
+      .matrix-row { grid-template-columns: 1fr; padding: 17px; }
+      .cell, .cell.beta8 { grid-column: 1; }
+      .cell::before {
+        display: block;
+        margin-bottom: 3px;
+        color: #8a948f;
+        font-size: 10px;
+        font-weight: 850;
+        letter-spacing: .08em;
+      }
+      .cell.tokenstep::before { content: "原始 TokenStep"; }
+      .cell.beta7::before { content: "TokenFleet beta.7"; }
+      .cell.beta8::before { content: "beta.8 最新状态"; }
+      .legend { grid-template-columns: 1fr 1fr; }
+      .toolbar { position: static; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <p class="eyebrow">TokenFleet · Product Audit</p>
+      <h1>beta.8 功能对照<br>与勾选清单</h1>
+      <p class="hero-copy">
+        把原始 TokenStep、TokenFleet beta.7 和 beta.8 最新状态放在一张可勾选清单里。
+        <strong>勾选＝你希望 beta.8 保留或实现；不勾＝暂不纳入或还没决定。</strong>
+        勾选只保存在本机浏览器，不会提交代码或影响线上。
+      </p>
+      <div class="baselines">
+        <span class="baseline">TokenStep v0.1.48</span>
+        <span class="baseline">TokenFleet beta.7 · v0.1.0-beta.7</span>
+        <span class="baseline">beta.8 · Draft PR #4 当前 headRefOid</span>
+        <span class="baseline">能力状态以当前工作树验收为准</span>
+      </div>
+      <div class="progress-panel" aria-live="polite">
+        <div class="metric"><small>清单总项</small><b id="totalCount">0</b></div>
+        <div class="metric"><small>奥哥已勾选</small><b id="checkedCount">0</b></div>
+        <div class="metric"><small>还未决定</small><b id="remainingCount">0</b></div>
+      </div>
+      <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="progressFill"></div></div>
+    </header>
+
+    <div class="toolbar">
+      <label class="search-wrap">
+        <span>⌕</span>
+        <input class="search" id="search" type="search" placeholder="搜索功能，例如：语言、历史、分享、Intel…" autocomplete="off">
+      </label>
+      <div class="toolbar-actions">
+        <button class="action" id="uncheckedOnly" type="button" aria-pressed="false">只看未勾选</button>
+        <button class="action primary" id="copySelected" type="button">复制我的勾选</button>
+        <button class="action" id="copyRemaining" type="button">复制未勾选</button>
+        <button class="action" id="resetAll" type="button">重置</button>
+      </div>
+    </div>
+
+    <nav class="filters" aria-label="按状态筛选">
+      <button class="filter active" data-filter="all" type="button">全部</button>
+      <button class="filter" data-filter="decision" type="button">只看待拍板</button>
+      <button class="filter" data-filter="preview" type="button">仅预览</button>
+      <button class="filter" data-filter="preserve" type="button">旧能力待保全</button>
+      <button class="filter" data-filter="gate" type="button">发布门槛</button>
+      <button class="filter" data-filter="done" type="button">正式已有</button>
+      <button class="filter" data-filter="replace" type="button">有意替代</button>
+      <button class="filter" data-filter="unsupported" type="button">暂不支持</button>
+    </nav>
+
+    <section>
+      <div class="section-head">
+        <div>
+          <h2>先看这 16 项</h2>
+          <p>这是目前最影响 beta.8 成品体验与发布安全的决定。</p>
+        </div>
+      </div>
+      <div class="priority-grid" id="priorityGrid"></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <div>
+          <h2>完整三版本对照</h2>
+          <p>每一组都可以展开；保留、改版、暂不支持和发布门槛分开标识。</p>
+        </div>
+      </div>
+      <div class="legend">
+        <div><b>正式已有</b>beta.8 代码已有</div>
+        <div><b>仅预览</b>仅用于尚未进入当前工作树的后台或人工决策项</div>
+        <div><b>旧能力待保全</b>正式代码有，改版不能丢</div>
+        <div><b>发布门槛</b>需真实验收或发布条件</div>
+        <div><b>有意替代</b>不是遗漏，是产品取舍</div>
+        <div><b>暂不支持</b>没有安全真实字段</div>
+      </div>
+      <div id="groups"></div>
+      <div class="empty-state" id="emptyState">没有符合当前筛选条件的项目。</div>
+    </section>
+
+    <aside class="footnote">
+      <strong>怎么用：</strong>先勾你明确想保留或实现的能力，再点“复制我的勾选”发给我。
+      我会据此整理成正式 beta.8 实施清单；生产部署、自动更新源和发版仍然会单独说明影响与回滚，并等待你再次确认。
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script>
+    const STORAGE_KEY = "tokenfleet-beta8-feature-checklist-v1";
+
+    const statusMeta = {
+      preview: { label: "仅预览", className: "preview" },
+      preserve: { label: "旧能力待保全", className: "preserve" },
+      gate: { label: "发布门槛", className: "gate" },
+      done: { label: "正式已有", className: "done" },
+      replace: { label: "有意替代", className: "replace" },
+      unsupported: { label: "暂不支持", className: "unsupported" }
+    };
+
+    const priorities = [
+      { id: "p-popover-tools", title: "单屏入口的“工具 Top 3 + 展开全部”", note: "已落入正式 Swift App；入口看 Codex、Claude Code 等工具，不是模型，多工具可展开全部。", status: "done" },
+      { id: "p-ring", title: "“圈数圆环 + 每天一个亿”", note: "已正式落地，保留圈数记忆点，但不照搬 TokenStep 步数皮肤。", status: "done" },
+      { id: "p-agent-chart", title: "Agent 工作强度单轴 Token 图", note: "已正式落地：今日按小时、近 7 天按天；缓存命中率不与 Token 共用主图。", status: "done" },
+      { id: "p-history-structure", title: "历史总览 / 按工具 / 按模型 / 每日明细", note: "已正式落地：总成本、消耗、活跃、峰值、覆盖率和分项明细均可查看。", status: "done" },
+      { id: "p-history-30", title: "近 30 天完整趋势", note: "已正式落地，并与 7 / 30 / 90 天 / 全部范围联动。", status: "done" },
+      { id: "p-history-wall", title: "历史活动墙", note: "已正式落地：按所选日历窗口日期顺序连续填充，固定 7 行按周排列，跨周的 7 天不漏。", status: "done" },
+      { id: "p-history-range", title: "近 7 / 30 / 90 天 / 全部范围切换", note: "已在总览 / 工具 / 模型页签同行落地并真实联动；每日明细不显示全局范围。", status: "done" },
+      { id: "p-personal-share", title: "保留今日、昨日、昨日节奏三种个人分享和当前页截图", note: "排行榜分享是新增，不应覆盖原有个人分享。", status: "preserve" },
+      { id: "p-app-top10", title: "App 社群榜 Top 10、主力工具/模型和“分享排名”", note: "已正式落地；App 同时提供本人排名上下文。", status: "done" },
+      { id: "p-rank-poster", title: "统一 App / Web 排名海报：主指标 Token + 本人 #x / y", note: "已正式落地并生成真实 1200 × 1600 PNG；按钮统一为“分享排名”，金额仅作辅助信息。", status: "done" },
+      { id: "p-rank-poster-context", title: "排名海报的主力工具、主力模型、估算费用和 slogan", note: "已正式落地并通过回归；二维码仅跳转同源公开排行榜，不携带设备码或其他设备权限。", status: "done" },
+      { id: "p-install-join", title: "排行榜网页“安装与参与”及联系二维码", note: "已正式落地：公开安装入口、纯二维码和必需邀请码说明齐备；后台复制链接、邀请海报和二维码管理另列 gate。", status: "done" },
+      { id: "p-settings", title: "设置页保留旧设置项", note: "已正式落地：语言、每日目标、刷新、入口、额度、隐私、更新和版本信息均保留。", status: "done" },
+      { id: "p-cache", title: "决定缓存命中率放哪里", note: "建议从 Agent 主图移除，只在详情或悬停里保留，底层数据不删除。", status: "preserve" },
+      { id: "p-platform-e2e", title: "完成真实 Intel Mac 界面与 Windows 10/11 端到端验收", note: "本地门禁与历史平台自动化不能替代真实可见界面；发布前仍需实际操作。", status: "gate" },
+      { id: "p-release", title: "闭环签名、公证、可信更新源和 beta.7 用户迁移", note: "此前不能说 beta.7 成员已经可以自动收到 beta.8。", status: "gate" }
+    ];
+
+    const groups = [
+      {
+        id: "entry-today",
+        title: "1. 菜单栏、单屏入口与今日页",
+        rows: [
+          ["menu-compact", "紧凑菜单栏入口", "有", "有", "正式代码固定使用 macOS 原生菜单栏圆环；仍需真实拥挤菜单栏回归。", "gate"],
+          ["menu-popover", "点击菜单栏打开快览", "有", "有", "正式代码已有，保持。", "done"],
+          ["entry-modes", "轻量浮层 / 主窗口 / Token Island", "有", "有", "保留菜单栏快览与主窗口；Token Island 因遮挡风险移除。", "done"],
+          ["main-reopen", "单屏主窗口找回", "部分", "部分", "可从应用程序或 Spotlight 再打开；仍需真实单屏回归。", "gate"],
+          ["daily-goal", "每日目标可配置", "有", "有", "正式代码已有；最新设置稿也已补回。", "done"],
+          ["percent-real", "超过 100% 后显示真实百分比", "有", "有", "正式代码已有，保持。", "done"],
+          ["one-billion", "“每天一个亿”", "类似目标叙事", "有", "beta.8 正式代码已落地。", "done"],
+          ["round-ring", "圈数圆环", "原版记忆点", "表达不同", "beta.8 已落地圈数感，不照搬 TokenStep 步数皮肤。", "done"],
+          ["tool-distribution", "今日工具分布", "有", "有", "正式代码已落地 Top 3 + 展开全部；显示真实总数，不静默并入“其他”。", "done"],
+          ["model-distribution", "今日模型分布", "有", "有", "正式代码已有，只展示真实本地字段。", "done"],
+          ["cost-estimate", "API 费用估算", "有", "有但准确性不足", "已增强精确模型、四类 Token、价格版本与覆盖率；始终明确是估算。", "done"],
+          ["streak", "连续活跃天数", "非独立基线", "没有", "beta.8 正式代码已有。", "done"],
+          ["relative-rhythm", "相对近 7 个活跃日节奏", "部分", "有", "正式代码已有准确口径，样本不足时隐藏。", "done"],
+          ["agent-toggle", "Agent 今日 / 近 7 天切换", "有", "有", "正式代码已有，保持。", "done"],
+          ["agent-filter", "Agent 按工具来源筛选", "有", "有", "正式代码已有，保持。", "done"],
+          ["agent-chart", "Agent 活动图", "24 小时", "24 小时", "正式代码已落地：今日按小时、近 7 天按天的 Token 强度图。", "done"],
+          ["cache-line", "缓存命中率折线", "有", "有", "正式代码仍有；建议移出主图并保留为详情指标。", "preserve"],
+          ["quota", "Codex / Claude Code 剩余额度", "有", "有，默认关闭", "正式代码已有，读取到真实窗口才展示；最终稿还需补开启态。", "preserve"]
+        ]
+      },
+      {
+        id: "history",
+        title: "2. 历史、统计与明细",
+        rows: [
+          ["history-range", "近 7 / 30 / 90 天 / 全部", "支持多时间范围", "完整支持", "正式代码已落地并联动总览 / 工具 / 模型；每日明细不显示全局范围。", "done"],
+          ["history-30", "最近 30 天趋势", "30 天趋势", "30 天趋势", "正式代码已落地完整趋势，并随所选范围联动。", "done"],
+          ["history-wall", "近 8 个月活动墙", "约 8 个月热力图", "约 8 个月热力图", "正式代码已落地：按所选日历窗口日期顺序连续填充，固定 7 行按周排列，跨周的 7 天不漏；90 天约 13 周、全部约 34 周。", "done"],
+          ["history-core", "累计 Token / 活跃天数 / 达标天数", "有", "有", "正式代码已有，保持。", "done"],
+          ["history-cost", "累计费用 / 覆盖率 / 日均 / 峰值", "部分", "部分", "正式历史页已落地；费用始终按“估算”口径显示，并提供覆盖率。", "done"],
+          ["history-tools", "按工具汇总", "有", "有", "正式代码已落地独立页签、完整列表、总数和排序。", "done"],
+          ["history-models", "按模型汇总", "有", "有", "正式代码已落地独立页签、完整列表、总数和排序。", "done"],
+          ["history-drilldown", "每日展开到工具 → 模型", "有", "有", "正式代码已有，改版必须保留。", "preserve"],
+          ["history-token-types", "输入 / 输出 / 缓存读 / 缓存写", "有", "有", "正式代码已有，不得因简化 UI 删除。", "preserve"],
+          ["history-legacy", "旧数据分项不完整提示", "旧数据来源", "有", "正式代码已落地明确提示，不伪造工具 × 模型交叉值。", "done"]
+        ]
+      },
+      {
+        id: "collectors",
+        title: "3. 采集器、费用和刷新",
+        rows: [
+          ["codex-jsonl", "Codex JSONL 增量采集", "有", "有", "正式代码已有并保持回归。", "done"],
+          ["codex-sqlite", "Codex SQLite 回退", "有", "有", "正式代码已有并保持回归。", "done"],
+          ["claude-jsonl", "Claude Code JSONL 与去重", "有", "有", "正式代码已有并保持回归。", "done"],
+          ["cc-switch", "CC Switch 代理日志", "实验性", "实验性", "只接受真实成功的 proxy 用量行，继续标实验性。", "done"],
+          ["dedupe", "跨来源去重", "有", "有", "正式代码已有。", "done"],
+          ["kimi-deepseek", "Kimi / DeepSeek 原生采集", "没有", "没有", "暂不支持；仅可通过真实 CC Switch 代理行实验显示。", "unsupported"],
+          ["cursor-gemini", "Cursor / Gemini CLI 原生采集", "没有", "没有", "暂不支持；缺少稳定且隐私安全的真实本地字段。", "unsupported"],
+          ["workbuddy", "WorkBuddy 采集", "实验入口", "旧实验开关", "beta.8 不读取混有内容的项目日志，明确暂不支持。", "unsupported"],
+          ["refresh", "自动刷新 1 / 5 / 15 分钟 / 手动", "有", "有", "正式代码已有；单屏刷新说明限定为本机用量重读、重新聚合和成功后的日汇总同步，不误称强刷额度/排名。", "done"],
+          ["energy", "接电 / 电池 / 低电量节能策略", "有", "有", "正式代码已有，保持后台回归。", "done"],
+          ["pricing", "精确模型与四类 Token 定价", "部分", "部分", "beta.8 已增强，价格目录需持续维护。", "done"],
+          ["coverage", "未定价 Token / 覆盖率 / 价格版本", "不完整", "不完整", "beta.8 正式代码已有，界面必须保持可解释。", "done"]
+        ]
+      },
+      {
+        id: "share",
+        title: "4. 截图与分享",
+        rows: [
+          ["page-shot", "当前页面截图", "有", "有", "所有出现相机的预览页统一为一句说明 + 复制截图 / 保存 PNG 两个动作，不再有伪按钮标题。", "preserve"],
+          ["today-card", "今日成绩分享卡", "有", "有", "正式代码已有，最终 UI 要保留入口。", "preserve"],
+          ["yesterday-card", "昨日成绩分享卡", "有", "有", "正式代码已有，最终 UI 要保留入口。", "preserve"],
+          ["rhythm-card", "昨日节奏分享卡", "有", "有", "正式代码已有，最终 UI 要保留入口。", "preserve"],
+          ["png-save", "复制 PNG / 保存图片", "有", "有", "beta.8 已完成真实渲染、编码、剪贴板和写文件流程，并覆盖分阶段错误。", "done"],
+          ["web-poster", "Web 排行榜 Top 10 海报", "没有", "有", "已落地真实 1200 × 1600 海报。", "done"],
+          ["poster-self", "海报突出本人位置", "外部排行能力", "成员详情可突出", "Swift / Web 统一海报均固定显示本人 #x / y。", "done"],
+          ["poster-token", "分享主指标为 Token", "部分", "可按口径", "Swift / Web 已统一以 Token 为主指标，金额仅作辅助信息。", "done"],
+          ["poster-context", "海报展示工具 / 模型 / 估算与 slogan", "部分", "网页有分项", "已落地；费用为解释层，二维码仅进入同源公开排行榜，不携带设备码或其他设备权限。", "done"],
+          ["share-label", "统一叫“分享排名”", "没有", "仍有“生成分享图片”", "Swift / Web 已统一命名并通过测试。", "done"]
+        ]
+      },
+      {
+        id: "settings",
+        title: "5. 设置与系统",
+        rows: [
+          ["goal-settings", "每日目标加减与预设", "有", "有", "正式代码已有；最新设置稿已补回。", "done"],
+          ["themes", "主题配色", "有", "有", "已扩展为 9 套；正式代码已落地。", "done"],
+          ["languages", "跟随系统 / 简中 / English / 繁中", "有", "有", "正式代码已有；最新预览已补回。", "done"],
+          ["entry-setting", "自动 / 刘海左 / 刘海右 / 菜单栏", "有", "有", "旧值统一迁移为原生菜单栏，不再暴露刘海位置选择。", "done"],
+          ["menu-token", "菜单栏显示 Token", "部分", "部分", "beta.8 新增显式开关，默认关闭。", "done"],
+          ["quota-setting", "Agent 额度显示开关", "有", "有", "正式代码已有，默认关闭。", "done"],
+          ["launch", "开机启动", "有", "有", "正式代码已有。", "done"],
+          ["updates", "自动检查 / 下载前询问 / 仅签名公证", "有", "有", "源码版在线检查明确禁用；Developer ID、公证和更新源只阻断未来公开包与自动更新。", "gate"],
+          ["privacy", "隐私状态与本地数据说明", "有", "有", "正式代码已有，保持。", "done"],
+          ["version-reset", "版本 / 恢复默认 / 完成", "有", "有", "正式代码已有；最新预览已补回。", "done"],
+          ["settings-shot", "设置页截图", "页面截图体系", "有", "正式代码仍有；建议留在截图菜单，不占主导航。", "preserve"]
+        ]
+      },
+      {
+        id: "community",
+        title: "6. 社群、Web、管理员与平台",
+        rows: [
+          ["community-sync", "可选社群连接与日汇总同步", "没有", "有", "正式代码已有。", "done"],
+          ["sync-retry", "手动 / 后台同步、离线重试、最后状态", "没有", "有", "正式代码已有。", "done"],
+          ["my-rank", "App 显示本人第 x / y 名与超过比例", "外部 Token Rank", "原生未实现", "beta.8 正式代码已有安全只读接口。", "done"],
+          ["app-top10", "App 内显性 Top 10", "外部排行榜卡", "没有", "beta.8 正式 App 已落地。", "done"],
+          ["public-filters", "公榜日期 / 口径 / 工具 / 模型筛选", "外部服务", "TokenFleet Web 有", "现版网页已有，保持，不重做布局。", "preserve"],
+          ["public-primary-model", "公榜每行显示主力模型与该模型 Token", "外部服务", "没有", "正式服务端 / Web 当前工作树已实现，并通过完整服务端、Web 与三尺寸浏览器测试；当前提交推送后的 CI 仍待验证。", "done"],
+          ["member-detail", "公开成员详情与日趋势", "外部服务", "有", "现版网页已有，保持。", "preserve"],
+          ["admin-overview", "管理员成员 / 设备 / 工具 / 模型 / 成本", "没有", "有", "正式 Web 已有，保持。", "done"],
+          ["invites", "批次邀请与单次设备码", "没有", "有", "正式 Web 已有，保持安全边界。", "done"],
+          ["reissue", "既有未绑定成员安全补发设备码", "没有", "流程不足", "beta.8 代码已闭环旧未用码失效；尚未部署生产。", "gate"],
+          ["windows", "Windows Codex / Claude 采集与同步", "没有", "成员反馈可用", "自动化已回归；仍需真实 Win10/11 人工 E2E。", "gate"],
+          ["intel", "Intel Mac", "发行包证据未核实", "未正式保证", "universal 已过；另有历史 Intel 自动化 runner 证据，但不代表当前 CI 或真实 GUI E2E。", "gate"],
+          ["install-join", "排行榜“安装与参与”公开入口", "没有", "只有持码后的 /join 说明", "正式 Web 当前工作树已落地公开安装页、纯二维码和必需邀请码说明；二维码不携带设备权限。", "done"],
+          ["admin-invite-tools", "后台邀请辅助（复制公开链接 / 邀请海报 / 更换二维码）", "没有", "没有", "不属于已落地的公开安装页；仍待后台产品决策、实现与生产授权。", "gate"]
+        ]
+      },
+      {
+        id: "replacements",
+        title: "7. 有意替代或移除，不算遗漏",
+        rows: [
+          ["replace-rank", "外部 Token Rank 身份与自动 / 显示 / 隐藏", "有", "有残留", "用 TokenFleet 自有社群身份、本人排名和公榜替代。", "replace"],
+          ["replace-collectors", "ZCode / Hermes / WorkBuddy 旧实验开关", "有", "有", "改成真实采集器状态；没有可靠字段就不显示为支持。", "replace"],
+          ["replace-brand", "TokenStep / 生财 / OpenToken 用户可见文案", "有", "有残留", "从产品界面与公开叙事清理；许可证、NOTICE 和源码归属保留。", "replace"],
+          ["replace-visual", "多圈步数式皮肤", "强记忆点", "表达不同", "不照搬皮肤，但保留圈数感与“每天一个亿”。", "replace"]
+        ]
+      }
+    ].map(group => ({
+      ...group,
+      rows: group.rows.map(([id, title, tokenstep, beta7, beta8, status]) => ({ id, title, tokenstep, beta7, beta8, status }))
+    }));
+
+    const allItems = [
+      ...priorities.map(item => ({ ...item, source: "优先拍板" })),
+      ...groups.flatMap(group => group.rows.map(item => ({ ...item, source: group.title })))
+    ];
+
+    let state = loadState();
+    let activeFilter = "all";
+    let onlyUnchecked = false;
+    let query = "";
+
+    const priorityGrid = document.getElementById("priorityGrid");
+    const groupsRoot = document.getElementById("groups");
+    const emptyState = document.getElementById("emptyState");
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>'"]/g, char => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+      })[char]);
+    }
+
+    function loadState() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+      catch { return {}; }
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function badge(status) {
+      const meta = statusMeta[status];
+      return `<span class="badge ${meta.className}">${meta.label}</span>`;
+    }
+
+    function itemSearchText(item) {
+      return [item.title, item.note, item.tokenstep, item.beta7, item.beta8, item.source, statusMeta[item.status]?.label]
+        .filter(Boolean).join(" ").toLowerCase();
+    }
+
+    function matches(item) {
+      if (onlyUnchecked && state[item.id]) return false;
+      if (query && !itemSearchText(item).includes(query)) return false;
+      if (activeFilter === "all") return true;
+      if (activeFilter === "decision") return ["preview", "preserve", "gate", "unsupported"].includes(item.status);
+      return item.status === activeFilter;
+    }
+
+    function renderPriority() {
+      priorityGrid.innerHTML = priorities.map(item => `
+        <article class="priority-card ${state[item.id] ? "is-checked" : ""}" data-item-id="${item.id}" data-status="${item.status}">
+          <input class="check" type="checkbox" data-id="${item.id}" aria-label="勾选 ${escapeHtml(item.title)}" ${state[item.id] ? "checked" : ""}>
+          <div>
+            <p class="item-title">${escapeHtml(item.title)}</p>
+            <p class="item-note">${escapeHtml(item.note)}</p>
+            <div class="badges">${badge(item.status)}</div>
+          </div>
+        </article>
+      `).join("");
+
+      priorities.forEach(item => {
+        const node = priorityGrid.querySelector(`[data-item-id="${item.id}"]`);
+        node.classList.toggle("hidden", !matches({ ...item, source: "优先拍板" }));
+      });
+    }
+
+    function renderGroups() {
+      groupsRoot.innerHTML = groups.map((group, index) => {
+        const visibleRows = group.rows.filter(row => matches({ ...row, source: group.title }));
+        if (!visibleRows.length) return "";
+        return `
+          <details class="group" ${index < 2 || query || activeFilter !== "all" || onlyUnchecked ? "open" : ""}>
+            <summary>
+              <div><h3>${escapeHtml(group.title)}</h3><span class="group-count">当前显示 ${visibleRows.length} / ${group.rows.length} 项</span></div>
+            </summary>
+            <div class="matrix-head"><span>能力与勾选</span><span>原始 TokenStep</span><span>TokenFleet beta.7</span><span>beta.8 最新状态</span></div>
+            ${visibleRows.map(item => `
+              <div class="matrix-row ${state[item.id] ? "is-checked" : ""}" data-item-id="${item.id}" data-status="${item.status}">
+                <div class="capability">
+                  <input class="check" type="checkbox" data-id="${item.id}" aria-label="勾选 ${escapeHtml(item.title)}" ${state[item.id] ? "checked" : ""}>
+                  <div><p class="item-title">${escapeHtml(item.title)}</p><div class="badges">${badge(item.status)}</div></div>
+                </div>
+                <div class="cell tokenstep">${escapeHtml(item.tokenstep)}</div>
+                <div class="cell beta7">${escapeHtml(item.beta7)}</div>
+                <div class="cell beta8">${escapeHtml(item.beta8)}</div>
+              </div>
+            `).join("")}
+          </details>
+        `;
+      }).join("");
+
+      const anyVisible = priorityGrid.querySelector(".priority-card:not(.hidden)") || groupsRoot.querySelector(".matrix-row");
+      emptyState.style.display = anyVisible ? "none" : "block";
+    }
+
+    function updateProgress() {
+      const checked = allItems.filter(item => state[item.id]).length;
+      const total = allItems.length;
+      document.getElementById("totalCount").textContent = total;
+      document.getElementById("checkedCount").textContent = checked;
+      document.getElementById("remainingCount").textContent = total - checked;
+      document.getElementById("progressFill").style.width = `${total ? (checked / total) * 100 : 0}%`;
+    }
+
+    function render() {
+      renderPriority();
+      renderGroups();
+      updateProgress();
+    }
+
+    document.addEventListener("change", event => {
+      if (!event.target.matches(".check")) return;
+      state[event.target.dataset.id] = event.target.checked;
+      saveState();
+      render();
+    });
+
+    document.getElementById("search").addEventListener("input", event => {
+      query = event.target.value.trim().toLowerCase();
+      render();
+    });
+
+    document.querySelectorAll(".filter").forEach(button => {
+      button.addEventListener("click", () => {
+        activeFilter = button.dataset.filter;
+        document.querySelectorAll(".filter").forEach(item => item.classList.toggle("active", item === button));
+        render();
+      });
+    });
+
+    document.getElementById("uncheckedOnly").addEventListener("click", event => {
+      onlyUnchecked = !onlyUnchecked;
+      event.currentTarget.setAttribute("aria-pressed", String(onlyUnchecked));
+      event.currentTarget.textContent = onlyUnchecked ? "正在只看未勾选" : "只看未勾选";
+      event.currentTarget.classList.toggle("primary", onlyUnchecked);
+      render();
+    });
+
+    document.getElementById("resetAll").addEventListener("click", () => {
+      if (!confirm("确定清空这台电脑上保存的全部勾选吗？")) return;
+      state = {};
+      saveState();
+      render();
+      showToast("勾选已清空");
+    });
+
+    document.getElementById("copySelected").addEventListener("click", () => copyList(true));
+    document.getElementById("copyRemaining").addEventListener("click", () => copyList(false));
+
+    async function copyList(selected) {
+      const items = allItems.filter(item => Boolean(state[item.id]) === selected);
+      const title = selected ? "TokenFleet beta.8｜奥哥希望保留或实现" : "TokenFleet beta.8｜尚未勾选";
+      const lines = [title, "", ...items.map(item => `- [${selected ? "x" : " "}] ${item.title}（${statusMeta[item.status].label}｜${item.source}）`)];
+      try {
+        await navigator.clipboard.writeText(lines.join("\n"));
+        showToast(`已复制 ${items.length} 项`);
+      } catch {
+        const area = document.createElement("textarea");
+        area.value = lines.join("\n");
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+        showToast(`已复制 ${items.length} 项`);
+      }
+    }
+
+    let toastTimer;
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove("show"), 1800);
+    }
+
+    render();
+  </script>
+</body>
+</html>

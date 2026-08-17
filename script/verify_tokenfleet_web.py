@@ -69,7 +69,7 @@ def wait_for_page(page: Page, heading: str) -> None:
 
 
 def verify_desktop(page: Page) -> dict[str, int]:
-    page.goto(f"{BASE_URL}/?demo=1#/overview")
+    page.goto(f"{BASE_URL}/admin/?demo=1#/overview")
     page.wait_for_load_state("networkidle")
     wait_for_page(page, "总览")
     assert page.locator(".demo-banner").is_visible()
@@ -117,11 +117,15 @@ def verify_desktop(page: Page) -> dict[str, int]:
     assert "demo_once_" not in page.content()
     token_dialog.get_by_role("button", name="关闭").click()
 
-    page.get_by_role("button", name="为已有成员创建设备码").click()
+    page.get_by_role("button", name="给已有成员补发设备码").click()
     dialog = page.locator("#enrollment-dialog")
     assert dialog.is_visible()
+    dialog_text = dialog.inner_text()
+    assert "不会重复创建成员" in dialog_text
+    assert "不占自助批次名额" in dialog_text
+    assert "原始码不会在后台显示或保存" in dialog_text
     dialog.locator('select[name="user_id"]').select_option(index=1)
-    dialog.get_by_role("button", name="生成一次性连接码").click()
+    dialog.get_by_role("button", name="确认补发 60 分钟设备码").click()
     token_dialog = page.locator("dialog.token-dialog")
     token_dialog.wait_for(state="visible")
     assert token_dialog.locator("code").inner_text() == "••••••••••••"
@@ -151,7 +155,7 @@ def verify_desktop(page: Page) -> dict[str, int]:
 
 def verify_responsive(page: Page, viewport: dict[str, int], label: str) -> None:
     page.set_viewport_size(viewport)
-    page.goto(f"{BASE_URL}/?demo=1#/overview")
+    page.goto(f"{BASE_URL}/admin/?demo=1#/overview")
     page.wait_for_load_state("networkidle")
     wait_for_page(page, "总览")
     assert_no_horizontal_overflow(page, f"overview {label}")
@@ -162,12 +166,12 @@ def verify_responsive(page: Page, viewport: dict[str, int], label: str) -> None:
         assert nav_names and all(name.strip() for name in nav_names), nav_names
     page.screenshot(path=str(ARTIFACTS / f"overview-{label}.png"), full_page=True)
 
-    page.goto(f"{BASE_URL}/?demo=1#/history")
+    page.goto(f"{BASE_URL}/admin/?demo=1#/history")
     page.wait_for_load_state("networkidle")
     wait_for_page(page, "历史明细")
     assert_no_horizontal_overflow(page, f"history {label}")
 
-    page.goto(f"{BASE_URL}/?demo=1#/devices")
+    page.goto(f"{BASE_URL}/admin/?demo=1#/devices")
     page.wait_for_load_state("networkidle")
     wait_for_page(page, "设备")
     assert_no_horizontal_overflow(page, f"devices {label}")
@@ -175,7 +179,7 @@ def verify_responsive(page: Page, viewport: dict[str, int], label: str) -> None:
 
 def verify_login(page: Page) -> None:
     page.set_viewport_size({"width": 1280, "height": 850})
-    page.goto(BASE_URL)
+    page.goto(f"{BASE_URL}/admin/")
     page.wait_for_load_state("networkidle")
     page.get_by_role("heading", name="进入社群管理后台").wait_for()
     assert page.locator("#org-slug").is_visible()
@@ -341,6 +345,7 @@ def verify_mock_states(page: Page) -> dict[str, object]:
     scenario = {"mode": "empty"}
     seen_paths: list[str] = []
     mutation_counts = {"enrollment": 0}
+    enrollment_payloads: list[dict[str, object]] = []
 
     def handle_api(route) -> None:
         mode = scenario["mode"]
@@ -348,6 +353,7 @@ def verify_mock_states(page: Page) -> dict[str, object]:
         seen_paths.append(path)
         if route.request.method == "POST" and path == "/api/v1/enrollment-tokens":
             mutation_counts["enrollment"] += 1
+            enrollment_payloads.append(json.loads(route.request.post_data or "{}"))
             route.fulfill(
                 status=201,
                 content_type="application/json",
@@ -403,7 +409,7 @@ def verify_mock_states(page: Page) -> dict[str, object]:
     )
     page.evaluate("sessionStorage.setItem('tokenfleet.apiKey', 'edge-session-only')")
 
-    page.goto(f"{BASE_URL}/?edge=empty#/overview")
+    page.goto(f"{BASE_URL}/admin/?edge=empty#/overview")
     page.wait_for_load_state("networkidle")
     wait_for_page(page, "总览")
     assert {
@@ -414,48 +420,58 @@ def verify_mock_states(page: Page) -> dict[str, object]:
         "/api/v1/users",
     } <= set(seen_paths), seen_paths
     page.get_by_text("单成员", exact=True).wait_for()
-    page.goto(f"{BASE_URL}/#/devices")
+    page.goto(f"{BASE_URL}/admin/#/devices")
     wait_for_page(page, "设备")
     assert "尚未登记设备" in page.locator(".page-body").inner_text()
-    page.goto(f"{BASE_URL}/#/history")
+    page.goto(f"{BASE_URL}/admin/#/history")
     wait_for_page(page, "历史明细")
     assert "这个范围还没有上报记录" in page.locator(".page-body").inner_text()
-    page.goto(f"{BASE_URL}/#/costs")
+    page.goto(f"{BASE_URL}/admin/#/costs")
     wait_for_page(page, "成本")
     assert "还没有配置价格版本" in page.locator(".page-body").inner_text()
-    page.goto(f"{BASE_URL}/#/people")
+    page.goto(f"{BASE_URL}/admin/#/people")
     wait_for_page(page, "成员")
     assert "/api/v1/admin/invitation-batches" in seen_paths, seen_paths
-    page.get_by_role("button", name="为已有成员创建设备码").click()
+    page.locator("tbody tr", has_text="边界参赛者").get_by_role(
+        "button", name="补发设备码", exact=True
+    ).click()
     enrollment_dialog = page.locator("#enrollment-dialog")
     enrollment_select = enrollment_dialog.locator('select[name="user_id"]')
     assert enrollment_select.locator('option[value="edge-user"]').count() == 0
-    enrollment_select.select_option("edge-participant")
-    enrollment_submit = enrollment_dialog.get_by_role("button", name="生成一次性连接码")
+    assert enrollment_select.input_value() == "edge-participant"
+    assert "不会重复创建成员" in enrollment_dialog.inner_text()
+    assert "不占自助批次名额" in enrollment_dialog.inner_text()
+    enrollment_submit = enrollment_dialog.get_by_role(
+        "button", name="确认补发 60 分钟设备码"
+    )
     enrollment_submit.evaluate("button => { button.click(); button.click(); }")
     page.locator("dialog.token-dialog").wait_for(state="visible")
     assert mutation_counts["enrollment"] == 1, mutation_counts
+    assert enrollment_payloads == [
+        {"user_id": "edge-participant", "expires_in_minutes": 60}
+    ], enrollment_payloads
+    assert "edge_once_only" not in page.content()
     page.locator("dialog.token-dialog").get_by_role("button", name="关闭").click()
 
     scenario["mode"] = "long"
     page.set_viewport_size({"width": 390, "height": 844})
-    page.goto(f"{BASE_URL}/?edge=long#/overview")
+    page.goto(f"{BASE_URL}/admin/?edge=long#/overview")
     wait_for_page(page, "总览")
     page.get_by_text("极端数据显示成员", exact=False).first.wait_for()
     assert_no_horizontal_overflow(page, "edge overview mobile")
-    page.goto(f"{BASE_URL}/#/breakdown")
+    page.goto(f"{BASE_URL}/admin/#/breakdown")
     wait_for_page(page, "工具与模型")
     long_model = str(edge_payloads("long")["long_model"])
     assert page.locator(".distribution-row strong", has_text=long_model).count() == 1
     assert_no_horizontal_overflow(page, "long model breakdown mobile")
-    page.goto(f"{BASE_URL}/#/history")
+    page.goto(f"{BASE_URL}/admin/#/history")
     wait_for_page(page, "历史明细")
     assert long_model in page.locator(".page-body").inner_text()
     assert_no_horizontal_overflow(page, "large token history mobile")
 
     page.set_viewport_size({"width": 1280, "height": 900})
     page.emulate_media(reduced_motion="reduce")
-    page.goto(f"{BASE_URL}/#/overview")
+    page.goto(f"{BASE_URL}/admin/#/overview")
     wait_for_page(page, "总览")
     reduced_duration = page.locator(".nav-item").first.evaluate(
         "element => getComputedStyle(element).transitionDuration"
@@ -512,7 +528,7 @@ def verify_mock_states(page: Page) -> dict[str, object]:
     assert page.evaluate("document.activeElement?.id") == "main-content"
     contrast = contrast_samples(page)
     assert all(item["pass"] for item in contrast), contrast
-    page.goto(f"{BASE_URL}/#/people")
+    page.goto(f"{BASE_URL}/admin/#/people")
     wait_for_page(page, "成员")
     open_member = page.get_by_role("button", name="单独新建参赛者")
     open_member.focus()
@@ -523,15 +539,15 @@ def verify_mock_states(page: Page) -> dict[str, object]:
     page.keyboard.press("Escape")
     dialog.wait_for(state="hidden")
 
-    for mode, expected in (("expired401", "会话已过期"), ("forbidden403", "账号已禁用")):
+    for mode in ("expired401", "forbidden403"):
         scenario["mode"] = mode
-        page.goto(f"{BASE_URL}/?edge={mode}")
+        page.goto(f"{BASE_URL}/admin/?edge={mode}")
         page.get_by_role("heading", name="进入社群管理后台").wait_for()
-        assert expected in page.locator(".inline-alert").inner_text()
+        assert "管理员会话无效或已过期" in page.locator(".inline-alert").inner_text()
         assert not page.evaluate("Boolean(sessionStorage.getItem('tokenfleet.apiKey'))")
 
     scenario["mode"] = "service503"
-    page.goto(f"{BASE_URL}/?edge=service503")
+    page.goto(f"{BASE_URL}/admin/?edge=service503")
     page.get_by_role("heading", name="进入社群管理后台").wait_for()
     assert "服务暂时不可用" in page.locator(".inline-alert").inner_text()
     assert page.evaluate("Boolean(sessionStorage.getItem('tokenfleet.apiKey'))")
@@ -546,13 +562,15 @@ def verify_mock_states(page: Page) -> dict[str, object]:
           sessionStorage.clear();
         }"""
     )
-    page.goto(f"{BASE_URL}/?edge=invalid-login")
+    page.goto(f"{BASE_URL}/admin/?edge=invalid-login")
     page.get_by_role("heading", name="进入社群管理后台").wait_for()
     page.locator("#org-slug").fill("edge-team")
     page.locator("#email").fill("edge@example.com")
     page.locator("#password").fill("wrong-password")
     page.get_by_role("button", name="验证并进入").click()
-    assert "账号或密码错误" in page.locator(".inline-alert").inner_text()
+    invalid_login_error = page.locator(".inline-alert").inner_text()
+    assert "管理员登录信息不正确" in invalid_login_error
+    assert "invalid credentials" not in invalid_login_error.lower()
     assert not page.evaluate("Boolean(sessionStorage.getItem('tokenfleet.apiKey'))")
     page.evaluate("window.name = ''")
 

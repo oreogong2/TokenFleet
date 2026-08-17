@@ -129,6 +129,8 @@ export function formatPublicCost(cost) {
 export function normalizePublicParticipant(value = {}) {
   const publicId = text(value.public_id ?? value.publicId);
   if (!SAFE_PUBLIC_ID.test(publicId)) return null;
+  const primaryToolTokens = value.primary_tool_tokens ?? value.primaryToolTokens;
+  const primaryModelTokens = value.primary_model_tokens ?? value.primaryModelTokens;
   const totals = value.totals ?? value;
   const inputTokens = token(totals.input_tokens ?? totals.inputTokens);
   const outputTokens = token(totals.output_tokens ?? totals.outputTokens);
@@ -147,6 +149,16 @@ export function normalizePublicParticipant(value = {}) {
     metricValue: value.metric_value === null || value.metric_value === undefined
       ? null
       : token(value.metric_value),
+    primaryTool: text(value.primary_tool ?? value.primaryTool),
+    primaryToolTokens: primaryToolTokens === null || primaryToolTokens === undefined
+      ? null
+      : token(primaryToolTokens),
+    toolCount: Math.max(0, Math.trunc(Number(value.tool_count ?? value.toolCount) || 0)),
+    primaryModel: text(value.primary_model ?? value.primaryModel),
+    primaryModelTokens: primaryModelTokens === null || primaryModelTokens === undefined
+      ? null
+      : token(primaryModelTokens),
+    modelCount: Math.max(0, Math.trunc(Number(value.model_count ?? value.modelCount) || 0)),
     inputTokens,
     outputTokens,
     cacheReadTokens,
@@ -270,12 +282,15 @@ export function parseCommunityRoute(locationRef = globalThis.location) {
       filters: sanitizePublicFilters(Object.fromEntries(params)),
     };
   }
+  if (routePath === "/install" || params.get("view") === "install") return { kind: "install" };
   if (routePath === "/join/batch") return { kind: "batch" };
   if (routePath === "/join" || params.get("view") === "join") return { kind: "join" };
+  if (["/", "/index.html"].includes(pathname)) return { kind: "install" };
   return null;
 }
 
 export function communityHref({ kind = "leaderboard", publicId = "", filters = {} } = {}) {
+  if (kind === "install") return "/install";
   const safeFilters = sanitizePublicFilters(filters);
   const query = new URLSearchParams();
   if (safeFilters.period !== "today") query.set("period", safeFilters.period);

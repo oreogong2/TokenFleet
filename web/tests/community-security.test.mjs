@@ -14,9 +14,15 @@ import {
   takeBatchInvitationToken,
   takeJoinCode,
 } from "../join-secret.js";
-import { breakdownList, publicShareUrl, publicTrend } from "../community-app.js";
+import {
+  breakdownList,
+  publicShareUrl,
+  publicTrend,
+  takeCommunityShareGrant,
+} from "../community-app.js";
 
 const validCode = "Abcd_0123456789-abcdefghijklmnop";
+const validShareGrant = "demo_community_share_grant_0123456789_abcdefghijklmnop";
 
 test("all navigation shapes scrub codes while only join fragments are captured", () => {
   const cases = [
@@ -146,12 +152,44 @@ test("poster model contains only public display fields and appends a rank beyond
 
   assert.equal(model.rows.length, 10);
   assert.equal(model.focus.rank, 137);
+  assert.equal(model.hero.label, "个人成绩");
+  assert.equal(model.hero.hasConsistentRankTotal, false);
+  assert.equal(model.hero.exceededPercent, null);
+  assert.equal(model.focus.tool, "CC Switch");
+  assert.equal(model.focus.model, "kimi-k2");
+  assert.equal(model.rows[0].toolCount, 2);
+  assert.equal(model.rows[0].modelCount, 2);
+  assert.match(model.subtitle, /含缓存 Token/);
   assert.equal(model.publicUrl, "https://tokenfleet.example/rank");
   assert.equal(model.demoLabel, "演示数据 · 非真实排名");
   for (const forbidden of ["email", "internal", "device", "session", "message", "publicId", "outside-100"]) {
     assert.equal(serialized.includes(forbidden), false);
   }
   assert.throws(() => buildCommunityPosterModel({ leaderboard: board, publicUrl: "http://localhost/rank" }), /HTTPS/);
+});
+
+test("poster creation rejects anonymous board-only data instead of fabricating a generic share card", async () => {
+  const api = createCommunityDemoApi();
+  const board = normalizePublicLeaderboard(await api.leaderboard({ metric: "tokens" }));
+  assert.throws(() => buildCommunityPosterModel({
+    leaderboard: board,
+    filters: { metric: "tokens" },
+    publicUrl: "https://tokenfleet.example/rank",
+  }), /已验证成员/);
+});
+
+test("share grant stays in the fragment only, is scrubbed before redemption, and has no persistent viewer state", () => {
+  const grant = validShareGrant;
+  const calls = [];
+  const locationRef = { pathname: "/", search: "?demo=1", hash: `#/rank/p/demo-1?period=7d&share_grant=${grant}` };
+  const historyRef = { replaceState: (...args) => calls.push(args) };
+  assert.equal(takeCommunityShareGrant(locationRef, historyRef), grant);
+  assert.deepEqual(calls, [[null, "", "/?demo=1#/rank/p/demo-1?period=7d"]]);
+  assert.equal(JSON.stringify(calls).includes(grant), false);
+  assert.equal(takeCommunityShareGrant(
+    { pathname: "/", search: "", hash: `#/rank?share_grant=!${"x".repeat(43)}` },
+    { replaceState: () => {} },
+  ), "");
 });
 
 test("unpriced entries stay explicit in posters and QR generation is deterministic", async () => {
@@ -165,7 +203,8 @@ test("unpriced entries stay explicit in posters and QR generation is determinist
     filters: { metric: "cost" },
     publicUrl: "https://tokenfleet.example/rank",
   });
-  assert.equal(model.focus.value, "未定价");
+  assert.equal(model.focus.costValue, "未定价");
+  assert.notEqual(model.focus.tokenValue, "未定价");
   const first = createQrMatrix(model.publicUrl);
   const second = createQrMatrix(model.publicUrl);
   assert.equal(first.length, 41);
@@ -267,8 +306,9 @@ test("share canonical stays same-origin and carries only route plus four public 
 });
 
 test("join security order, deep-link assets, demo labels and license boundaries remain visible", async () => {
-  const [appSource, joinSource, communitySource, posterSource, indexSource, qrSource] = await Promise.all([
+  const [appSource, publicSource, joinSource, communitySource, posterSource, indexSource, qrSource] = await Promise.all([
     readFile(new URL("../app.js", import.meta.url), "utf8"),
+    readFile(new URL("../public-app.js", import.meta.url), "utf8"),
     readFile(new URL("../join-secret.js", import.meta.url), "utf8"),
     readFile(new URL("../community-app.js", import.meta.url), "utf8"),
     readFile(new URL("../community-poster.js", import.meta.url), "utf8"),
@@ -277,7 +317,9 @@ test("join security order, deep-link assets, demo labels and license boundaries 
   ]);
   const combined = `${joinSource}\n${communitySource}\n${posterSource}`;
   assert.ok(appSource.startsWith('import {\n  captureJoinCode,\n  clearJoinCode,\n  takeBatchInvitationToken,\n  takeJoinCode,\n} from "./join-secret.js";'));
-  assert.match(appSource, /hashchange[\s\S]*captureJoinCode\(\);[\s\S]*parseCommunityRoute/);
+  assert.ok(publicSource.startsWith('import {\n  captureJoinCode,\n  clearJoinCode,\n  takeBatchInvitationToken,\n  takeJoinCode,\n} from "./join-secret.js";'));
+  assert.match(appSource, /hashchange[\s\S]*captureJoinCode\(\);[\s\S]*memberRouteFromLocation/);
+  assert.match(publicSource, /hashchange[\s\S]*captureJoinCode\(\);[\s\S]*mountMemberRoute/);
   assert.ok(joinSource.indexOf("if (globalThis.location) captureJoinCode();") < joinSource.indexOf('addEventListener?.("pagehide"'));
   assert.match(joinSource, /historyRef\?\.replaceState/);
   assert.match(joinSource, /\^\[A-Za-z0-9_-\]\{32,256\}\$/);
@@ -293,8 +335,8 @@ test("join security order, deep-link assets, demo labels and license boundaries 
   assert.match(communitySource, /持续在后台同步/);
   assert.match(communitySource, /演示数据 · 不是真实排名或真实成员数据/);
   assert.match(communitySource, /未跨时区重新归日/);
-  assert.match(indexSource, /href="\/styles\.css"/);
-  assert.match(indexSource, /src="\/app\.js"/);
+  assert.match(indexSource, /href="\/styles\.css\?v=beta8-canvas-preview-copy"/);
+  assert.match(indexSource, /src="\/public-app\.js(?:\?[^\"]*)?"/);
   assert.match(qrSource, /The above copyright notice and this permission notice/);
   assert.match(qrSource, /AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM/);
 });

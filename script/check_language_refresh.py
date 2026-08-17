@@ -50,7 +50,7 @@ def main() -> int:
 
     for name, source in [
         ("StatusBarLabelView", components),
-        ("TokenIslandRingView", token_island),
+        ("TokenIslandCompactView", token_island),
     ]:
         pattern = re.compile(rf"struct {name}: View \{{(?P<body>.*?)(?=^struct |\Z)", re.S | re.M)
         match = pattern.search(source)
@@ -81,7 +81,7 @@ def main() -> int:
     )
     require(
         "language: appState.settings.language" in token_island,
-        "Token Island ring must pass appState.settings.language.",
+        "Token Island compact view must pass appState.settings.language.",
         failures,
     )
     require(
