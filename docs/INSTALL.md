@@ -1,6 +1,6 @@
 # TokenFleet 社群成员安装与多设备登记
 
-状态：当前 Mac 与 Windows 均从经过复核的固定源码 tag 安装。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
+状态：官方社群当前 Mac 与 Windows 客户端均为 beta.8，固定安装提交是 `6cd21ef5138f00fe1182b5da3ad0a9fdf3fdcc00`。已经正常使用这一版本的成员无需更新或重装；新成员继续固定检出该提交。线上成员 Web 的入口隔离热修不修改客户端、同步协议、昵称、设备身份或历史数据。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
 
 ## 1. 三套身份不要混在一起
 
