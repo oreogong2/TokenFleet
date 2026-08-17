@@ -40,9 +40,11 @@ def assert_no_horizontal_overflow(page: Page, label: str) -> None:
 
 def login_as(page: Page, email: str, password: str, *, navigate: bool = True) -> None:
     if navigate:
-        page.goto(BASE_URL)
+        page.goto(f"{BASE_URL}/admin")
         page.wait_for_load_state("networkidle")
     wait_for_heading(page, "进入社群管理后台")
+    assert "仅限管理员" in page.locator(".login-copy").inner_text()
+    assert "成员批次邀请、一次性设备码和成员昵称不能在此使用" in page.locator(".login-copy").inner_text()
     page.locator("#org-slug").fill(ORG_SLUG)
     page.locator("#email").fill(email)
     page.locator("#password").fill(password)
@@ -52,6 +54,41 @@ def login_as(page: Page, email: str, password: str, *, navigate: bool = True) ->
 
 def login(page: Page) -> None:
     login_as(page, ADMIN_EMAIL, ADMIN_PASSWORD or "")
+
+
+def verify_member_entry_boundaries(page: Page) -> None:
+    root_response = page.goto(f"{BASE_URL}/", wait_until="networkidle")
+    assert root_response.status == 200
+    page.locator(".install-contact").wait_for()
+    assert page.url == f"{BASE_URL}/install"
+    assert page.locator("#org-slug, #email, #password").count() == 0
+    assert page.get_by_role("button", name="验证并进入").count() == 0
+    assert page.get_by_text("管理员后台", exact=True).count() == 0
+    assert page.locator('a[href^="/admin"]').count() == 0
+
+    install_response = page.goto(f"{BASE_URL}/install", wait_until="networkidle")
+    assert install_response.status == 200
+    page.locator(".install-contact").wait_for()
+    assert page.locator('a[href^="/admin"]').count() == 0
+
+    rank_response = page.goto(f"{BASE_URL}/rank", wait_until="networkidle")
+    assert rank_response.status == 200
+    page.locator(".community-rank-row").first.wait_for()
+    assert page.locator('a[href^="/admin"]').count() == 0
+    profile_link = page.locator("a.community-person").first
+    profile_link.click()
+    page.locator(".community-detail-grid").wait_for()
+    assert page.locator('a[href^="/admin"]').count() == 0
+
+    join_response = page.goto(f"{BASE_URL}/join", wait_until="networkidle")
+    assert join_response.status == 200
+    page.get_by_role("heading", name="把这台设备接入 TokenFleet", exact=True).wait_for()
+    assert page.locator('a[href^="/admin"]').count() == 0
+
+    batch_response = page.goto(f"{BASE_URL}/join/batch", wait_until="networkidle")
+    assert batch_response.status == 200
+    page.get_by_role("heading", name="登记昵称，领取你的设备码", exact=True).wait_for()
+    assert page.locator('a[href^="/admin"]').count() == 0
 
 
 def verify_live_dashboard(page: Page) -> dict[str, int]:
@@ -208,7 +245,7 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
             ("breakdown", "工具与模型", ".distribution-row"),
             ("costs", "成本", ".cost-ledger"),
         ):
-            page.goto(f"{BASE_URL}/#/{route}")
+            page.goto(f"{BASE_URL}/admin/#/{route}")
             wait_for_heading(page, heading)
             page.locator(ready_selector).first.wait_for()
             assert "edge-model-" in page.locator(".page-body").inner_text()
@@ -242,7 +279,9 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     page.locator("#password").fill("deliberately-wrong-password")
     page.get_by_role("button", name="验证并进入").click()
     page.get_by_role("alert").wait_for()
-    assert "invalid credentials" in page.get_by_role("alert").inner_text()
+    login_error = page.get_by_role("alert").inner_text()
+    assert "管理员登录信息不正确" in login_error
+    assert "invalid credentials" not in login_error.lower()
 
     page.evaluate(
         "() => sessionStorage.setItem('tokenfleet.apiKey', 'expired.jwt.test-token')"
@@ -250,7 +289,9 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     page.reload()
     wait_for_heading(page, "进入社群管理后台")
     page.get_by_role("alert").wait_for()
-    assert "invalid or expired access token" in page.get_by_role("alert").inner_text()
+    session_error = page.get_by_role("alert").inner_text()
+    assert "管理员会话无效或已过期" in session_error
+    assert "invalid or expired access token" not in session_error.lower()
     assert not page.evaluate("() => Boolean(sessionStorage.getItem('tokenfleet.apiKey'))")
 
     public_requests: list[dict[str, str]] = []
@@ -318,6 +359,7 @@ def main() -> None:
         page.on("console", record_console_error)
         page.on("pageerror", lambda error: page_errors.append(str(error)))
         try:
+            verify_member_entry_boundaries(page)
             login(page)
             result = verify_live_dashboard(page)
         except Exception:

@@ -10,16 +10,17 @@ cd web
 python3 -m http.server 4310
 ```
 
-- 管理员后台：<http://127.0.0.1:4310/>
-- 隔离演示：<http://127.0.0.1:4310/?demo=1#/overview>
+- 成员根入口：<http://127.0.0.1:4310/>（自动进入 `/install`）
+- 管理员后台：<http://127.0.0.1:4310/admin/>
+- 管理隔离演示：<http://127.0.0.1:4310/admin/?demo=1#/overview>
 - 匿名社群榜演示：<http://127.0.0.1:4310/?demo=1#/rank>
 - 安全接入说明页：生产环境使用 `/join#code=<短期单次码>`；不要把码放在
   query 参数中。
 - 批次自助页：生产环境使用 `/join/batch#invite=<批次令牌>`；query/path 形态只
   擦除、不接受。
 
-生产环境由 Server 的 SPA fallback 支持直接刷新 `/rank`、`/rank/p/{public_id}`
-、`/join` 和 `/join/batch`。`index.html` 的静态资源使用根绝对路径，避免公开深链白屏。
+生产环境由 Server 的 SPA fallback 支持直接刷新 `/admin`、`/install`、`/rank`、
+`/rank/p/{public_id}`、`/join` 和 `/join/batch`。`index.html` 的静态资源使用根绝对路径，避免公开深链白屏。
 
 ## 身份与接入
 

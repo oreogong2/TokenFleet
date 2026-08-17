@@ -220,6 +220,32 @@ test("web source never stores API keys in localStorage or accepts Shengcai secre
   assert.match(appSource, /不接收、不保存、也不转发/);
 });
 
+test("member entry and public navigation never expose the administrator console", async () => {
+  const [appSource, publicSource, communitySource, html, adminHtml] = await Promise.all([
+    readFile(new URL("../app.js", import.meta.url), "utf8"),
+    readFile(new URL("../public-app.js", import.meta.url), "utf8"),
+    readFile(new URL("../community-app.js", import.meta.url), "utf8"),
+    readFile(new URL("../index.html", import.meta.url), "utf8"),
+    readFile(new URL("../admin/index.html", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(appSource, /pathname === "\/admin"/);
+  assert.match(appSource, /仅限管理员。[\s\S]*成员批次邀请、一次性设备码和成员昵称不能在此使用/);
+  assert.match(appSource, /管理员登录信息不正确/);
+  assert.equal(appSource.includes("invalid credentials"), false);
+  assert.match(publicSource, /parseCommunityRoute\(location\) \|\| \{ kind: "install" \}/);
+  assert.match(publicSource, /history\.replaceState\(null, "", `\/install\$\{location\.search\}`\)/);
+  assert.equal(/管理员|\/admin/.test(publicSource), false);
+  assert.equal(communitySource.includes("管理员后台"), false);
+  assert.equal(communitySource.includes('href="/admin'), false);
+  assert.equal(html.includes("管理员后台"), false);
+  assert.equal(/社群标识|邮箱|密码|验证并进入/.test(html), false);
+  assert.match(html, /src="\/public-app\.js/);
+  assert.equal(html.includes("/app.js"), false);
+  assert.match(adminHtml, /管理员入口/);
+  assert.match(adminHtml, /src="\/app\.js/);
+});
+
 test("cost UI labels currencies explicitly and dialog cancel buttons close without submitting", async () => {
   const appSource = await readFile(new URL("../app.js", import.meta.url), "utf8");
 

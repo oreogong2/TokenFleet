@@ -14,7 +14,7 @@ import {
 } from "./api.js";
 import { demoApi } from "./demo-data.js";
 import { parseCommunityRoute } from "./community-contract.js";
-import { mountCommunityApp } from "./community-app.js?v=beta8-unified-ranking-share";
+import { mountCommunityApp } from "./community-app.js?v=beta8-member-entry-hotfix";
 import {
   aggregateTokenRows,
   adaptUsageDashboard,
@@ -35,6 +35,34 @@ const demoMode = params.get("demo") === "1";
 const api = demoMode ? demoApi : createApiClient();
 let communityCleanup = null;
 let navigationGeneration = 0;
+
+function isAdminEntry(locationRef = location) {
+  const pathname = String(locationRef?.pathname || "/").replace(/\/+$/, "") || "/";
+  return pathname === "/admin" || pathname === "/admin/index.html";
+}
+
+function memberRouteFromLocation() {
+  if (isAdminEntry()) return null;
+  const route = parseCommunityRoute(location) || { kind: "install" };
+  if (route.kind === "install" && location.pathname !== "/install") {
+    history.replaceState(null, "", `/install${location.search}`);
+  }
+  return route;
+}
+
+function adminLoginErrorMessage(error) {
+  if (error?.status === 401) {
+    return "管理员登录信息不正确，请检查社群标识、邮箱和密码后重试。";
+  }
+  return error?.message || "无法验证管理员登录信息";
+}
+
+function adminSessionErrorMessage(error) {
+  if ([401, 403].includes(error?.status)) {
+    return "管理员会话无效或已过期，请重新登录。";
+  }
+  return error?.message || "管理员后台暂时无法读取";
+}
 
 function isCurrentNavigation(generation) {
   return generation === navigationGeneration;
@@ -220,7 +248,7 @@ function renderLogin(message = "") {
     <section class="login-panel">
       <div class="eyebrow">TOKENFLEET / COMMUNITY LEDGER</div>
       <h1>进入社群管理后台</h1>
-      <p class="login-copy">使用管理员账号登录。服务端签发的会话令牌只保存在当前浏览器标签页，关闭标签页后自动清除。</p>
+      <p class="login-copy"><strong>仅限管理员。</strong>成员批次邀请、一次性设备码和成员昵称不能在此使用。请使用管理员账号登录；服务端签发的会话令牌只保存在当前浏览器标签页，关闭标签页后自动清除。</p>
       ${message ? `<div class="inline-alert" role="alert">${escapeHTML(message)}</div>` : ""}
       <form class="login-form" data-action="login">
         <label for="org-slug">社群标识<input id="org-slug" name="org_slug" autocomplete="organization" required maxlength="64" placeholder="your-community"></label>
@@ -230,7 +258,7 @@ function renderLogin(message = "") {
         <button class="primary-button" type="submit">验证并进入 ${icon("arrow", 18)}</button>
       </form>
       <a class="demo-link" href="?demo=1#/overview">没有服务端？打开隔离演示模式</a>
-      <a class="demo-link" href="#/rank">匿名查看社群榜</a>
+      <a class="demo-link" href="/rank">匿名查看社群榜</a>
       <div class="privacy-strip">${icon("shield", 18)}<span>社群服务不接收 prompt、回复、代码、项目路径或任何第三方凭证。</span></div>
     </section>
   </main>`;
@@ -244,14 +272,14 @@ function renderShell() {
       <a class="brand" href="#/overview" aria-label="TokenFleet 总览"><span class="brand-mark">TF</span><span><strong>TokenFleet</strong><small>COMMUNITY LEDGER</small></span></a>
       <div class="org-chip"><span class="org-avatar">${escapeHTML((org.name || "T").slice(0, 1))}</span><span><strong>${escapeHTML(org.name || "社群")}</strong><small>${escapeHTML(org.timezone || state.filters.timezone)}</small></span></div>
       <nav aria-label="主要导航">${NAVIGATION.filter(([key]) => state.me?.role === "admin" || !ADMIN_ONLY_ROUTES.has(key)).map(([key, label, iconName]) => `<a href="#/${key}" class="nav-item ${activeName === key ? "active" : ""}" aria-label="${escapeHTML(label)}" title="${escapeHTML(label)}" ${activeName === key ? 'aria-current="page"' : ""}>${icon(iconName)}<span>${label}</span></a>`).join("")}</nav>
-      <a class="nav-item" href="#/rank" aria-label="匿名社群榜" title="匿名社群榜">${icon("people")}<span>社群榜</span></a>
+      <a class="nav-item" href="/rank" aria-label="匿名社群榜" title="匿名社群榜">${icon("people")}<span>社群榜</span></a>
       <div class="sidebar-foot">
         <div class="privacy-promise"><span class="status-light"></span><span><strong>内容零采集</strong><small>仅同步 Token 聚合</small></span></div>
         <button class="nav-item logout-button" type="button" data-action="logout">${icon("logout")}<span>${demoMode ? "退出演示" : "退出"}</span></button>
       </div>
     </aside>
     <main id="main-content" class="main-content" tabindex="-1">
-      ${demoMode ? '<div class="demo-banner"><strong>隔离演示模式</strong><span>以下为固定假数据，不会写入真实服务。</span><a href="./">退出演示</a></div>' : ""}
+      ${demoMode ? `<div class="demo-banner"><strong>隔离演示模式</strong><span>以下为固定假数据，不会写入真实服务。</span><a href="${escapeHTML(location.pathname)}">退出演示</a></div>` : ""}
       <header class="page-header"><div><div class="eyebrow">${escapeHTML(org.name || "TOKENFLEET")}</div><h1>${escapeHTML(titleForRoute())}</h1><p>${escapeHTML(pageDescription())}</p></div>${["overview", "history", "breakdown", "costs"].includes(activeName) ? rangeControls() : ""}</header>
       <section class="page-body">${state.pageLoading ? renderSkeleton() : renderPage()}</section>
     </main>
@@ -672,7 +700,7 @@ function toast(message, type = "success", generation = navigationGeneration) {
 
 async function boot(generation = beginNavigation()) {
   if (!isCurrentNavigation(generation)) return;
-  const publicRoute = parseCommunityRoute(location);
+  const publicRoute = memberRouteFromLocation();
   if (publicRoute) {
     const joinCode = publicRoute.kind === "join" ? takeJoinCode() : "";
     const batchInvitationToken = publicRoute.kind === "batch"
@@ -705,14 +733,14 @@ async function boot(generation = beginNavigation()) {
     await loadPage(generation);
   } catch (error) {
     if (!isCurrentNavigation(generation)) return;
-    renderLogin(error?.message || "凭证验证失败");
+    renderLogin(adminSessionErrorMessage(error));
   }
 }
 
 window.addEventListener("hashchange", async () => {
   captureJoinCode();
   const generation = beginNavigation();
-  if (parseCommunityRoute(location)) {
+  if (memberRouteFromLocation()) {
     await boot(generation);
     return;
   }
@@ -759,7 +787,7 @@ document.addEventListener("submit", async (event) => {
     } catch (error) {
       if (!isCurrentNavigation(generation)) return;
       clearApiKey();
-      renderLogin(error?.message || "无法验证这个 API Key");
+      renderLogin(adminLoginErrorMessage(error));
     }
   }
 

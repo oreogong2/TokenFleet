@@ -306,8 +306,9 @@ test("share canonical stays same-origin and carries only route plus four public 
 });
 
 test("join security order, deep-link assets, demo labels and license boundaries remain visible", async () => {
-  const [appSource, joinSource, communitySource, posterSource, indexSource, qrSource] = await Promise.all([
+  const [appSource, publicSource, joinSource, communitySource, posterSource, indexSource, qrSource] = await Promise.all([
     readFile(new URL("../app.js", import.meta.url), "utf8"),
+    readFile(new URL("../public-app.js", import.meta.url), "utf8"),
     readFile(new URL("../join-secret.js", import.meta.url), "utf8"),
     readFile(new URL("../community-app.js", import.meta.url), "utf8"),
     readFile(new URL("../community-poster.js", import.meta.url), "utf8"),
@@ -316,7 +317,9 @@ test("join security order, deep-link assets, demo labels and license boundaries 
   ]);
   const combined = `${joinSource}\n${communitySource}\n${posterSource}`;
   assert.ok(appSource.startsWith('import {\n  captureJoinCode,\n  clearJoinCode,\n  takeBatchInvitationToken,\n  takeJoinCode,\n} from "./join-secret.js";'));
-  assert.match(appSource, /hashchange[\s\S]*captureJoinCode\(\);[\s\S]*parseCommunityRoute/);
+  assert.ok(publicSource.startsWith('import {\n  captureJoinCode,\n  clearJoinCode,\n  takeBatchInvitationToken,\n  takeJoinCode,\n} from "./join-secret.js";'));
+  assert.match(appSource, /hashchange[\s\S]*captureJoinCode\(\);[\s\S]*memberRouteFromLocation/);
+  assert.match(publicSource, /hashchange[\s\S]*captureJoinCode\(\);[\s\S]*mountMemberRoute/);
   assert.ok(joinSource.indexOf("if (globalThis.location) captureJoinCode();") < joinSource.indexOf('addEventListener?.("pagehide"'));
   assert.match(joinSource, /historyRef\?\.replaceState/);
   assert.match(joinSource, /\^\[A-Za-z0-9_-\]\{32,256\}\$/);
@@ -333,7 +336,7 @@ test("join security order, deep-link assets, demo labels and license boundaries 
   assert.match(communitySource, /演示数据 · 不是真实排名或真实成员数据/);
   assert.match(communitySource, /未跨时区重新归日/);
   assert.match(indexSource, /href="\/styles\.css\?v=beta8-canvas-preview-copy"/);
-  assert.match(indexSource, /src="\/app\.js(?:\?[^\"]*)?"/);
+  assert.match(indexSource, /src="\/public-app\.js(?:\?[^\"]*)?"/);
   assert.match(qrSource, /The above copyright notice and this permission notice/);
   assert.match(qrSource, /AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM/);
 });

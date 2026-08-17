@@ -31,7 +31,7 @@ def assert_no_horizontal_overflow(page: Page, route: str) -> None:
 
 
 def open_route(page: Page, route: str, heading: str) -> None:
-    page.goto(f"{BASE_URL}/#/{route}")
+    page.goto(f"{BASE_URL}/admin/#/{route}")
     wait_for_heading(page, heading)
     page.locator(".skeleton-grid").wait_for(state="detached")
     page.locator(".page-body").wait_for()
@@ -55,7 +55,7 @@ def main() -> None:
         )
         page.on("pageerror", lambda error: page_errors.append(str(error)))
         try:
-            page.goto(BASE_URL)
+            page.goto(f"{BASE_URL}/admin/")
             wait_for_heading(page, "进入社群管理后台")
             page.locator("#org-slug").fill(ORG_SLUG)
             page.locator("#email").fill(ADMIN_EMAIL)

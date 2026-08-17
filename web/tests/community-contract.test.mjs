@@ -129,6 +129,9 @@ test("/rank is canonical while /community stays a compatible read route", () => 
   assert.equal(parseCommunityRoute({ pathname: "/join", search: "", hash: "" }).kind, "join");
   assert.equal(parseCommunityRoute({ pathname: "/join/batch", search: "", hash: "" }).kind, "batch");
   assert.equal(parseCommunityRoute({ pathname: "/install", search: "", hash: "" }).kind, "install");
+  assert.equal(parseCommunityRoute({ pathname: "/", search: "", hash: "" }).kind, "install");
+  assert.equal(parseCommunityRoute({ pathname: "/", search: "", hash: "#/overview" }).kind, "install");
+  assert.equal(parseCommunityRoute({ pathname: "/admin", search: "", hash: "" }), null);
   assert.equal(parseCommunityRoute({ pathname: "/", search: "", hash: "#/install" }).kind, "install");
   assert.equal(communityHref({ kind: "install" }), "/install");
   assert.equal(
