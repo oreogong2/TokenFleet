@@ -46,8 +46,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps
 ```
 
 `https://token.ipwriter.com` is the official TokenFleet community origin and is
-already used in the command above. If your community runs its own server, use
-the origin your administrator provides instead — do not guess.
+used only as a client installation parameter. It is not a member Web entry;
+do not open the bare origin in a browser. Member Web access uses `/install`,
+`/rank`, or the complete batch invitation link. If your community runs its own
+server, use the origin your administrator provides instead — do not guess.
 
 The installer validates and pins that canonical HTTPS origin in a non-secret,
 integrity-checked installation file, copies only this client to

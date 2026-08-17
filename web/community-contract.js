@@ -285,6 +285,7 @@ export function parseCommunityRoute(locationRef = globalThis.location) {
   if (routePath === "/install" || params.get("view") === "install") return { kind: "install" };
   if (routePath === "/join/batch") return { kind: "batch" };
   if (routePath === "/join" || params.get("view") === "join") return { kind: "join" };
+  if (["/", "/index.html"].includes(pathname)) return { kind: "install" };
   return null;
 }
 

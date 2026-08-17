@@ -176,10 +176,18 @@ def main():
         )
 
         page.set_viewport_size({"width": 1440, "height": 900})
+        root_response = page.goto(f"{base}/", wait_until="networkidle")
+        assert root_response.status == 200
+        page.locator(".install-contact").wait_for()
+        assert page.url == f"{base}/install"
+        assert page.locator("#org-slug, #email, #password").count() == 0
+        assert page.get_by_role("button", name="验证并进入").count() == 0
+        assert page.get_by_text("管理员后台", exact=True).count() == 0
+
         page.goto(f"{base}/?demo=1#/rank", wait_until="networkidle")
         page.get_by_role("link", name="安装与参与", exact=True).click()
         page.locator(".install-contact").wait_for()
-        assert page.url.endswith("#/install")
+        assert page.url == f"{base}/install"
 
         for width in (390, 820, 1440):
             page.set_viewport_size({"width": width, "height": 900})
@@ -203,7 +211,9 @@ def main():
             assert page.get_by_role("link", name="全部工具（3）", exact=True).count() == 1
             assert page.get_by_role("link", name="全部模型（6）", exact=True).count() == 1
             assert page.get_by_role("button", name="应用筛选").count() == 0
-            assert page.get_by_role("link", name="安装与参与", exact=True).count() == 1
+            assert page.locator('a.community-install-link[href="/install"]').count() == 1
+            assert page.get_by_text("管理员后台", exact=True).count() == 0
+            assert page.locator('a[href^="/admin"]').count() == 0
             assert page.get_by_text("未跨时区重新归日", exact=False).count() == 1
             if width == 1440:
                 headline = page.locator(".community-hero h1")
@@ -228,6 +238,7 @@ def main():
             page.locator(".install-contact").wait_for()
             assert page.get_by_role("heading", name="安装只是第一步， 领取邀请码才算加入。").count() == 1
             assert page.get_by_text("只下载安装不会自动加入", exact=False).count() == 1
+            assert page.get_by_text("只用于客户端安装参数", exact=False).count() == 1
             assert page.get_by_text("没有批次链接和设备码，安装后仍无法加入社群。", exact=True).count() == 1
             assert page.get_by_text("诗奥", exact=False).count() == 0
             assert page.get_by_text("奥哥", exact=False).count() == 0
@@ -315,14 +326,15 @@ def main():
         page.locator(".community-detail-grid").wait_for()
         asset_status = page.evaluate(
             """async () => Object.fromEntries(await Promise.all(
-              ['/styles.css', '/app.js'].map(async path => [
+              ['/styles.css', '/public-app.js'].map(async path => [
                 path,
                 (await fetch(path, {cache: 'no-store'})).status,
               ])
             ))"""
         )
-        assert asset_status == {"/styles.css": 200, "/app.js": 200}
-        assert page.get_by_role("link", name="管理员后台").evaluate("link => link.href") == f"{base}/"
+        assert asset_status == {"/styles.css": 200, "/public-app.js": 200}
+        assert page.get_by_text("管理员后台", exact=True).count() == 0
+        assert page.locator('a[href^="/admin"]').count() == 0
         assert page.get_by_text("演示数据 · 不是真实排名或真实成员数据", exact=True).count() == 1
 
         # A manual visit to either another member or this member's public page
@@ -559,7 +571,7 @@ def main():
             assert page.get_by_role("button", name="确认昵称并领取设备码").is_disabled()
 
         # Admin creates one shared batch link without ever rendering its raw token.
-        page.goto(f"{base}/?demo=1#/people", wait_until="networkidle")
+        page.goto(f"{base}/admin/?demo=1#/people", wait_until="networkidle")
         page.get_by_role("button", name="创建自助批次（单批最多 50）").click()
         batch_dialog = page.locator("#batch-dialog")
         assert batch_dialog.locator('input[name="capacity"]').input_value() == "50"
@@ -622,21 +634,17 @@ def main():
         assert page.locator('.community-distribution b[style*="width"]').count() == 0
 
         # Public -> admin: an old slow leaderboard response cannot overwrite overview.
-        page.goto(
-            f"{base}/?demo=1&scenario=slow-public#/overview",
-            wait_until="networkidle",
-        )
-        page.evaluate("location.hash = '#/rank'")
+        page.goto(f"{base}/?demo=1&scenario=slow-public#/rank")
         page.locator(".community-loading").wait_for()
         page.wait_for_timeout(50)
-        page.evaluate("location.hash = '#/overview'")
+        page.goto(f"{base}/admin/?demo=1#/overview", wait_until="networkidle")
         page.get_by_role("heading", name="总览", exact=True).wait_for()
         page.wait_for_timeout(350)
         assert page.get_by_role("heading", name="总览", exact=True).count() == 1
         assert page.locator(".community-board").count() == 0
 
         # Public -> public: the first slow board cannot overwrite the later profile.
-        page.evaluate("location.hash = '#/rank'")
+        page.goto(f"{base}/?demo=1&scenario=slow-public#/rank")
         page.locator(".community-loading").wait_for()
         page.wait_for_timeout(50)
         page.evaluate("location.hash = '#/rank/p/demo-1'")
@@ -646,27 +654,23 @@ def main():
         assert page.locator(".community-board").count() == 0
 
         # A slow profile response is also inert after returning to admin overview.
-        page.goto(
-            f"{base}/?demo=1&scenario=slow-profile#/overview",
-            wait_until="networkidle",
-        )
-        page.evaluate("location.hash = '#/rank/p/demo-1'")
+        page.goto(f"{base}/?demo=1&scenario=slow-profile#/rank/p/demo-1")
         page.locator(".community-loading").wait_for()
         page.wait_for_timeout(50)
-        page.evaluate("location.hash = '#/overview'")
+        page.goto(f"{base}/admin/?demo=1#/overview", wait_until="networkidle")
         page.get_by_role("heading", name="总览", exact=True).wait_for()
         page.wait_for_timeout(350)
         assert page.locator(".community-profile-hero, .community-board").count() == 0
 
         # Admin -> public: delayed pricing cannot repaint over the public board.
         page.goto(
-            f"{base}/?demo=1&scenario=slow-admin#/overview",
+            f"{base}/admin/?demo=1&scenario=slow-admin#/overview",
             wait_until="networkidle",
         )
         page.evaluate("location.hash = '#/costs'")
         page.get_by_role("heading", name="成本", exact=True).wait_for()
         page.wait_for_timeout(50)
-        page.evaluate("location.hash = '#/rank'")
+        page.goto(f"{base}/rank?demo=1", wait_until="networkidle")
         page.locator(".community-board").wait_for()
         page.wait_for_timeout(350)
         assert page.locator(".community-board").count() == 1
@@ -683,7 +687,7 @@ def main():
         page.on("download", lambda download: stale_downloads.append(download.suggested_filename))
         share.click()
         page.wait_for_timeout(50)
-        page.evaluate("location.hash = '#/overview'")
+        page.goto(f"{base}/admin/?demo=1#/overview", wait_until="networkidle")
         page.get_by_role("heading", name="总览", exact=True).wait_for()
         page.wait_for_timeout(350)
         assert stale_downloads == []
@@ -692,7 +696,7 @@ def main():
 
         # A delayed enrollment mutation cannot append its one-time secret dialog to /rank.
         page.goto(
-            f"{base}/?demo=1&scenario=slow-enrollment#/people",
+            f"{base}/admin/?demo=1&scenario=slow-enrollment#/people",
             wait_until="networkidle",
         )
         page.get_by_role("button", name="给已有成员补发设备码").click()
@@ -710,7 +714,7 @@ def main():
             "button", name="确认补发 60 分钟设备码"
         ).click()
         page.wait_for_timeout(50)
-        page.evaluate("location.hash = '#/rank'")
+        page.goto(f"{base}/rank?demo=1", wait_until="networkidle")
         page.locator(".community-board").wait_for()
         page.wait_for_timeout(350)
         assert page.locator("dialog.token-dialog").count() == 0
@@ -718,9 +722,9 @@ def main():
         assert "N1s7" not in page.content()
 
         # Logout invalidates a real pending admin load before rendering login in-place.
-        page.goto(f"{base}/", wait_until="domcontentloaded")
+        page.goto(f"{base}/admin/", wait_until="domcontentloaded")
         page.evaluate("sessionStorage.setItem('tokenfleet.apiKey', 'race-admin-session')")
-        page.goto(f"{base}/?admin-race=1#/overview", wait_until="networkidle")
+        page.goto(f"{base}/admin/?admin-race=1#/overview", wait_until="networkidle")
         page.get_by_role("heading", name="总览", exact=True).wait_for()
         CommunityStaticHandler.pricing_delay_seconds = 0.3
         try:

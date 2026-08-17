@@ -15,7 +15,7 @@
 
 1. 官方源码仓库地址；
 2. 已复核的版本标签和对应完整 commit SHA（实际安装以 SHA 为准）；
-3. 固定社群 HTTPS 地址。官方社群为 `https://token.ipwriter.com`（本文档中的安装命令已直接使用）；自建服务器的社群使用管理员提供的地址。
+3. 固定社群 HTTPS 地址。官方社群为 `https://token.ipwriter.com`（本文档中的安装命令已直接使用）；它仅作为客户端安装参数，不是网页入口，请勿在浏览器打开裸域名。成员网页只使用 `https://token.ipwriter.com/install`、`https://token.ipwriter.com/rank` 或管理员发来的完整批次邀请链接。自建服务器的社群使用管理员提供的地址。
 
 这些都不是设备邀请码或 device secret。一次性邀请码不要写进命令行、截图或群聊。
 
@@ -97,7 +97,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps
   -CommunityServer https://token.ipwriter.com
 ```
 
-命令中的 `https://token.ipwriter.com` 是官方社群地址；自建服务器的社群替换为管理员提供的地址，不要自行猜测。
+命令中的 `https://token.ipwriter.com` 是官方社群地址，仅作为客户端安装参数，不是网页入口，请勿在浏览器打开裸域名；成员浏览器只使用 `/install`、`/rank` 或完整批次邀请链接。自建服务器的社群替换为管理员提供的地址，不要自行猜测。
 
 打开新终端，为这台设备使用一个新的单次设备码：
 

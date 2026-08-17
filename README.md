@@ -1,6 +1,6 @@
 # TokenFleet
 
-> 基于 MIT 许可的 TokenStep v0.1.48 改造：保留本地统计能力，新增工具/模型精确明细、多设备合并、邀请制社群排行榜和管理员后台。上游版权与许可见 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。产品边界、验证状态与部署说明见 [TOKENFLEET.md](TOKENFLEET.md)。
+> 基于 MIT 许可的 TokenStep v0.1.48 改造：保留本地统计能力，新增工具/模型精确明细、多设备合并和邀请制社群排行榜。上游版权与许可见 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。产品边界、验证状态与部署说明见 [TOKENFLEET.md](TOKENFLEET.md)。
 
 **记录你的 AI 使用航行日志，看见每天的 Token 流量。**
 
@@ -112,7 +112,7 @@ test "$(git rev-parse HEAD)" = "<reviewed-commit-sha>"
   --community-server https://token.ipwriter.com
 ```
 
-命令中的 `https://token.ipwriter.com` 是官方社群地址；自建服务器的社群请替换为你的管理员提供的 HTTPS 地址。
+命令中的 `https://token.ipwriter.com` 是官方社群地址，**仅作为客户端安装参数，不是网页入口，请勿在浏览器打开裸域名**；自建服务器的社群请替换为你的管理员提供的 HTTPS 地址。成员网页只使用 `https://token.ipwriter.com/install`、`https://token.ipwriter.com/rank` 或管理员发来的完整批次邀请链接。
 
 脚本会构建、验证并原子安装到 `~/Applications/TokenFleet.app`；它不接受一次性连接码。首次接入时先从管理员发出的批次链接登记唯一昵称并复制个人设备码，再在 App 的“社群同步”安全输入框粘贴。
 
@@ -139,6 +139,8 @@ Windows 首版从经过复核的源码发布包安装：
 powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 `
   -CommunityServer https://token.ipwriter.com
 ```
+
+这里的 `https://token.ipwriter.com` 同样仅是客户端安装参数，不是网页入口；成员浏览器只使用 `/install`、`/rank` 或完整批次邀请链接。
 
 安装后运行 `tokenfleet connect`，在隐藏输入中粘贴管理员为这台设备单独生成的一次性码。社群地址在安装时固定，升级必须保持一致；`connect` 不接受任意服务器参数。完整说明见 [clients/windows/README.md](clients/windows/README.md)。它支持采集、安全连接、自动同步和上榜，但不是 macOS 原生桌面界面的 Windows 复刻版。
 
