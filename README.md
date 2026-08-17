@@ -18,6 +18,14 @@ TokenFleet 包含原生 macOS 菜单栏 App 和轻量 Windows 参赛端，用来
 
 ## 当前发布方式
 
+> **官方社群成员请注意：当前参赛客户端是 beta.8。** GitHub 默认 `main`、最新正式 tag
+> 和 Release 仍停留在 beta.7，不能作为当前成员安装来源。新成员请按
+> [正式加入指南](https://scn2sjohx0z1.feishu.cn/docx/I6rCdR1sKoQ3l7x7TgpcRp2lnLc)
+> 完整 clone 仓库并固定检出 `6cd21ef5138f00fe1182b5da3ad0a9fdf3fdcc00`；已经正常使用这一
+> beta.8 客户端的成员无需更新或重装。线上成员 Web 的 beta.8 入口隔离热修不修改客户端、
+> 同步协议、昵称、设备身份或历史数据。`https://token.ipwriter.com` 只用于客户端安装参数，
+> 不要直接在浏览器打开；成员网页只使用 `/install`、`/rank` 或收到的完整批次邀请链接。
+
 TokenFleet 当前只提供**经过复核的源码安装**，不要求 Apple Developer 付费账号，也没有可下载的官方 DMG。不要把上游 TokenStep 的 DMG 当成 TokenFleet 安装包。
 
 - macOS：检出管理员复核并公布的完整 commit SHA 后运行仓库内的 `script/install_from_source.sh`。纯本地模式使用 ad-hoc 签名；社群同步模式会在每台 Mac 的登录钥匙串创建独立、不可导出的本机自签身份，使 TokenFleet 自己的凭据访问在源码升级后保持稳定。
@@ -65,7 +73,7 @@ TokenFleet 适合这些人：
 - 一键截图分享当前页面。
 - 一键生成「昨日 AI 节奏」分享卡，展示 24 小时使用波形、峰值时段和节奏标签。
 - Codex / Claude Code 剩余额度可在设置中打开，默认关闭。
-- 保留已签名公证 DMG 的更新能力，但源码安装阶段不启用；当前升级方式是切换到管理员指定的新 tag 后重跑安装脚本。
+- 保留已签名公证 DMG 的更新能力，但源码安装阶段不启用；当前升级方式是切换到管理员指定并复核的完整 commit SHA 后重跑安装脚本。
 - 管理员可创建最多 50 人、最长 24 小时的自助批次链接；成员只填唯一昵称并明确同意公开，系统原子生成非登录参赛者和 60 分钟单次设备码。
 - 第二台设备或个别补发仍由管理员为已有参赛者生成独立短期、单次接入码。
 - 同一参赛者的多台 Mac 或 Windows 设备分别登记、统一求和；不要求共享 Codex / Claude 账号。
@@ -122,7 +130,7 @@ test "$(git rev-parse HEAD)" = "<reviewed-commit-sha>"
 ./script/install_from_source.sh
 ```
 
-升级时在同一 clone 切换到管理员给出的新 tag，再重复相同安装命令。回滚和卸载：
+升级时在同一 clone 切换到管理员给出并复核的完整 commit SHA，再重复相同安装命令。回滚和卸载：
 
 ```bash
 ./script/rollback_source_install.sh
