@@ -1,6 +1,6 @@
 # TokenFleet 社群成员安装与多设备登记
 
-状态：官方社群当前 Mac 与 Windows 客户端均为 beta.8，固定安装提交是 `6cd21ef5138f00fe1182b5da3ad0a9fdf3fdcc00`。已经正常使用这一版本的成员无需更新或重装；新成员继续固定检出该提交。线上成员 Web 的入口隔离热修不修改客户端、同步协议、昵称、设备身份或历史数据。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
+状态：官方社群当前 Mac 与 Windows 客户端均为 beta.8，新成员固定安装提交是 `2149a0bfb8dc00d7afe773c00a7e23b8842dd0d1`。已经正常使用旧 beta.8 固定提交 `6cd21ef5138f00fe1182b5da3ad0a9fdf3fdcc00` 的成员，其安装、同步、榜单、昵称、设备身份和历史数据无需更新；只有需要从现有设备自助生成第二台设备码时，才建议升级。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
 
 ## 1. 三套身份不要混在一起
 
