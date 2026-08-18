@@ -30,6 +30,8 @@ final class AppState: ObservableObject {
     @Published private(set) var isRefreshingCommunityLeaderboard = false
     @Published private(set) var communityLeaderboardError: String?
     @Published private(set) var isOpeningCommunityLeaderboard = false
+    @Published private(set) var additionalDeviceEnrollment: TeamSyncAdditionalDeviceEnrollment?
+    @Published private(set) var isIssuingAdditionalDeviceEnrollment = false
     @Published var lastError: String?
 
     private var timer: Timer?
@@ -44,6 +46,7 @@ final class AppState: ObservableObject {
     private var lastAutomaticUsageRefreshAttemptAt: Date?
     private var lastUsageObservedAt: Date?
     private let fixedCommunityServerOrigin: URL?
+    private var additionalDeviceEnrollmentRequestID: UUID?
 
     convenience init() {
         #if TOKENSTEP_TESTING
@@ -565,6 +568,42 @@ final class AppState: ObservableObject {
         }
     }
 
+    func issueAdditionalDeviceEnrollment() {
+        guard !isIssuingAdditionalDeviceEnrollment,
+              isCommunitySyncEnrollmentCompatible,
+              let fixedCommunityServerOrigin
+        else { return }
+        additionalDeviceEnrollment = nil
+        isIssuingAdditionalDeviceEnrollment = true
+        teamSyncActionError = nil
+        let requestID = UUID()
+        additionalDeviceEnrollmentRequestID = requestID
+        Task {
+            do {
+                let enrollment = try await TeamSyncService.live.issueAdditionalDeviceEnrollment(
+                    serverURL: fixedCommunityServerOrigin.absoluteString
+                )
+                guard additionalDeviceEnrollmentRequestID == requestID,
+                      isCommunitySyncEnrollmentCompatible else {
+                    throw TeamSyncProtocolError.operationCancelled
+                }
+                additionalDeviceEnrollment = enrollment
+            } catch {
+                guard additionalDeviceEnrollmentRequestID == requestID else { return }
+                additionalDeviceEnrollment = nil
+                teamSyncActionError = error.localizedDescription
+            }
+            guard additionalDeviceEnrollmentRequestID == requestID else { return }
+            isIssuingAdditionalDeviceEnrollment = false
+        }
+    }
+
+    func clearAdditionalDeviceEnrollment() {
+        additionalDeviceEnrollmentRequestID = nil
+        additionalDeviceEnrollment = nil
+        isIssuingAdditionalDeviceEnrollment = false
+    }
+
     func setTeamSyncEnabled(_ enabled: Bool) {
         guard fixedCommunityServerOrigin != nil else {
             teamSyncActionError = TeamSyncProtocolError.communityServerUnavailable.localizedDescription
@@ -631,6 +670,8 @@ final class AppState: ObservableObject {
         teamSyncTimer = nil
         isTeamSyncing = true
         teamSyncActionError = nil
+        additionalDeviceEnrollmentRequestID = nil
+        additionalDeviceEnrollment = nil
         Task {
             do {
                 try await TeamSyncService.live.clear()

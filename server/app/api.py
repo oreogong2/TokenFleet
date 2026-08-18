@@ -41,6 +41,7 @@ from .schemas import (
     CommunityShareGrantRedeemResponse,
     CommunityShareGrantResponse,
     DeviceCommunityRankResponse,
+    DeviceEnrollmentTokenIssueRequest,
     DeviceEnrollRequest,
     DeviceEnrollResponse,
     DeviceResponse,
@@ -970,6 +971,102 @@ def create_enrollment_token_alias(
     result = _create_enrollment_token(payload, admin, session)
     response.headers["Cache-Control"] = "no-store"
     return result
+
+
+@router.post(
+    "/api/v1/devices/me/enrollment-tokens",
+    response_model=EnrollmentTokenResponse,
+    status_code=201,
+)
+def issue_device_enrollment_token(
+    _payload: DeviceEnrollmentTokenIssueRequest,
+    response: Response,
+    principal: DevicePrincipal = Depends(get_device_principal),
+    session: Session = Depends(get_session),
+) -> EnrollmentTokenResponse:
+    """Let an authenticated member add another device to the same identity."""
+
+    now = utcnow()
+    # Device authentication commits its nonce separately. Lock the current
+    # binding again so a concurrent disable cannot mint a fresh credential.
+    device = session.scalar(
+        select(Device)
+        .where(
+            Device.id == principal.device.id,
+            Device.org_id == principal.device.org_id,
+        )
+        .with_for_update()
+    )
+    user = session.scalar(
+        select(User)
+        .where(
+            User.id == principal.user.id,
+            User.org_id == principal.device.org_id,
+        )
+        .with_for_update()
+    )
+    if (
+        device is None
+        or user is None
+        or device.user_id != user.id
+        or not device.is_active
+        or not user.is_active
+        or user.role != UserRole.MEMBER
+    ):
+        session.rollback()
+        raise HTTPException(status_code=403, detail="device enrollment is unavailable")
+
+    # The signed-device limiter already bounds request bursts. This durable
+    # member-level limit also prevents multi-device or multi-worker issuance
+    # from growing the token table without bound.
+    recent_self_issues = session.scalar(
+        select(func.count())
+        .select_from(EnrollmentToken)
+        .where(
+            EnrollmentToken.org_id == user.org_id,
+            EnrollmentToken.user_id == user.id,
+            EnrollmentToken.created_by_user_id == user.id,
+            EnrollmentToken.created_at > now - timedelta(hours=1),
+        )
+    ) or 0
+    if recent_self_issues >= 3:
+        session.rollback()
+        raise HTTPException(
+            status_code=429,
+            detail="too many device enrollment attempts",
+            headers={"Retry-After": "3600"},
+        )
+
+    # Preserve the existing one-live-code-per-member contract. Used rows stay
+    # immutable for auditability; raw code values are never stored.
+    session.execute(
+        update(EnrollmentToken)
+        .where(
+            EnrollmentToken.org_id == user.org_id,
+            EnrollmentToken.user_id == user.id,
+            EnrollmentToken.used_at.is_(None),
+            EnrollmentToken.expires_at > now,
+        )
+        .values(expires_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    raw_token = generate_enrollment_token()
+    expires_at = now + timedelta(minutes=60)
+    session.add(
+        EnrollmentToken(
+            org_id=user.org_id,
+            user_id=user.id,
+            created_by_user_id=user.id,
+            token_hash=opaque_token_hash(raw_token),
+            expires_at=expires_at,
+        )
+    )
+    session.commit()
+    response.headers["Cache-Control"] = "no-store"
+    return EnrollmentTokenResponse(
+        enrollment_token=raw_token,
+        expires_at=expires_at,
+    )
 
 
 @router.post("/api/v1/devices/enroll", response_model=DeviceEnrollResponse, status_code=201)

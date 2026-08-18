@@ -240,6 +240,10 @@ class EnrollmentTokenResponse(StrictModel):
     expires_at: datetime
 
 
+class DeviceEnrollmentTokenIssueRequest(StrictModel):
+    """A signed existing-device request intentionally carries no identity fields."""
+
+
 class DeviceEnrollRequest(StrictModel):
     enrollment_token: Annotated[str, Field(min_length=32, max_length=256)]
     device_public_id: UUID

@@ -108,3 +108,9 @@ def usage_endpoint(origin: str) -> str:
     from .constants import DAILY_USAGE_PATH
 
     return endpoint(origin, DAILY_USAGE_PATH)
+
+
+def additional_device_enrollment_endpoint(origin: str) -> str:
+    from .constants import ADDITIONAL_DEVICE_ENROLLMENT_PATH
+
+    return endpoint(origin, ADDITIONAL_DEVICE_ENROLLMENT_PATH)

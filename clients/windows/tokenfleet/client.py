@@ -10,6 +10,7 @@ from typing import Any, Callable, Protocol
 from .collectors import CollectionResult, collect_usage
 from .constants import (
     APP_VERSION,
+    ADDITIONAL_DEVICE_ENROLLMENT_PATH,
     COLLECTOR_VERSION,
     DAILY_USAGE_PATH,
     MAX_BUCKETS_PER_REQUEST,
@@ -19,7 +20,12 @@ from .constants import (
     SIGNING_KEY_DERIVATION,
 )
 from .credential import CredentialStore, DeviceCredential
-from .http_client import HTTPSJSONTransport, enrollment_endpoint, usage_endpoint
+from .http_client import (
+    HTTPSJSONTransport,
+    additional_device_enrollment_endpoint,
+    enrollment_endpoint,
+    usage_endpoint,
+)
 from .installation import InstallationConfigError, canonical_community_origin
 from .protocol import (
     ProtocolError,
@@ -120,6 +126,38 @@ class TokenFleetClient:
 
     def preview(self, *, history_days: int = 366) -> CollectionResult:
         return self.collector(self.source_home, history_days=history_days)
+
+    def issue_additional_device_code(self) -> str:
+        credential = self._credential_for_pinned_origin()
+        body = canonical_json({})
+        headers = signed_headers(
+            device_id=credential.device_id,
+            device_secret=credential.device_secret,
+            body=body,
+            path=ADDITIONAL_DEVICE_ENROLLMENT_PATH,
+        )
+        response = self.transport.post_bytes(
+            additional_device_enrollment_endpoint(credential.server_origin),
+            body,
+            headers=headers,
+            expected_status=201,
+        )
+        if not isinstance(response, dict) or set(response) != {
+            "enrollment_token",
+            "expires_at",
+        }:
+            raise ProtocolError("服务器返回了无效的新设备码")
+        token = response.get("enrollment_token")
+        expires_at = response.get("expires_at")
+        if (
+            not isinstance(token, str)
+            or not re.fullmatch(r"[A-Za-z0-9_-]{32,256}", token)
+            or not isinstance(expires_at, str)
+            or not 1 <= len(expires_at) <= 64
+            or any(ord(character) < 32 or ord(character) >= 127 for character in expires_at)
+        ):
+            raise ProtocolError("服务器返回了无效的新设备码")
+        return token
 
     def sync(self, *, history_days: int = 366) -> SyncSummary:
         credential = self._credential_for_pinned_origin()

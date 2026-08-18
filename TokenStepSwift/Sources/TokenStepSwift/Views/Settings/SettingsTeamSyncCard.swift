@@ -7,6 +7,8 @@ struct SettingsTeamSyncCard: View {
     @Environment(\.isScreenshotRendering) private var isScreenshotRendering
     @State private var enrollmentToken = ""
     @State private var showsClearConfirmation = false
+    @State private var showsAdditionalDeviceEnrollment = false
+    @State private var additionalDeviceCodeCopied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -27,6 +29,12 @@ struct SettingsTeamSyncCard: View {
         } message: {
             Text(L("将移除本机设备凭证与同步状态；本地 Token 统计不会删除。"))
         }
+        .sheet(isPresented: $showsAdditionalDeviceEnrollment) {
+            additionalDeviceEnrollmentSheet
+        }
+        .onDisappear {
+            appState.clearAdditionalDeviceEnrollment()
+        }
     }
 
     private var connectionStatusCard: some View {
@@ -37,7 +45,7 @@ struct SettingsTeamSyncCard: View {
                     TeamSyncSettingRow(label: L("今天排名"), detail: rankPopulationText, value: rankText)
                     TeamSyncSettingRow(label: L("上次同步"), detail: L("设备凭据保存在系统钥匙串"), value: lastSyncCompactText)
                 } else {
-                    Text(L("从专属接入页复制一次性设备码；新增设备必须由管理员为既有成员签发。"))
+                    Text(L("首次设备码来自批次接入页；若已有其他已连接设备，可由其自助生成新设备码。"))
                         .font(.system(size: 8, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -137,12 +145,76 @@ struct SettingsTeamSyncCard: View {
     }
 
     private var currentDeviceCard: some View {
-        SettingsCard(title: L("当前设备连接"), symbol: "laptopcomputer.and.iphone", height: 154) {
-            VStack(alignment: .leading, spacing: 0) {
+        SettingsCard(title: L("当前设备连接"), symbol: "laptopcomputer.and.iphone", height: 186) {
+            VStack(alignment: .leading, spacing: 2) {
                 TeamSyncSettingRow(label: L("这台设备"), detail: L("凭据安全保存在本机，不展示原始设备码"), value: appState.isCommunitySyncEnrollmentCompatible ? L("已连接") : L("未连接"), tint: .tokenGreenDark)
-                TeamSyncSettingRow(label: L("添加另一台设备"), detail: L("向管理员领取新的 60 分钟单次码；多台设备归入同一昵称"), value: L("不影响本机"))
-                TeamSyncSettingRow(label: L("普通用户权限"), detail: L("不能自行生成或补发设备码"), value: L("管理员签发"))
+                TeamSyncSettingRow(label: L("添加另一台设备"), detail: L("已连接成员可自助生成 60 分钟单次码；多台设备归入同一昵称"), value: L("不影响本机"))
+                Button {
+                    additionalDeviceCodeCopied = false
+                    appState.issueAdditionalDeviceEnrollment()
+                    showsAdditionalDeviceEnrollment = true
+                } label: {
+                    Text(L("生成新设备码"))
+                        .font(.system(size: 8, weight: .heavy))
+                        .frame(width: 108, height: 30)
+                }
+                .buttonStyle(SettingsPrimaryButtonStyle())
+                .disabled(
+                    !appState.isCommunitySyncEnrollmentCompatible
+                        || appState.isIssuingAdditionalDeviceEnrollment
+                        || isScreenshotRendering
+                )
             }
+        }
+    }
+
+    private var additionalDeviceEnrollmentSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(L("为另一台设备生成设备码"))
+                .font(.title2.weight(.heavy))
+            Text(L("该码只能使用一次，60 分钟后失效。请只粘贴到另一台设备的 TokenFleet，不要发给 AI、群聊或陌生人。"))
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if appState.isIssuingAdditionalDeviceEnrollment {
+                ProgressView(L("正在安全生成"))
+            } else if let enrollment = appState.additionalDeviceEnrollment {
+                Text(verbatim: enrollment.enrollmentToken)
+                    .font(.system(.body, design: .monospaced).weight(.bold))
+                    .textSelection(.enabled)
+                    .privacySensitive()
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+                HStack {
+                    Button(additionalDeviceCodeCopied ? L("已复制") : L("复制设备码")) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(
+                            enrollment.enrollmentToken,
+                            forType: .string
+                        )
+                        additionalDeviceCodeCopied = true
+                    }
+                    .buttonStyle(SettingsPrimaryButtonStyle())
+                    Spacer()
+                    Button(L("完成")) {
+                        showsAdditionalDeviceEnrollment = false
+                    }
+                    .buttonStyle(SettingsSecondaryButtonStyle())
+                }
+            } else {
+                Text(L("未能生成设备码，请稍后重试。"))
+                    .foregroundStyle(.orange)
+                Button(L("关闭")) {
+                    showsAdditionalDeviceEnrollment = false
+                }
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
+        .onDisappear {
+            additionalDeviceCodeCopied = false
+            appState.clearAdditionalDeviceEnrollment()
         }
     }
 

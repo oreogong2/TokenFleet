@@ -267,6 +267,7 @@ immediately.
   - response is exactly `{nickname, enrollment_token, expires_at}` with
     `Cache-Control: no-store`; it contains no organization/member/internal ID
 - `POST /api/v1/enrollment-tokens` (admin)
+- `POST /api/v1/devices/me/enrollment-tokens` (signed existing member device; empty body, fixed 60-minute code, maximum 3 self-issues per member per hour)
   - request: `{user_id, expires_in_minutes}`
   - response: `{enrollment_token, expires_at}`; plaintext is returned once
 - `POST /api/v1/devices/enroll` (one-time token)

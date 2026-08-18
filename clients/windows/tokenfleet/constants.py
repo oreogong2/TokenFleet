@@ -5,6 +5,7 @@ COLLECTOR_VERSION = "0.2.0-windows.1"
 SCHEMA_VERSION = 1
 
 ENROLLMENT_PATH = "/api/v1/devices/enroll"
+ADDITIONAL_DEVICE_ENROLLMENT_PATH = "/api/v1/devices/me/enrollment-tokens"
 DAILY_USAGE_PATH = "/api/v1/usage/daily"
 PUBLIC_RANK_PATH = "/rank"
 SIGNING_KEY_CONTEXT = b"TokenFleet-HMAC-v1:\n"

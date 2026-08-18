@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from unittest import mock
 
 import tokenfleet_cli
 from tokenfleet.constants import TASK_NAME
@@ -55,6 +56,20 @@ class CLIAndStateTests(unittest.TestCase):
         self.assertIn(TASK_NAME, command)
         self.assertIn("LIMITED", command)
         self.assertNotIn("SYSTEM", command)
+
+    def test_new_device_code_never_prints_the_secret(self) -> None:
+        secret = "S" * 43
+        fake_client = mock.Mock()
+        fake_client.issue_additional_device_code.return_value = secret
+        output = io.StringIO()
+        with mock.patch.object(tokenfleet_cli, "_client", return_value=fake_client), mock.patch.object(
+            tokenfleet_cli, "copy_sensitive_text"
+        ) as copied, contextlib.redirect_stdout(output):
+            result = tokenfleet_cli._new_device_code(mock.Mock())
+        self.assertEqual(result, 0)
+        copied.assert_called_once_with(secret)
+        self.assertNotIn(secret, output.getvalue())
+        self.assertIn("不会在终端显示", output.getvalue())
 
 
 if __name__ == "__main__":

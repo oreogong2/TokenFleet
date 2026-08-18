@@ -192,6 +192,42 @@ final class TeamSyncProtocolTests: XCTestCase {
         ))
     }
 
+    func testAdditionalDeviceCodeRequestIsSignedAndCarriesNoMemberIdentity() throws {
+        let request = try TeamSyncProtocol.additionalDeviceEnrollmentURLRequest(
+            serverURL: "https://team.example.com/",
+            deviceID: "server-device-id",
+            deviceSecret: "test-device-secret-00000000000000000000",
+            timestamp: 1_786_240_000,
+            nonce: "123e4567-e89b-12d3-a456-426614174000"
+        )
+
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/api/v1/devices/me/enrollment-tokens")
+        XCTAssertNil(request.url?.query)
+        XCTAssertEqual(request.httpBody, Data("{}".utf8))
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertEqual(
+            request.value(forHTTPHeaderField: "X-Device-ID"),
+            "server-device-id"
+        )
+        XCTAssertNotNil(request.value(forHTTPHeaderField: "X-Signature"))
+        let bodyText = String(data: try XCTUnwrap(request.httpBody), encoding: .utf8)
+        XCTAssertFalse(bodyText?.contains("nickname") == true)
+        XCTAssertFalse(bodyText?.contains("user_id") == true)
+    }
+
+    func testAdditionalDeviceCodeResponseRejectsUnexpectedCharacters() throws {
+        let valid = try JSONDecoder().decode(
+            TeamSyncAdditionalDeviceEnrollment.self,
+            from: Data(#"{"enrollment_token":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","expires_at":"2026-08-18T13:00:00Z"}"#.utf8)
+        )
+        XCTAssertTrue(valid.isValid)
+
+        var invalid = valid
+        invalid.enrollmentToken = String(repeating: "A", count: 32) + "."
+        XCTAssertFalse(invalid.isValid)
+    }
+
     func testCommunityRankResponseValidatesIdentityAndRankBounds() throws {
         let data = Data(#"{"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"奥哥","public_profile_enabled":true,"period":"today","metric":"tokens","rank":2,"total_entries":10,"metric_value":"704000000","primary_tool":"Codex","primary_model":"gpt-5","totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":"1200000","cost_currency":"USD","unpriced":false,"mixed_currency":false}}"#.utf8)
         let rank = try JSONDecoder().decode(TeamSyncCommunityRank.self, from: data)

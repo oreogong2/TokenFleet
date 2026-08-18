@@ -5,6 +5,7 @@ enum TeamSyncProtocolConfiguration {
     static let schemaVersion = 1
     static let collectorVersion = "0.2.0"
     static let enrollmentPath = "/api/v1/devices/enroll"
+    static let additionalDeviceEnrollmentPath = "/api/v1/devices/me/enrollment-tokens"
     static let dailyUsagePath = "/api/v1/usage/daily"
     static let communityRankPath = "/api/v1/devices/me/community-rank"
     static let communityShareGrantPath = "/api/v1/devices/me/community-share-grants"
@@ -236,6 +237,36 @@ struct TeamSyncEnrollmentResponse: Decodable, Equatable {
         case devicePublicID = "device_public_id"
         case deviceSecret = "device_secret"
         case signingKeyDerivation = "signing_key_derivation"
+    }
+}
+
+/// A one-time code for connecting another installation to the same member.
+/// Callers must keep this value in memory only and clear it when its sheet closes.
+struct TeamSyncAdditionalDeviceEnrollment: Decodable, Equatable {
+    var enrollmentToken: String
+    var expiresAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case enrollmentToken = "enrollment_token"
+        case expiresAt = "expires_at"
+    }
+
+    var isValid: Bool {
+        Self.isValidOpaqueValue(enrollmentToken)
+            && !expiresAt.isEmpty
+            && expiresAt.count <= 64
+            && expiresAt.unicodeScalars.allSatisfy { $0.value >= 32 && $0.value < 127 }
+    }
+
+    private static func isValidOpaqueValue(_ value: String) -> Bool {
+        value.count >= 32
+            && value.count <= 256
+            && value.unicodeScalars.allSatisfy { scalar in
+                (65...90).contains(scalar.value)
+                    || (97...122).contains(scalar.value)
+                    || (48...57).contains(scalar.value)
+                    || scalar.value == 45 || scalar.value == 95
+            }
     }
 }
 
@@ -688,6 +719,7 @@ enum TeamSyncProtocolError: LocalizedError, Equatable {
     case communityServerUnavailable
     case enrollmentTokenRequired
     case invalidEnrollmentResponse
+    case invalidAdditionalDeviceEnrollmentResponse
     case invalidIngestResponse
     case invalidCommunityRankResponse
     case invalidCommunityShareGrantResponse
@@ -715,6 +747,8 @@ enum TeamSyncProtocolError: LocalizedError, Equatable {
             return L("请输入一次性注册码。")
         case .invalidEnrollmentResponse:
             return L("社群榜服务器返回了无效的注册信息。")
+        case .invalidAdditionalDeviceEnrollmentResponse:
+            return L("社群榜服务器未能安全创建新设备码。")
         case .invalidIngestResponse:
             return L("社群榜服务器未确认完整接收本次日汇总，已停止自动重试。")
         case .invalidCommunityRankResponse:
@@ -880,6 +914,42 @@ enum TeamSyncProtocol {
             nonce: nonce,
             method: "POST",
             path: TeamSyncProtocolConfiguration.dailyUsagePath,
+            body: body
+        )
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(headers.deviceID, forHTTPHeaderField: "X-Device-ID")
+        request.setValue(headers.timestamp, forHTTPHeaderField: "X-Timestamp")
+        request.setValue(headers.nonce, forHTTPHeaderField: "X-Nonce")
+        request.setValue(headers.signature, forHTTPHeaderField: "X-Signature")
+        request.httpBody = body
+        return request
+    }
+
+    /// Requests a code for the same member using the current device binding.
+    /// The signed body is deliberately empty: no nickname or member ID can be
+    /// supplied by the caller.
+    static func additionalDeviceEnrollmentURLRequest(
+        serverURL rawServerURL: String,
+        deviceID: String,
+        deviceSecret: String,
+        timestamp: Int,
+        nonce: String
+    ) throws -> URLRequest {
+        let serverURL = try normalizedServerURL(rawServerURL)
+        let endpoint = try endpointURL(
+            serverURL: serverURL,
+            path: TeamSyncProtocolConfiguration.additionalDeviceEnrollmentPath
+        )
+        let body = Data("{}".utf8)
+        let headers = signedHeaders(
+            deviceID: deviceID,
+            deviceSecret: deviceSecret,
+            timestamp: timestamp,
+            nonce: nonce,
+            method: "POST",
+            path: TeamSyncProtocolConfiguration.additionalDeviceEnrollmentPath,
             body: body
         )
         var request = URLRequest(url: endpoint)

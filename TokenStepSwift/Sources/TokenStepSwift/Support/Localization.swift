@@ -378,6 +378,8 @@ enum TokenStepLocalization {
             "当前构建未配置有效的社群榜服务器，社群榜同步不可用。": "This build has no valid community leaderboard server configuration, so community sync is unavailable.",
             "请输入一次性注册码。": "Enter a one-time enrollment code.",
             "社群榜服务器返回了无效的注册信息。": "The community leaderboard server returned invalid enrollment data.",
+            "社群榜服务器未能安全创建新设备码。": "The community leaderboard server could not safely create a new device code.",
+            "首次设备码来自批次接入页；若已有其他已连接设备，可由其自助生成新设备码。": "The first code comes from the batch join page. If another device is already connected, it can issue a new device code.",
             "社群榜服务器未确认完整接收本次日汇总，已停止自动重试。": "The community leaderboard server did not confirm the full daily aggregate batch, so automatic retries stopped.",
             "社群榜服务器返回了无效的排名信息。": "The community leaderboard server returned invalid ranking data.",
             "社群榜服务器未能安全创建网页分享凭证。": "The community leaderboard server could not safely create a web sharing credential.",

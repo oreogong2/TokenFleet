@@ -80,9 +80,9 @@ test "$(git rev-parse HEAD)" = "<new-reviewed-commit-sha>"
 4. 成员打开 TokenFleet → 设置 → 社群同步，粘贴个人设备码；
 5. App 已固定唯一社群服务器，只需点“确认并开始同步”；确认后立即上传当前仍可验证的历史日聚合，并持续后台同步；
 6. 个人设备码默认 60 分钟有效、使用一次即失效；客户端后续保存独立设备凭据；
-7. 第二台 Mac 由管理员选择已有参赛者重新生成一个码。不要再次走批次创建同名参赛者，也不要复制第一台 Mac 的设置目录或设备凭据。
+7. 第二台设备优先在已连接的 Mac 中点“生成新设备码”，或在已连接的 Windows 中运行 `tokenfleet new-device-code`；新码固定归入同一成员。不要再次走批次创建同名参赛者，也不要复制第一台设备的设置目录或凭据。
 
-换机或重装时，管理员为同一成员重新生成邀请码。只要本机保留非敏感安装 ID，服务端会复用设备身份并轮换 secret；跨成员不能转移设备历史。
+换机或重装时，只要仍有一台已连接设备，就由成员自助生成新码；所有设备均已丢失或断开时，再由管理员为同一成员补发。只要本机保留非敏感安装 ID，服务端会复用设备身份并轮换 secret；跨成员不能转移设备历史。
 
 ## 5. Windows 10/11：源码安装与登记
 
@@ -112,7 +112,10 @@ tokenfleet preview
 tokenfleet status
 tokenfleet sync
 tokenfleet open-rank
+tokenfleet new-device-code
 ```
+
+`new-device-code` 只适用于已连接设备：它通过现有设备凭据签名，为同一成员生成 60 分钟单次码并写入受保护的 Windows 剪贴板，不在终端显示，也不加入剪贴板历史或云同步。
 
 Windows 首版采集 Codex 与 Claude Code 本地 JSONL，支持安全连接、自动同步和上榜；暂不采集 CC Switch，也没有与 macOS 原生 App 等同的完整桌面历史与统计界面。完整说明与卸载方式见 `clients/windows/README.md`。
 

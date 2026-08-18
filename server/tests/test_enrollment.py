@@ -61,6 +61,110 @@ def test_enrollment_token_is_one_time_and_raw_value_is_not_stored(harness) -> No
         assert token not in repr(stored.__dict__)
 
 
+def test_connected_member_can_issue_one_time_code_for_a_second_device(harness) -> None:
+    first_device = harness.enroll(admin_name="a_admin", user_name="a_member")
+    first_upload = harness.signed_post(first_device, harness.usage_payload())
+    assert first_upload.status_code == 200, first_upload.text
+    before_users: int
+    with harness.session_factory() as session:
+        before_users = session.scalar(select(func.count()).select_from(User)) or 0
+
+    issued = harness.signed_post(
+        first_device,
+        {},
+        path="/api/v1/devices/me/enrollment-tokens",
+    )
+    assert issued.status_code == 201, issued.text
+    assert issued.headers["Cache-Control"] == "no-store"
+    assert set(issued.json()) == {"enrollment_token", "expires_at"}
+    token = issued.json()["enrollment_token"]
+    assert len(token) >= 32
+
+    with harness.session_factory() as session:
+        stored = session.scalar(
+            select(EnrollmentToken).where(
+                EnrollmentToken.token_hash == opaque_token_hash(token)
+            )
+        )
+        assert stored is not None
+        assert stored.user_id == first_device.user_id
+        assert stored.created_by_user_id == first_device.user_id
+        assert stored.token_hash != token
+        assert token not in repr(stored.__dict__)
+
+    second_public_id = str(uuid.uuid4())
+    enrolled = harness.client.post(
+        "/api/v1/devices/enroll",
+        json=_enrollment_body(token, second_public_id),
+    )
+    assert enrolled.status_code == 201, enrolled.text
+    assert enrolled.json()["device_public_id"] == second_public_id
+    with harness.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(User)) == before_users
+        devices = list(
+            session.scalars(
+                select(Device).where(Device.user_id == first_device.user_id)
+            )
+        )
+        assert len(devices) == 2
+        assert {device.device_public_id for device in devices} == {
+            first_device.public_id,
+            second_public_id,
+        }
+        history = list(
+            session.scalars(
+                select(DailyUsage).where(DailyUsage.user_id == first_device.user_id)
+            )
+        )
+        assert len(history) == 1
+        assert history[0].device_id == first_device.id
+        assert (
+            history[0].input_tokens
+            + history[0].output_tokens
+            + history[0].cache_read_tokens
+            + history[0].cache_write_tokens
+        ) == 1_250
+
+
+def test_self_issued_code_request_rejects_identity_fields_and_is_rate_limited(
+    harness,
+) -> None:
+    device = harness.enroll(admin_name="a_admin", user_name="a_member")
+    rejected = harness.signed_post(
+        device,
+        {"user_id": harness.users["a_other"].id},
+        path="/api/v1/devices/me/enrollment-tokens",
+    )
+    assert rejected.status_code == 422
+    assert "enrollment_token" not in rejected.text
+
+    issued_tokens: list[str] = []
+    for _index in range(3):
+        issued = harness.signed_post(
+            device,
+            {},
+            path="/api/v1/devices/me/enrollment-tokens",
+        )
+        assert issued.status_code == 201, issued.text
+        issued_tokens.append(issued.json()["enrollment_token"])
+
+    limited = harness.signed_post(
+        device,
+        {},
+        path="/api/v1/devices/me/enrollment-tokens",
+    )
+    assert limited.status_code == 429
+    assert limited.headers["Retry-After"] == "3600"
+    assert all(token not in limited.text for token in issued_tokens)
+
+    for superseded in issued_tokens[:-1]:
+        response = harness.client.post(
+            "/api/v1/devices/enroll",
+            json=_enrollment_body(superseded, str(uuid.uuid4())),
+        )
+        assert response.status_code == 400
+
+
 def test_anonymous_enrollment_is_rate_limited_before_token_table_mutation(
     harness,
 ) -> None:

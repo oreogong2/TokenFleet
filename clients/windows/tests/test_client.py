@@ -11,7 +11,11 @@ from unittest import mock
 
 from tokenfleet.client import TokenFleetClient
 from tokenfleet.collectors import CollectionDiagnostics, CollectionResult
-from tokenfleet.constants import DAILY_USAGE_PATH, SIGNING_KEY_DERIVATION
+from tokenfleet.constants import (
+    ADDITIONAL_DEVICE_ENROLLMENT_PATH,
+    DAILY_USAGE_PATH,
+    SIGNING_KEY_DERIVATION,
+)
 from tokenfleet.credential import DeviceCredential
 from tokenfleet.paths import ClientPaths
 from tokenfleet.protocol import canonical_json, signed_headers
@@ -73,6 +77,11 @@ class FixtureTransport:
     ) -> Any:
         assert headers is not None
         self.uploads.append((url, body, headers))
+        if url.endswith(ADDITIONAL_DEVICE_ENROLLMENT_PATH):
+            return {
+                "enrollment_token": "N" * 43,
+                "expires_at": "2026-08-18T13:00:00Z",
+            }
         count = len(json.loads(body)["buckets"])
         return {"created": count, "updated": 0, "unchanged": 0, "ledger_version": 7}
 
@@ -190,6 +199,43 @@ class ClientTests(unittest.TestCase):
             wire_text = body.decode("utf-8")
             for forbidden in ("prompt", "response", "source_path", "account_id"):
                 self.assertNotIn(forbidden, wire_text)
+
+    def test_connected_device_issues_code_without_identity_fields_or_persistence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            value = DeviceCredential(
+                server_origin="https://community.example.com",
+                device_id="11111111-1111-4111-8111-111111111111",
+                device_public_id="22222222-2222-4222-8222-222222222222",
+                device_secret="fixture_device_value_1234567890",
+            )
+            transport = FixtureTransport(value.device_public_id)
+            client = TokenFleetClient(
+                credential_store=MemoryDeviceStore(value),  # type: ignore[arg-type]
+                state_store=StateStore(Path(temporary) / "state.json"),
+                source_home=Path(temporary),
+                community_origin="https://community.example.com",
+                transport=transport,
+            )
+            code = client.issue_additional_device_code()
+            self.assertEqual(code, "N" * 43)
+            url, body, headers = transport.uploads[-1]
+            self.assertEqual(
+                url,
+                "https://community.example.com/api/v1/devices/me/enrollment-tokens",
+            )
+            self.assertEqual(body, b"{}")
+            self.assertNotIn(b"nickname", body)
+            self.assertNotIn(b"user_id", body)
+            expected = signed_headers(
+                device_id=value.device_id,
+                device_secret=value.device_secret,
+                body=body,
+                timestamp=int(headers["X-Timestamp"]),
+                nonce=headers["X-Nonce"],
+                path=ADDITIONAL_DEVICE_ENROLLMENT_PATH,
+            )
+            self.assertEqual(headers, expected)
+            self.assertEqual(transport.requests, [])
 
     def test_empty_collection_does_not_send_an_invalid_empty_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

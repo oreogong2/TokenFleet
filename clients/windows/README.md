@@ -8,8 +8,9 @@
 
 This is the source-distributed Windows participant client for the private
 TokenFleet community. It does not use WeChat, a member login, or an AI-provider
-account. An administrator creates the participant nickname on the server and
-issues a separate one-time code for every device.
+account. An administrator authorizes the first participant enrollment. Once one
+device is connected, that signed device can issue a separate one-time code for
+another device under the same participant identity.
 
 ## Supported in v1
 
@@ -23,7 +24,7 @@ issues a separate one-time code for every device.
 - Current-user Windows DPAPI storage. The device secret is never written or
   logged in plaintext and is not put in Windows roaming settings.
 - A Task Scheduler job every six hours, plus `status`, `preview`, `sync`,
-  `open-rank`, and `uninstall` commands.
+  `open-rank`, `new-device-code`, and `uninstall` commands.
 
 CC Switch is deliberately **not collected in Windows v1**. Its proxy database
 can overlap the native Codex/Claude JSONL. Uploading both before the same
@@ -71,6 +72,18 @@ changed at enrollment time or left in PowerShell history/process arguments. Run
 the command separately on every computer with a new
 code generated for the same nickname.
 
+After one device is connected, create a 60-minute one-time code for another
+device without contacting an administrator:
+
+```powershell
+tokenfleet new-device-code
+```
+
+The code is copied directly to the Windows clipboard and never printed. The
+client opts the clipboard item out of Windows history and cloud sync; paste it
+only into `tokenfleet connect` on the other device through a trusted direct
+transfer path.
+
 ## Everyday commands
 
 ```powershell
@@ -78,6 +91,7 @@ tokenfleet preview
 tokenfleet status
 tokenfleet sync
 tokenfleet open-rank
+tokenfleet new-device-code
 ```
 
 `preview` and `status` never print prompt text, response text, code, source

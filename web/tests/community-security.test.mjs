@@ -333,6 +333,8 @@ test("join security order, deep-link assets, demo labels and license boundaries 
   assert.equal(communitySource.includes("location.origin +"), false);
   assert.match(communitySource, /立即上传当前可验证的历史日聚合/);
   assert.match(communitySource, /持续在后台同步/);
+  assert.match(communitySource, /已有其他已连接设备[\s\S]*自助生成新设备码/);
+  assert.match(communitySource, /若还没有任何设备连接[\s\S]*邀请发放者补发/);
   assert.match(communitySource, /演示数据 · 不是真实排名或真实成员数据/);
   assert.match(communitySource, /未跨时区重新归日/);
   assert.match(indexSource, /href="\/styles\.css\?v=beta8-canvas-preview-copy"/);

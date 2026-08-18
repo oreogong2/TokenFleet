@@ -339,6 +339,75 @@ actor TeamSyncService {
         return grant
     }
 
+    /// Issues a one-time code bound by the server to the current member. The
+    /// opaque response is returned to the UI and is never persisted here.
+    func issueAdditionalDeviceEnrollment(
+        serverURL rawServerURL: String,
+        now: Date = Date()
+    ) async throws -> TeamSyncAdditionalDeviceEnrollment {
+        guard credentialStore.isAvailable else {
+            throw TeamSyncProtocolError.secureCredentialStorageUnavailable
+        }
+        guard let state = stateStore.load(),
+              state.isEnrolled,
+              let deviceID = state.deviceID
+        else {
+            throw TeamSyncProtocolError.notEnrolled
+        }
+        let normalizedServerURL = try TeamSyncProtocol.normalizedServerURL(
+            rawServerURL
+        ).absoluteString
+        guard state.serverURL == normalizedServerURL else {
+            throw TeamSyncProtocolError.reconnectRequired
+        }
+        let deviceSecret: String
+        do {
+            guard let storedSecret = try credentialStore.loadDeviceSecret(
+                serverURL: normalizedServerURL,
+                deviceID: deviceID
+            ) else {
+                throw TeamSyncProtocolError.credentialsUnavailable
+            }
+            deviceSecret = storedSecret
+        } catch let error as TeamSyncProtocolError {
+            throw error
+        } catch {
+            throw TeamSyncProtocolError.credentialStoreTemporarilyUnavailable
+        }
+        let request = try TeamSyncProtocol.additionalDeviceEnrollmentURLRequest(
+            serverURL: normalizedServerURL,
+            deviceID: deviceID,
+            deviceSecret: deviceSecret,
+            timestamp: Int(now.timeIntervalSince1970),
+            nonce: UUID().uuidString.lowercased()
+        )
+        let response: TeamSyncHTTPResponse
+        do {
+            response = try await httpClient.send(request)
+        } catch let error as TeamSyncProtocolError {
+            throw error
+        } catch {
+            throw TeamSyncProtocolError.networkUnavailable
+        }
+        guard let currentState = stateStore.load(),
+              currentState.serverURL == normalizedServerURL,
+              currentState.deviceID == deviceID,
+              currentState.isEnrolled
+        else {
+            throw TeamSyncProtocolError.operationCancelled
+        }
+        guard (200...299).contains(response.statusCode) else {
+            throw TeamSyncProtocolError.httpStatus(response.statusCode)
+        }
+        guard let enrollment = try? JSONDecoder().decode(
+            TeamSyncAdditionalDeviceEnrollment.self,
+            from: response.data
+        ), enrollment.isValid else {
+            throw TeamSyncProtocolError.invalidAdditionalDeviceEnrollmentResponse
+        }
+        return enrollment
+    }
+
     func synchronize(
         snapshot: UsageSnapshot,
         serverURL rawServerURL: String,

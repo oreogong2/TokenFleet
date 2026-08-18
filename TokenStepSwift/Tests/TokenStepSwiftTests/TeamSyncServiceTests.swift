@@ -171,6 +171,56 @@ final class TeamSyncServiceTests: XCTestCase {
         XCTAssertFalse(String(data: request.httpBody ?? Data(), encoding: .utf8)?.contains(rawGrant) == true)
     }
 
+    func testAdditionalDeviceCodeUsesStoredCredentialAndIsNotPersisted() async throws {
+        let origin = "https://team.example.com"
+        let deviceID = "server-device-42"
+        let rawCode = String(repeating: "N", count: 43)
+        let http = RecordingTeamSyncHTTPClient(
+            responses: [
+                TeamSyncHTTPResponse(
+                    data: Data(#"{"enrollment_token":"NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN","expires_at":"2026-08-18T13:00:00Z"}"#.utf8),
+                    statusCode: 201
+                )
+            ]
+        )
+        let credentials = MemoryTeamSyncCredentialStore(
+            values: [deviceID: "test-device-secret-0123456789"]
+        )
+        let stateStore = MemoryTeamSyncStateStore(
+            state: TeamSyncPersistentState(
+                serverURL: origin,
+                devicePublicID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                deviceID: deviceID
+            )
+        )
+        let service = TeamSyncService(
+            httpClient: http,
+            credentialStore: credentials,
+            stateStore: stateStore
+        )
+
+        let enrollment = try await service.issueAdditionalDeviceEnrollment(
+            serverURL: origin,
+            now: Date(timeIntervalSince1970: 1_786_240_000)
+        )
+
+        XCTAssertEqual(enrollment.enrollmentToken, rawCode)
+        let requests = await http.requests
+        let request = try XCTUnwrap(requests.first)
+        XCTAssertEqual(request.url?.path, "/api/v1/devices/me/enrollment-tokens")
+        XCTAssertEqual(request.httpBody, Data("{}".utf8))
+        XCTAssertNotNil(request.value(forHTTPHeaderField: "X-Signature"))
+        XCTAssertFalse(
+            String(data: request.httpBody ?? Data(), encoding: .utf8)?.contains(rawCode) == true
+        )
+        let persistedState = String(
+            data: try JSONEncoder().encode(try XCTUnwrap(stateStore.state)),
+            encoding: .utf8
+        ) ?? ""
+        XCTAssertFalse(persistedState.contains(rawCode))
+        XCTAssertFalse(credentials.values.values.contains(rawCode))
+    }
+
     func testPublicLeaderboardUsesNoCredentialOrEnrollmentState() async throws {
         let http = RecordingTeamSyncHTTPClient(
             responses: [

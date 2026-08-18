@@ -19,6 +19,7 @@ from tokenfleet.installation import (
 from tokenfleet.paths import ClientPaths, default_source_home
 from tokenfleet.protocol import ProtocolError
 from tokenfleet.scheduler import SchedulerError, is_registered, register, unregister
+from tokenfleet.sensitive_clipboard import SensitiveClipboardError, copy_sensitive_text
 from tokenfleet.state import StateError, StateStore
 
 
@@ -48,6 +49,10 @@ def _parser() -> argparse.ArgumentParser:
     status.add_argument("--json", action="store_true", dest="as_json")
 
     commands.add_parser("open-rank", help="打开公开排行榜")
+    commands.add_parser(
+        "new-device-code",
+        help="为同一成员的另一台设备生成一次性码并复制到安全剪贴板",
+    )
 
     uninstall = commands.add_parser("uninstall", help="卸载本机客户端和同步凭据")
     uninstall.add_argument("--yes", action="store_true", help="确认移除本机数据")
@@ -185,6 +190,17 @@ def _open_rank(paths: ClientPaths) -> int:
     return 0
 
 
+def _new_device_code(paths: ClientPaths) -> int:
+    code = _client(paths).issue_additional_device_code()
+    try:
+        copy_sensitive_text(code)
+    finally:
+        code = ""
+    print("新的 60 分钟单次设备码已复制；请只粘贴到另一台设备的 TokenFleet。")
+    print("设备码不会在终端显示，也不会加入 Windows 剪贴板历史或云同步。")
+    return 0
+
+
 def _uninstall(args: argparse.Namespace, paths: ClientPaths) -> int:
     if not args.yes:
         print("此操作会删除本机 TokenFleet 同步凭据和定时任务。请加 --yes 确认。")
@@ -227,6 +243,7 @@ def main(argv: list[str] | None = None) -> int:
             "sync": _sync,
             "status": _status,
             "open-rank": lambda _args, selected: _open_rank(selected),
+            "new-device-code": lambda _args, selected: _new_device_code(selected),
             "uninstall": _uninstall,
         }
         return handlers[args.command](args, paths)
@@ -237,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
         SchedulerError,
         StateError,
         RuntimeError,
+        SensitiveClipboardError,
     ) as exc:
         # Error types are deliberately constructed without enrollment tokens,
         # device secrets, response bodies, prompt text, or local source paths.
