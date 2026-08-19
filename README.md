@@ -86,7 +86,7 @@ TokenFleet 适合这些人：
 - Claude Code：读取 `~/.claude/projects/**/*.jsonl` 里的 usage 元数据。
 - CC Switch（macOS）：实验支持，读取本机 `proxy_request_logs` 中成功且 token 数大于 0 的请求行。
 - 额度显示：Codex 读取本机 Codex 账户限额；Claude Code 会在本机读取 Claude Code 钥匙串凭证，并请求 Anthropic usage 接口获取 5 小时 / 7 天剩余额度。
-- Windows 10/11 参赛端：读取 Codex 与 Claude Code 本地 JSONL，用当前用户 DPAPI 保护设备 secret，通过计划任务自动同步，并提供预览、状态、手动同步和打开公榜命令。
+- Windows 10/11 参赛端：读取 Codex 与 Claude Code 本地 JSONL，用当前用户 DPAPI 保护设备 secret；自动同步优先使用计划任务，策略拒绝时回退到 TokenFleet 专属的当前用户登录启动循环，并提供预览、状态、手动同步和打开公榜命令。
 
 Windows 首版不采集 CC Switch，也尚未提供与 macOS 原生 App 等同的完整桌面历史与统计界面。Kimi Code、Gemini CLI、OpenCode 等候选只在出现真实需求并完成可靠本地日志验证后增加，首版不猜数据。
 

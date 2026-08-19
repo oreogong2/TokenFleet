@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 COLLECTOR_VERSION = "0.2.0-windows.1"
 SCHEMA_VERSION = 1
 
@@ -19,5 +19,10 @@ MAX_RELEVANT_LINE_BYTES = 1_048_576
 MAX_SOURCE_FILES = 50_000
 
 TASK_NAME = "TokenFleet Community Sync"
+RUN_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
+RUN_VALUE_NAME = "TokenFleet Community Sync"
+STARTUP_LOOP_MUTEX_NAME = r"Local\TokenFleetCommunitySyncLoop"
+SYNC_INTERVAL_SECONDS = 6 * 60 * 60
+SYNC_RETRY_SECONDS = 5 * 60
 DPAPI_FILE_MAGIC = b"TFDPAPI1\x00"
 DPAPI_ENTROPY = b"TokenFleet Windows TeamSync credential v1"

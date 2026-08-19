@@ -91,6 +91,34 @@ class ClientTests(unittest.TestCase):
         "completeness": "exact",
     }
 
+    def test_preview_and_sync_keep_the_existing_366_day_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            value = DeviceCredential(
+                server_origin="https://community.example.com",
+                device_id="11111111-1111-4111-8111-111111111111",
+                device_public_id="22222222-2222-4222-8222-222222222222",
+                device_secret="fixture_device_value_1234567890",
+            )
+            observed: list[int] = []
+
+            def collector(_home: Path, *, history_days: int) -> CollectionResult:
+                observed.append(history_days)
+                return CollectionResult([], CollectionDiagnostics())
+
+            state_store = StateStore(Path(temporary) / "state.json")
+            state_store.save(state_store.load())
+            client = TokenFleetClient(
+                credential_store=MemoryDeviceStore(value),  # type: ignore[arg-type]
+                state_store=state_store,
+                source_home=Path(temporary),
+                community_origin="https://community.example.com",
+                transport=FixtureTransport(value.device_public_id),
+                collector=collector,
+            )
+            client.preview()
+            client.sync()
+            self.assertEqual(observed, [366, 366])
+
     def test_connect_prepares_local_store_before_consuming_code(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             state_store = StateStore(Path(temporary) / "state.json")

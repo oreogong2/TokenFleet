@@ -77,9 +77,8 @@ open '/Applications/TokenFleet.app'
 
 ## 4. Windows 10/11 安装与登记
 
-重要：Windows 客户端目前是实验性源码候选。跨平台自动化已通过，但真实 Windows
-10/11 上的 DPAPI、计划任务、升级、卸载和真实同步 E2E 尚未验收。当前不向社群成员
-承诺 Windows 正式可用；本节仅供后续真机验收和技术预览。
+重要：Windows 客户端目前是源码发布候选。真实 Windows 10 已完成 DPAPI、升级、
+正式同步和公开榜验收；Windows 11、多设备、重登记和完整卸载仍需扩大覆盖。
 
 从经过复核的源码发布包进入仓库根目录，运行：
 
@@ -89,7 +88,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps
 tokenfleet connect
 ```
 
-安装时固定社群地址，升级必须保持一致，`connect` 不接受 `--server` 并会隐藏一次性码输入。连接后，Windows 当前用户 DPAPI 保护设备 secret，计划任务自动同步；`tokenfleet open-rank` 可打开公榜。Windows 首版采集 Codex / Claude Code，支持安全连接、自动同步和上榜，但暂不采集 CC Switch，也不是 macOS 完整桌面明细界面的复刻。
+安装时固定社群地址，升级必须保持一致，`connect` 不接受 `--server` 并会隐藏一次性码输入。连接后，Windows 当前用户 DPAPI 保护设备 secret。自动同步优先使用计划任务；策略拒绝时改用 TokenFleet 专属的当前用户启动循环，不要求管理员权限。`tokenfleet open-rank` 可打开公榜。Windows 首版采集 Codex / Claude Code，支持安全连接、自动同步和上榜，但暂不采集 CC Switch，也不是 macOS 完整桌面明细界面的复刻。
 
 ## 5. 何时可以卸载 TokenStep
 

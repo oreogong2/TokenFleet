@@ -12,7 +12,7 @@
 └───────────────────┬───────────────────────────────────┘
 ┌────────────────────── Windows 10/11 ──────────────────┐
 │ Codex / Claude Code 本地 JSONL                        │
-│          └─ CLI 预览 + TeamSync + 计划任务            │
+│       └─ CLI + TeamSync + 计划任务/登录启动回退       │
 └───────────────────┬───────────────────────────────────┘
                     │ HTTPS + device HMAC
                     ▼
@@ -75,9 +75,10 @@ origin。普通设置只能保存 device ID 和非敏感状态，不能出现明
 重新登记该 ID 时，服务端复用原 `device_id` 和用量自然键、重新启用设备并轮换
 secret；旧 secret 立即失效。该 ID 若已属于另一成员则返回 409，不能转移历史。
 
-Windows 首版采用同一 TeamSync v1 协议，但只采集 Codex / Claude Code 本地 JSONL，
-通过当前用户计划任务自动同步；它不采集 CC Switch，也不提供与 macOS 原生 App
-等同的完整桌面历史和统计界面。
+Windows 首版采用同一 TeamSync v1 协议，但只采集 Codex / Claude Code 本地 JSONL。
+自动同步优先使用当前用户计划任务；若策略拒绝创建，则只在当前用户 `HKCU Run` 中
+注册 TokenFleet 自己的隐藏单实例循环，登录后立即同步、每六小时续传并在失败后重试。
+它不采集 CC Switch，也不提供与 macOS 原生 App 等同的完整桌面历史和统计界面。
 
 ## 3. HMAC 请求
 
