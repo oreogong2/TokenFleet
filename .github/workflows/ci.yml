@@ -49,7 +49,7 @@ jobs:
       - name: Install isolated test dependencies
         run: |
           python -m venv .ci-venv
-          .ci-venv/bin/pip install --upgrade pip==26.1.2
+          .ci-venv/bin/pip install --upgrade pip==26.2
           .ci-venv/bin/pip install \
             -r server/requirements-dev.txt \
             -r web/requirements-dev.txt \
