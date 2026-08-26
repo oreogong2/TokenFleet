@@ -251,7 +251,7 @@ immediately.
   - each batch accepts at most 50 claims; an organization may create multiple
     batches, so 50 is not an organization-wide member cap
   - request: `{capacity, expires_in_hours}` with `capacity <= 50` and
-    `expires_in_hours <= 24`; response returns the raw batch token exactly once
+    `expires_in_hours <= 2160` (90 days; default 24 hours); response returns the raw batch token exactly once
   - database stores only the token SHA-256; list/close responses never return it
 - `GET /api/v1/admin/invitation-batches` and
   `POST /api/v1/admin/invitation-batches/{batch_id}/close` (admin)

@@ -575,7 +575,13 @@ def main():
         page.get_by_role("button", name="创建自助批次（单批最多 50）").click()
         batch_dialog = page.locator("#batch-dialog")
         assert batch_dialog.locator('input[name="capacity"]').input_value() == "50"
-        assert batch_dialog.locator('select[name="expires_in_hours"]').input_value() == "24"
+        batch_expiry = batch_dialog.locator('select[name="expires_in_hours"]')
+        assert batch_expiry.input_value() == "24"
+        expiry_values = batch_expiry.locator("option").evaluate_all(
+            "options => options.map(option => Number(option.value))"
+        )
+        assert expiry_values == [1, 6, 12, 24, 168, 720, 2160]
+        batch_expiry.select_option("2160")
         batch_dialog.get_by_role("button", name="生成批次链接").click()
         batch_link_dialog = page.locator("dialog.token-dialog")
         batch_link_dialog.wait_for()
