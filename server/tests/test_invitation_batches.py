@@ -295,6 +295,21 @@ def test_admin_batch_rbac_lifecycle_and_raw_token_is_returned_once(harness) -> N
     assert closed.headers["Cache-Control"] == "no-store"
 
 
+def test_admin_batch_supports_ninety_days_and_rejects_longer(harness) -> None:
+    created = _create_batch(harness, expires_in_hours=2_160)
+    created_at = datetime.fromisoformat(created["batch"]["created_at"])
+    expires_at = datetime.fromisoformat(created["batch"]["expires_at"])
+
+    assert abs((expires_at - created_at) - timedelta(days=90)) < timedelta(seconds=1)
+
+    too_long = harness.client.post(
+        "/api/v1/admin/invitation-batches",
+        headers=harness.auth("a_admin"),
+        json={"capacity": 50, "expires_in_hours": 2_161},
+    )
+    assert too_long.status_code == 422
+
+
 @pytest.mark.parametrize("member_count", [100, 200])
 def test_multiple_fifty_member_batches_scale_one_community_without_global_cap(
     harness, member_count: int

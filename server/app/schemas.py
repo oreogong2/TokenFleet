@@ -148,7 +148,7 @@ class ParticipantEnrollmentResponse(StrictModel):
 
 class InvitationBatchCreate(StrictModel):
     capacity: Annotated[int, Field(strict=True, ge=1, le=50)] = 50
-    expires_in_hours: Annotated[int, Field(strict=True, ge=1, le=24)] = 24
+    expires_in_hours: Annotated[int, Field(strict=True, ge=1, le=2_160)] = 24
 
 
 class InvitationBatchSummary(StrictModel):
