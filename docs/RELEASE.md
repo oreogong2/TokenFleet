@@ -170,7 +170,7 @@ shasum -a 256 -c TokenFleet-0.1.0-SHA256SUMS
 1. 从 `release/TokenFleet-<version>/` 上传 ZIP、DMG、SHA256SUMS 到发布者控制的下载地址；
 2. 核对公开 SHA-256 与本地产物一致；
 3. 最后更新发布者控制的 latest API，不要先让客户端看到未上传完整的版本；
-4. 小范围灰度，确认团队同步和每人独立的官方 OpenToken 常驻上榜链路；
+4. 小范围灰度，确认团队同步和成员仍需使用的第三方独立链路；
 5. 保留上一个已签名、公证版本及其 checksum；
 6. 客户端只接受高于当前版本的自动更新，不能靠把 latest API 指回旧版本来降级；需要回滚时，由管理员从保留的上一版 checksum 校验过的已签名、公证 DMG 手动安装，并先在一台测试机验证。回滚不操作 TokenStep，也不删除两者的 App Support。
 

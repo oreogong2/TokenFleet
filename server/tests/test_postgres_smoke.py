@@ -32,6 +32,7 @@ from app.models import (
     Organization,
     User,
     UserRole,
+    utcnow,
 )
 from app.schemas import DailyUsageReport
 from app.security import hash_password, opaque_token_hash, sign_device_request
@@ -340,7 +341,12 @@ def test_postgres_migration_starts_from_fresh_database(
         command.downgrade(migration_config, "bb8d4e1a2f73")
     with postgres_runtime.engine.begin() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "c7b4e2a91d35"
+            # The new share-grant migration and the older invitation-batch
+            # guard run inside PostgreSQL transactional DDL.  The latter
+            # rejects this destructive downgrade, so Alembic rolls the whole
+            # chain back to the original current head rather than leaving an
+            # empty intermediate schema behind.
+            "9a342e52bb08"
         )
         connection.execute(
             text("DELETE FROM organizations WHERE slug = 'downgrade-guard'")
@@ -356,6 +362,7 @@ def test_postgres_migration_starts_from_fresh_database(
         "enrollment_tokens",
         "device_nonces",
         "invitation_batches",
+        "community_share_grants",
         "price_versions",
         "daily_usage",
     }
@@ -379,6 +386,15 @@ def test_postgres_migration_starts_from_fresh_database(
         for column in inspect(postgres_runtime.engine).get_columns("price_versions")
     }
     assert "public_estimate" in price_columns
+    share_grant_indexes = {
+        item["name"]
+        for item in inspect(postgres_runtime.engine).get_indexes("community_share_grants")
+    }
+    assert {
+        "uq_community_share_grant_hash",
+        "ix_community_share_grant_expires",
+        "ix_community_share_grant_device_consumed",
+    } <= share_grant_indexes
     usage_indexes = {
         item["name"]
         for item in inspect(postgres_runtime.engine).get_indexes("daily_usage")
@@ -1235,6 +1251,72 @@ def test_postgres_concurrent_enrollment_token_has_one_winner(
             )
         )
         assert stored_token is not None and stored_token.used_at is not None
+
+
+def test_postgres_concurrent_reissue_leaves_exactly_one_live_token(
+    postgres_runtime: PostgresRuntime,
+) -> None:
+    team = _new_team(postgres_runtime, "reissue")
+    app = _app(postgres_runtime)
+    with TestClient(app) as client:
+        admin_headers = _admin_headers(client, team)
+        lost_token = _issue_enrollment_token(client, team, admin_headers)
+
+    barrier = threading.Barrier(2)
+
+    def attempt() -> tuple[int, str | None]:
+        with TestClient(app) as concurrent_client:
+            headers = _admin_headers(concurrent_client, team)
+            barrier.wait(timeout=10)
+            response = concurrent_client.post(
+                "/api/v1/enrollment-tokens",
+                headers=headers,
+                json={"user_id": team.member_id, "expires_in_minutes": 60},
+            )
+            return response.status_code, response.json().get("enrollment_token")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: attempt(), range(2)))
+    assert [status for status, _ in results] == [201, 201]
+
+    issued_tokens = [token for _, token in results if token is not None]
+    assert len(issued_tokens) == 2
+    now = utcnow()
+    with Session(postgres_runtime.engine) as session:
+        live_rows = list(
+            session.scalars(
+                select(EnrollmentToken).where(
+                    EnrollmentToken.org_id == team.org_id,
+                    EnrollmentToken.user_id == team.member_id,
+                    EnrollmentToken.used_at.is_(None),
+                    EnrollmentToken.expires_at > now,
+                )
+            )
+        )
+        assert len(live_rows) == 1
+        live_hash = live_rows[0].token_hash
+
+    live_tokens = [
+        token for token in issued_tokens if opaque_token_hash(token) == live_hash
+    ]
+    assert len(live_tokens) == 1
+    with TestClient(app) as client:
+        refused_tokens = [lost_token] + [
+            token for token in issued_tokens if token != live_tokens[0]
+        ]
+        for token in refused_tokens:
+            response = client.post(
+                "/api/v1/devices/enroll",
+                json={
+                    "enrollment_token": token,
+                    "device_public_id": str(uuid.uuid4()),
+                    "platform": "postgres-smoke",
+                    "app_version": "1.0.0",
+                    "collector_version": "1.0.0",
+                },
+            )
+            assert response.status_code == 400
+        _enroll(client, live_tokens[0], str(uuid.uuid4()))
 
 
 def test_postgres_stable_device_reenrollment_does_not_duplicate_history(

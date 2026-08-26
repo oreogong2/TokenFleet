@@ -11,7 +11,6 @@ struct CCSwitchProxyFixtureCheck {
         try runAmbiguousFuzzyDedupeCheck()
         try runShanghaiHistoryWindowCheck()
         try runExperimentalAgentChecks()
-        try runAgentWorkRankChecks()
         try runLegacyAgentWorkDecodeCheck()
         print("Usage collector fixture checks passed")
     }
@@ -256,14 +255,16 @@ struct CCSwitchProxyFixtureCheck {
 
         let snapshot = UsageCollector.collectClaudeCodeUsageSnapshot(rootURL: root)
         try assertEqual(snapshot.totals.tokens, 4_000_000, "claude opus cost tokens")
-        try assertEqual(snapshot.totals.cost, 36.75, "claude opus current cost")
-        try assertEqual(snapshot.daily.first?.cost, 36.75, "claude opus current daily cost")
+        try assertEqual(snapshot.totals.cost, 30.5, "claude opus known component cost")
+        try assertEqual(snapshot.daily.first?.cost, 30.5, "claude opus known daily cost")
+        try assertEqual(snapshot.totals.pricedTokens, 3_000_000, "claude priced tokens")
+        try assertEqual(snapshot.totals.unpricedTokens, 1_000_000, "claude unpriced cache write")
     }
 
     private static func runCrossSourceDedupeChecks() throws {
         try runClaudeProxyDedupeChecks()
         try runCodexSimilarIndependentRequestCheck()
-        try runCodexSharedSessionDedupeCheck()
+        try runCodexSharedSessionOverlapCheck()
     }
 
     private static func runAmbiguousFuzzyDedupeCheck() throws {
@@ -306,6 +307,7 @@ struct CCSwitchProxyFixtureCheck {
         let source = snapshot.sources["CC Switch Proxy"]
         try assertEqual(source?.records, 2, "ambiguous fuzzy candidates are both kept")
         try assertEqual(source?.dedupedRecords, 0, "ambiguous fuzzy candidates are not deduplicated")
+        try assertEqual(source?.possibleOverlapRecords, 2, "ambiguous candidates are diagnosed without deletion")
         try assertEqual(snapshot.totals.tokens, 339, "one native plus two ambiguous proxy rows")
     }
 
@@ -363,7 +365,7 @@ struct CCSwitchProxyFixtureCheck {
         )
         try assertEqual(disabled.sources["ZCode"]?.status, "disabled", "zcode disabled status")
         try assertEqual(disabled.sources["Hermes Agent"]?.status, "disabled", "hermes disabled status")
-        try assertEqual(disabled.sources["WorkBuddy"]?.status, "disabled", "workbuddy disabled status")
+        try assertEqual(disabled.sources["WorkBuddy"]?.status, "unsupported_privacy_boundary", "workbuddy privacy status")
         try assertEqual(disabled.totals.tokens, 0, "experimental disabled total")
         try assertEqual(disabled.agentWork.count, 0, "experimental disabled agent work")
 
@@ -377,19 +379,19 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(snapshot.sources["ZCode"]?.records, 1, "zcode source records")
         try assertEqual(snapshot.sources["Hermes Agent"]?.status, "ok", "hermes source status")
         try assertEqual(snapshot.sources["Hermes Agent"]?.records, 1, "hermes source records")
-        try assertEqual(snapshot.sources["WorkBuddy"]?.status, "ok", "workbuddy source status")
-        try assertEqual(snapshot.sources["WorkBuddy"]?.records, 1, "workbuddy records")
-        try assertEqual(snapshot.totals.tokens, 192, "experimental total tokens")
+        try assertEqual(snapshot.sources["WorkBuddy"]?.status, "unsupported_privacy_boundary", "workbuddy privacy status")
+        try assertEqual(snapshot.sources["WorkBuddy"]?.records, 0, "workbuddy records")
+        try assertEqual(snapshot.totals.tokens, 72, "experimental total tokens")
         try assertEqual(snapshot.daily.first?.tools["ZCode"], 40, "zcode tool tokens")
         try assertEqual(snapshot.daily.first?.tools["Hermes Agent"], 32, "hermes tool tokens")
-        try assertEqual(snapshot.daily.first?.tools["WorkBuddy"], 120, "workbuddy tool tokens")
+        try assertEqual(snapshot.daily.first?.tools["WorkBuddy"], nil, "workbuddy must not enter totals")
         try assertEqual(snapshot.totals.cost, 0.42, "hermes actual cost")
 
         let work = try unwrap(snapshot.agentWork.first, "experimental agent work")
-        try assertEqual(work.totalTokens, 192, "experimental agent work tokens")
-        try assertEqual(work.modelRequestCount, 4, "experimental model requests")
-        try assertEqual(work.toolCallCount, 11, "experimental tool calls")
-        try assertEqual(work.sources.count, 3, "experimental source count")
+        try assertEqual(work.totalTokens, 72, "experimental agent work tokens")
+        try assertEqual(work.modelRequestCount, 3, "experimental model requests")
+        try assertEqual(work.toolCallCount, 10, "experimental tool calls")
+        try assertEqual(work.sources.count, 2, "experimental source count")
         try assertEqual(work.hourlyBuckets.count, 24, "agent work always exposes 24 hourly buckets")
         try assertEqual(
             work.hourlyBuckets.map(\.totalTokens).reduce(0, +) + work.unbucketedTokens,
@@ -398,7 +400,7 @@ struct CCSwitchProxyFixtureCheck {
         )
         try assertEqual(work.unbucketedTokens, 0, "timestamped agent rows are fully bucketed")
         try assertEqual(work.cacheCoverageComplete, true, "experimental cache coverage is complete")
-        try assertApprox(work.cacheHitRate, 87.0 / 147.0, "daily cache hit uses canonical input denominator")
+        try assertApprox(work.cacheHitRate, 7.0 / 47.0, "daily cache hit uses canonical input denominator")
     }
 
     private static func runLegacyAgentWorkDecodeCheck() throws {
@@ -417,100 +419,6 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(work.hourlyBuckets.map(\.totalTokens).reduce(0, +), 0, "legacy buckets are empty")
         try assertEqual(work.unbucketedTokens, 123, "legacy total is preserved as unbucketed")
         try assertNil(work.cacheHitRate, "legacy cache hit is unavailable")
-    }
-
-    private static func runAgentWorkRankChecks() throws {
-        let fetchedAt = Date(timeIntervalSince1970: 1_720_000_000)
-        let leaderboardData = Data("""
-        {
-          "success": true,
-          "data": {
-            "range": "today",
-            "client": "all",
-            "usage_mode": "all",
-            "total_tokens": 999,
-            "total_ranked_users": 1,
-            "top_limit": 100,
-            "rows": [{
-              "user": {
-                "id": 4,
-                "name": "Agent User",
-                "email": "ignored@example.com",
-                "avatar_url": "https://example.com/avatar.png"
-              },
-              "total_tokens": 180,
-              "call_count": 2,
-              "session_count": 1,
-              "clients": {"workbuddy": 120, "codex": 60},
-              "models": {"hy3": 120, "gpt-test": 60},
-              "rank": 7
-            }]
-          }
-        }
-        """.utf8)
-        let leaderboard = try AgentWorkRankService.decodeLeaderboard(
-            data: leaderboardData,
-            fetchedAt: fetchedAt
-        )
-        try assertEqual(leaderboard.fetchedAt, fetchedAt, "rank fetch date")
-        try assertEqual(leaderboard.totalRankedUsers, 1, "ranked users")
-        let entry = try unwrap(leaderboard.entry(matching: 4), "rank entry")
-        try assertEqual(entry.rank, 7, "rank position")
-        try assertEqual(entry.totalTokens, 180, "rank tokens")
-        try assertEqual(entry.clients["workbuddy"], 120, "rank workbuddy tokens")
-
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TokenStepRankIdentityFixture-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let stateURL = directory.appendingPathComponent("client-state.json")
-        try """
-        {
-          "device_token": "must-not-leave-this-file",
-          "source_id": "private-source",
-          "last_successful_sync_at": "2026-08-06T08:00:00.661715+00:00",
-          "user": {
-            "id": 4,
-            "name": "Agent User",
-            "email": "ignored@example.com",
-            "avatar_url": "https://example.com/avatar.png"
-          }
-        }
-        """.write(to: stateURL, atomically: true, encoding: .utf8)
-        let identity = try unwrap(
-            AgentWorkRankService.loadLocalIdentity(clientStateURL: stateURL),
-            "local rank identity"
-        )
-        try assertEqual(identity.id, 4, "local rank identity id")
-        try assertEqual(identity.name, "Agent User", "local rank identity name")
-        try assertEqual(identity.lastSyncedAt == nil, false, "local rank sync date")
-
-        let legacySettings = try JSONDecoder().decode(
-            TokenStepSettings.self,
-            from: Data("""
-            {"show_token_rank":true,"token_rank_user_id":"168066"}
-            """.utf8)
-        )
-        try assertEqual(legacySettings.agentWorkRankVisibility, .automatic, "legacy rank uses automatic detection")
-
-        let hiddenSettings = try JSONDecoder().decode(
-            TokenStepSettings.self,
-            from: Data("""
-            {"agent_work_rank_visibility":"hidden","show_agent_work_rank":true}
-            """.utf8)
-        )
-        try assertEqual(hiddenSettings.agentWorkRankVisibility, .hidden, "explicit hidden rank state")
-        try assertEqual(AgentWorkRankVisibility.automatic.readsLocalIdentity, true, "automatic reads identity")
-        try assertEqual(AgentWorkRankVisibility.automatic.shouldShow(hasLocalIdentity: false), false, "automatic hides without identity")
-        try assertEqual(AgentWorkRankVisibility.automatic.shouldShow(hasLocalIdentity: true), true, "automatic shows with identity")
-        try assertEqual(AgentWorkRankVisibility.hidden.readsLocalIdentity, false, "hidden skips identity")
-        try assertEqual(AgentWorkRankVisibility.hidden.shouldShow(hasLocalIdentity: true), false, "hidden stays hidden")
-
-        let encodedHidden = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(hiddenSettings)
-        ) as? [String: Any]
-        try assertEqual(encodedHidden?["agent_work_rank_visibility"] as? String, "hidden", "new rank visibility encoding")
-        try assertEqual(encodedHidden?["show_agent_work_rank"] == nil, true, "legacy rank key is not encoded")
     }
 
     private static func runCodexArchivedSessionChecks() throws {
@@ -591,6 +499,7 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(source?.rawRecords, 3, "claude dedupe raw proxy records")
         try assertEqual(source?.records, 2, "claude dedupe kept proxy records")
         try assertEqual(source?.dedupedRecords, 1, "claude dedupe skipped duplicate proxy records")
+        try assertEqual(source?.possibleOverlapRecords, 0, "resolved duplicates leave no uncertain overlap")
         try assertEqual(source?.strategy, "request_level_dedupe", "claude dedupe strategy")
         try assertEqual(snapshot.totals.tokens, 143, "claude dedupe total tokens")
         try assertEqual(snapshot.totals.cost, 0.42, "claude dedupe total cost")
@@ -658,6 +567,7 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(source?.rawRecords, 1, "independent Codex raw proxy records")
         try assertEqual(source?.records, 1, "independent Codex proxy record is kept")
         try assertEqual(source?.dedupedRecords, 0, "similar requests without a shared ID are not deduplicated")
+        try assertEqual(source?.possibleOverlapRecords, 1, "similar requests are retained and diagnosed")
         try assertEqual(snapshot.totals.tokens, 70, "native and independent proxy Codex requests both count")
         try assertEqual(snapshot.totals.cost, 0.45, "independent Codex request total cost")
         try assertEqual(snapshot.daily.first?.tools["Codex"], 35, "independent native Codex tokens")
@@ -668,7 +578,7 @@ struct CCSwitchProxyFixtureCheck {
         )
     }
 
-    private static func runCodexSharedSessionDedupeCheck() throws {
+    private static func runCodexSharedSessionOverlapCheck() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("TokenStepCodexSessionDedupeFixture-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -729,11 +639,12 @@ struct CCSwitchProxyFixtureCheck {
             ccSwitchDatabaseURL: database
         )
         let source = snapshot.sources["CC Switch Proxy"]
-        try assertEqual(source?.status, "all_deduped", "shared-session Codex source status")
-        try assertEqual(source?.records, 0, "shared-session proxy record is removed")
-        try assertEqual(source?.dedupedRecords, 1, "shared-session proxy record is deduplicated")
-        try assertEqual(snapshot.totals.tokens, 35, "shared-session request counts once")
-        try assertEqual(snapshot.totals.cost, 0.45, "shared-session proxy cost enriches native record")
+        try assertEqual(source?.status, "ok", "shared-session Codex source status")
+        try assertEqual(source?.records, 1, "shared-session request remains without a matching request ID")
+        try assertEqual(source?.dedupedRecords, 0, "a session ID alone never deletes a request")
+        try assertEqual(source?.possibleOverlapRecords, 1, "shared-session similarity is diagnostic only")
+        try assertEqual(snapshot.totals.tokens, 70, "distinct request IDs are both retained")
+        try assertEqual(snapshot.totals.cost, 0.45, "retained proxy request keeps its source cost")
 
         let incremental = UsageCollector.collectIncrementalCodexAndProxySnapshotForTests(
             codexRoots: [root],
@@ -743,16 +654,21 @@ struct CCSwitchProxyFixtureCheck {
         let incrementalSource = incremental.sources["CC Switch Proxy"]
         try assertEqual(
             incrementalSource?.status,
-            "all_deduped",
+            "ok",
             "incremental shared-session Codex source status"
         )
         try assertEqual(
             incrementalSource?.dedupedRecords,
-            1,
-            "incremental cache retains request-level details for proxy dedupe"
+            0,
+            "incremental cache does not treat a session as request identity"
         )
-        try assertEqual(incremental.totals.tokens, 35, "incremental shared-session request counts once")
-        try assertEqual(incremental.totals.cost, 0.45, "incremental proxy cost enriches native record")
+        try assertEqual(
+            incrementalSource?.possibleOverlapRecords,
+            1,
+            "incremental shared-session similarity remains diagnostic"
+        )
+        try assertEqual(incremental.totals.tokens, 70, "incremental distinct request IDs are retained")
+        try assertEqual(incremental.totals.cost, 0.45, "incremental retained proxy cost remains visible")
     }
 
     private static func codexLines(sessionID: String, totalTokens: Int) -> [String] {

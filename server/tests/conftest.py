@@ -173,6 +173,35 @@ class Harness:
             },
         )
 
+    def signed_get(
+        self,
+        device: EnrolledDevice,
+        path: str,
+        *,
+        timestamp: int | None = None,
+        nonce: str | None = None,
+        secret: str | None = None,
+    ):
+        timestamp_text = str(timestamp if timestamp is not None else int(time.time()))
+        nonce = nonce or str(uuid.uuid4())
+        signature = sign_device_request(
+            device_secret=secret or device.secret,
+            timestamp_text=timestamp_text,
+            nonce=nonce,
+            method="GET",
+            path=path,
+            body=b"",
+        )
+        return self.client.get(
+            path,
+            headers={
+                "X-Device-ID": device.id,
+                "X-Timestamp": timestamp_text,
+                "X-Nonce": nonce,
+                "X-Signature": signature,
+            },
+        )
+
 
 @pytest.fixture()
 def harness(tmp_path: Path) -> Harness:

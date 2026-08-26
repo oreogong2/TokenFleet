@@ -6,7 +6,7 @@
 
 - 每位成员使用自己的 Codex / Claude 账号，不共用 AI 供应商账号。
 - TokenFleet 以“昵称参赛者 + 设备”记账，不要求成员注册、登录或绑定微信；同一参赛者可登记多台 Mac 或 Windows 设备，每台设备都要单独生成一次性接入码。
-- 官方 OpenToken 是上生财榜的独立链路。需要上榜的人继续保留自己的 OpenToken，不把它的 URL、token 或 secret 填进 TokenFleet。
+- 其他第三方排行榜或社区服务是独立链路。仍需使用的人继续保留自己的连接，不把其 URL、访问令牌或 secret 填进 TokenFleet。
 - 灰度期 TokenFleet 与 TokenStep 可以共存；正式试运行通过前不要卸载 TokenStep。
 
 ## 2. macOS 终端下载安装
@@ -85,12 +85,14 @@ open '/Applications/TokenFleet.app'
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 `
-  -CommunityServer https://<community-domain>
+  -CommunityServer https://token.ipwriter.com
 tokenfleet connect
 ```
+
+`https://token.ipwriter.com` 仅作为客户端安装参数，不是网页入口，请勿在浏览器打开裸域名；成员网页只使用 `/install`、`/rank` 或完整批次邀请链接。
 
 安装时固定社群地址，升级必须保持一致，`connect` 不接受 `--server` 并会隐藏一次性码输入。连接后，Windows 当前用户 DPAPI 保护设备 secret，计划任务自动同步；`tokenfleet open-rank` 可打开公榜。Windows 首版采集 Codex / Claude Code，支持安全连接、自动同步和上榜，但暂不采集 CC Switch，也不是 macOS 完整桌面明细界面的复刻。
 
 ## 5. 何时可以卸载 TokenStep
 
-至少满足以下条件：正式包已签名和公证；社群同步、多设备、费用和自动更新均通过；50 人邀请测试已连续运行至少 14 天且无 P0/P1；每人的官方 OpenToken 当天仍能正常上生财榜。之后先在 TokenStep 设置中关闭开机启动并退出，再把 `TokenStep.app` 移到废纸篓；灰度期保留其 App Support 数据，方便回滚。
+至少满足以下条件：正式包已签名和公证；社群同步、多设备、费用和自动更新均通过；50 人邀请测试已连续运行至少 14 天且无 P0/P1；成员仍需使用的第三方服务状态正常。之后先在 TokenStep 设置中关闭开机启动并退出，再把 `TokenStep.app` 移到废纸篓；灰度期保留其 App Support 数据，方便回滚。

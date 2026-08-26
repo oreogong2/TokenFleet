@@ -9,6 +9,7 @@ struct UsageRecalibrationMigrationFixtureCheck {
 
         try checkEnergyRefreshPolicy()
         try checkCollectionCheckpointPolicy()
+        try checkPricingCatalog()
 
         let currentRevision = UsageCollector.codexAccountingRevision
         let legacy = snapshot(accountingRevision: nil, records: 1)
@@ -53,8 +54,12 @@ struct UsageRecalibrationMigrationFixtureCheck {
             "legacy snapshots should be treated as accounting revision 5"
         )
         try expect(
-            DataService.hasPendingUsageRecalibrationNotice,
+            DataService.hasPendingUsageRecalibrationNotice(for: migrated),
             "successful legacy migration should create the pending notice marker"
+        )
+        try expect(
+            !DataService.hasPendingUsageRecalibrationNotice(for: legacy),
+            "a prepared marker must stay hidden until the recalibrated snapshot is durable"
         )
         try expect(
             try String(contentsOf: AppPaths.usageRecalibrationNoticeMarker, encoding: .utf8)
@@ -64,22 +69,144 @@ struct UsageRecalibrationMigrationFixtureCheck {
 
         DataService.acknowledgeUsageRecalibrationNotice()
         try expect(
-            !DataService.hasPendingUsageRecalibrationNotice,
+            !DataService.hasPendingUsageRecalibrationNotice(for: migrated),
             "acknowledging the notice should remove its marker"
         )
 
         try? FileManager.default.removeItem(at: root)
         _ = try DataService.persistSnapshotForMigrationTests(current, previousSnapshot: nil)
         try expect(
-            !DataService.hasPendingUsageRecalibrationNotice,
+            !DataService.hasPendingUsageRecalibrationNotice(for: current),
             "a new installation must not see a migration notice"
         )
 
         let alreadyCurrent = snapshot(accountingRevision: currentRevision, records: 1)
         _ = try DataService.persistSnapshotForMigrationTests(current, previousSnapshot: alreadyCurrent)
         try expect(
-            !DataService.hasPendingUsageRecalibrationNotice,
+            !DataService.hasPendingUsageRecalibrationNotice(for: current),
             "an already-current snapshot must not recreate the notice"
+        )
+
+        let oldPricing = snapshot(
+            accountingRevision: currentRevision,
+            records: 1,
+            pricingVersion: "public-usd-2026-08-13"
+        )
+        let unversionedPricing = snapshot(
+            accountingRevision: currentRevision,
+            records: 1,
+            pricingVersion: nil
+        )
+        let futurePricing = snapshot(
+            accountingRevision: currentRevision,
+            records: 1,
+            pricingVersion: "public-usd-2026-08-15"
+        )
+        let reestimatedPricing = snapshot(
+            accountingRevision: currentRevision,
+            records: 1,
+            pricingVersion: TokenPricingCatalog.version
+        )
+        try expect(
+            TokenPricingCatalog.shouldReestimate(storedVersion: oldPricing.totals.pricingVersion),
+            "an older pricing catalog is eligible on the next real usage refresh"
+        )
+        try expect(
+            TokenPricingCatalog.shouldReestimate(storedVersion: unversionedPricing.totals.pricingVersion),
+            "an unversioned legacy estimate is eligible on the next real usage refresh"
+        )
+        try expect(
+            !TokenPricingCatalog.shouldReestimate(storedVersion: current.totals.pricingVersion),
+            "the current pricing catalog should not re-estimate again"
+        )
+        try expect(
+            TokenPricingCatalog.shouldPreserveSnapshot(storedVersion: futurePricing.totals.pricingVersion),
+            "a newer pricing catalog must be preserved"
+        )
+        try expect(
+            emptyLegacy.totals.tokens == 0,
+            "an empty snapshot remains outside price migration"
+        )
+
+        try? FileManager.default.removeItem(at: root)
+        _ = try DataService.persistSnapshotForMigrationTests(oldPricing, previousSnapshot: nil)
+        let blockedConfigPath = AppPaths.pricingReestimationNoticeMarker.deletingLastPathComponent()
+        try Data("blocked".utf8).write(to: blockedConfigPath, options: .atomic)
+        do {
+            _ = try DataService.persistSnapshotForMigrationTests(
+                reestimatedPricing,
+                previousSnapshot: oldPricing
+            )
+            throw NSError(
+                domain: "UsageRecalibrationMigrationFixture",
+                code: 5,
+                userInfo: [NSLocalizedDescriptionKey: "a missing price marker did not fail closed"]
+            )
+        } catch let error as NSError where error.domain != "UsageRecalibrationMigrationFixture" {
+            // Expected: the marker cannot be prepared, so usage.json must remain untouched.
+        }
+        let preservedAfterMarkerFailure = try DataService.loadSnapshot()
+        try expect(
+            preservedAfterMarkerFailure.totals.pricingVersion == oldPricing.totals.pricingVersion,
+            "a marker write failure must preserve the old price snapshot"
+        )
+        try FileManager.default.removeItem(at: blockedConfigPath)
+
+        _ = try DataService.persistSnapshotForMigrationTests(
+            reestimatedPricing,
+            previousSnapshot: oldPricing
+        )
+        try expect(
+            DataService.hasPendingPricingReestimationNotice(for: reestimatedPricing),
+            "a successful price-catalog migration should create a pending notice"
+        )
+        try expect(
+            !DataService.hasPendingPricingReestimationNotice(for: oldPricing),
+            "a marker must stay hidden until the current-price snapshot is durable"
+        )
+        try expect(
+            reestimatedPricing.totals.tokens == oldPricing.totals.tokens,
+            "a price-catalog migration must preserve Token totals"
+        )
+        try expect(
+            try String(contentsOf: AppPaths.pricingReestimationNoticeMarker, encoding: .utf8)
+                == "public-usd-2026-08-13\n\(TokenPricingCatalog.version)\n",
+            "the price marker should record the old and new catalogs"
+        )
+        DataService.acknowledgePricingReestimationNotice()
+        try expect(
+            !DataService.hasPendingPricingReestimationNotice(for: reestimatedPricing),
+            "acknowledging the price notice should remove its marker"
+        )
+
+        _ = try DataService.persistSnapshotForMigrationTests(
+            current,
+            previousSnapshot: alreadyCurrent
+        )
+        try expect(
+            !DataService.hasPendingPricingReestimationNotice(for: current),
+            "an already-current catalog must not recreate the price notice"
+        )
+
+        try? FileManager.default.removeItem(at: root)
+        _ = try DataService.persistSnapshotForMigrationTests(futurePricing, previousSnapshot: nil)
+        do {
+            _ = try DataService.persistSnapshotForMigrationTests(
+                reestimatedPricing,
+                previousSnapshot: futurePricing
+            )
+            throw NSError(
+                domain: "UsageRecalibrationMigrationFixture",
+                code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "a future pricing catalog was downgraded"]
+            )
+        } catch let error as NSError where error.domain == "TokenFleetCollector" {
+            // Expected: an older binary must preserve a future or unknown catalog.
+        }
+        let preservedFuturePricing = try DataService.loadSnapshot()
+        try expect(
+            preservedFuturePricing.totals.pricingVersion == futurePricing.totals.pricingVersion,
+            "manual persistence must not downgrade a future pricing catalog"
         )
 
         try? FileManager.default.removeItem(at: root)
@@ -104,7 +231,7 @@ struct UsageRecalibrationMigrationFixtureCheck {
             "a failed recalibration must preserve the previous usage snapshot"
         )
         try expect(
-            !DataService.hasPendingUsageRecalibrationNotice,
+            !DataService.hasPendingUsageRecalibrationNotice(for: preserved),
             "a failed recalibration must not create a migration notice"
         )
 
@@ -132,11 +259,48 @@ struct UsageRecalibrationMigrationFixtureCheck {
             "a SQLite fallback must preserve the previous usage snapshot"
         )
         try expect(
-            !DataService.hasPendingUsageRecalibrationNotice,
+            !DataService.hasPendingUsageRecalibrationNotice(for: preservedAfterFallback),
             "a SQLite fallback must not create a migration notice"
         )
 
-        print("PASS: usage recalibration migration marker and failure preservation")
+        print("PASS: usage and pricing migration markers preserve Token truth")
+    }
+
+    private static func checkPricingCatalog() throws {
+        let usage = TokenPricingUsage(
+            inputTokens: 1_000_000,
+            outputTokens: 1_000_000,
+            cacheReadTokens: 1_000_000,
+            cacheWriteTokens: 1_000_000,
+            totalTokens: 4_000_000,
+            breakdownComplete: true
+        )
+        let rows: [(model: String, expected: Double)] = [
+            ("gpt-5.6-sol", 41.75),
+            ("gpt-5.6-terra", 16.7),
+            ("gpt-5.6-luna", 1.67),
+            ("gpt-5.3-chat-latest", 17.675),
+            ("gpt-5.1-chat-latest", 12.625)
+        ]
+        for row in rows {
+            guard let estimate = TokenPricingCatalog.estimate(
+                tool: "Codex",
+                model: row.model,
+                usage: usage,
+                date: TokenPricingCatalog.verifiedDate
+            ) else {
+                try expect(false, "missing verified price for \(row.model)")
+                continue
+            }
+            try expect(
+                abs(estimate.costUSD - row.expected) < 0.000_001,
+                "unexpected verified price for \(row.model)"
+            )
+            try expect(
+                estimate.pricingVersion == TokenPricingCatalog.version,
+                "unexpected catalog version for \(row.model)"
+            )
+        }
     }
 
     private static func checkCollectionCheckpointPolicy() throws {
@@ -300,12 +464,18 @@ struct UsageRecalibrationMigrationFixtureCheck {
     private static func snapshot(
         accountingRevision: Int?,
         records: Int,
-        status: String = "ok"
+        status: String = "ok",
+        pricingVersion: String? = TokenPricingCatalog.version
     ) -> UsageSnapshot {
         UsageSnapshot(
             generatedAt: "2026-07-13T00:00:00Z",
             timezone: "Asia/Shanghai",
-            totals: UsageTotals(tokens: records * 100, cost: 0, activeDays: records > 0 ? 1 : 0),
+            totals: UsageTotals(
+                tokens: records * 100,
+                cost: 0,
+                activeDays: records > 0 ? 1 : 0,
+                pricingVersion: pricingVersion
+            ),
             daily: [],
             tools: [],
             models: [],

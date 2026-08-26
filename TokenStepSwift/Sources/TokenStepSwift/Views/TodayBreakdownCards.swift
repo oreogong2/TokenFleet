@@ -3,18 +3,19 @@ import SwiftUI
 struct TodayBreakdownCard: View {
     var title: String
     var rows: [TodayBreakdownRow]
-    var maxRows: Int = 4
+    var maxRows: Int = 3
+    var expansionRequest: Int = 0
+    @State private var isExpanded = false
 
     var body: some View {
-        TokenCard {
-            VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(title)
-                        .font(.title3.weight(.heavy))
+                        .font(.system(size: 11, weight: .heavy))
                         .foregroundStyle(Color.tokenInk)
                     Spacer()
-                    Text(L("今日"))
-                        .font(.caption.weight(.bold))
+                    Text(LFormat("%d 项", rows.count))
+                        .font(.system(size: 7, weight: .bold))
                         .foregroundStyle(Color.tokenGreenDark)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
@@ -23,22 +24,54 @@ struct TodayBreakdownCard: View {
 
                 if rows.isEmpty {
                     Text(L("等待下一次同步"))
-                        .font(.callout.weight(.semibold))
+                        .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
                 } else {
-                    VStack(spacing: 14) {
-                        ForEach(Array(rows.prefix(maxRows).enumerated()), id: \.element.id) { index, row in
+                    VStack(spacing: 10) {
+                        ForEach(Array(visibleRows.enumerated()), id: \.element.id) { index, row in
                             TodayBreakdownRowView(
                                 row: row,
                                 color: row.color ?? rowColor(index: index)
                             )
                         }
                     }
+
+                    if rows.count > maxRows {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                isExpanded.toggle()
+                            }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text(isExpanded
+                                    ? L("收起，只看 Top 3")
+                                    : LFormat("展开全部 %d 项", rows.count))
+                                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                Spacer()
+                            }
+                            .font(.caption.weight(.heavy))
+                            .foregroundStyle(Color.tokenGreenDark)
+                            .frame(height: 34)
+                            .background(Color.tokenMint.opacity(0.16), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.black.opacity(0.07)))
+        .onAppear(perform: expandIfRequested)
+        .onChange(of: expansionRequest) { _ in
+            expandIfRequested()
+        }
+    }
+
+    private var visibleRows: [TodayBreakdownRow] {
+        isExpanded ? rows : Array(rows.prefix(maxRows))
     }
 
     private func rowColor(index: Int) -> Color {
@@ -47,6 +80,13 @@ struct TodayBreakdownCard: View {
         case 1: return .tokenGreen
         case 2: return TokenStepThemeRuntime.palette.activity3.color
         default: return TokenStepThemeRuntime.palette.activity2.color
+        }
+    }
+
+    private func expandIfRequested() {
+        guard expansionRequest > 0, rows.count > maxRows else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            isExpanded = true
         }
     }
 }
@@ -66,10 +106,10 @@ private struct TodayBreakdownRowView: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(row.name)
-                .font(.headline.weight(.bold))
+                .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(Color.tokenInk.opacity(0.78))
                 .lineLimit(1)
-                .frame(width: 138, alignment: .leading)
+                .frame(width: 115, alignment: .leading)
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
@@ -84,11 +124,11 @@ private struct TodayBreakdownRowView: View {
             .frame(height: 10)
 
             Text("\(TokenStepFormat.tokens(row.tokens, compact: true)) · \(TokenStepFormat.percent(row.percent))")
-                .font(.headline.weight(.semibold))
+                .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .monospacedDigit()
-                .frame(width: 126, alignment: .trailing)
+                .frame(width: 98, alignment: .trailing)
         }
         .frame(height: 30)
     }

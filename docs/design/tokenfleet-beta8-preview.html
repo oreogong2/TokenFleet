@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TokenFleet beta.8 旧视觉探索稿（已停用）</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17211d;
+      --muted: #6f7b75;
+      --paper: #f4f5ef;
+      --surface: #fcfdf9;
+      --line: #dfe4dc;
+      --green: #20a85a;
+      --green-deep: #08703d;
+      --green-soft: #dff4e5;
+      --mint: #a8e7bd;
+      --amber: #efaa35;
+      --red: #d95f51;
+      --shadow: 0 26px 70px rgba(21, 40, 30, .14), 0 3px 10px rgba(21, 40, 30, .06);
+      --sans: "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
+      --mono: "SFMono-Regular", "Menlo", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 1180px;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(32,168,90,.10), transparent 27%),
+        radial-gradient(circle at 90% 92%, rgba(239,170,53,.08), transparent 24%),
+        #e9ece6;
+      font-family: var(--sans);
+      font-weight: 550;
+    }
+
+    button { font: inherit; }
+    .board {
+      width: 1480px;
+      margin: 0 auto;
+      padding: 28px 34px 54px;
+    }
+    .board-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .eyebrow {
+      margin: 0 0 6px;
+      color: var(--green-deep);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0; font-size: 34px; letter-spacing: -.04em; }
+    .board-note { margin: 7px 0 0; color: var(--muted); font-size: 14px; }
+    .switcher {
+      display: flex;
+      gap: 5px;
+      padding: 5px;
+      background: rgba(252,253,249,.82);
+      border: 1px solid rgba(40,65,53,.10);
+      border-radius: 15px;
+      box-shadow: 0 8px 22px rgba(21,40,30,.06);
+    }
+    .switcher button {
+      border: 0;
+      padding: 8px 13px;
+      border-radius: 11px;
+      color: #5e6a64;
+      background: transparent;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .switcher button.active { color: #fff; background: var(--ink); }
+    .canvas { display: none; }
+    .canvas.active { display: block; }
+
+    .mac-window {
+      position: relative;
+      height: 830px;
+      overflow: hidden;
+      border: 1px solid rgba(38,59,49,.16);
+      border-radius: 24px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .titlebar {
+      height: 46px;
+      display: grid;
+      grid-template-columns: 130px 1fr 130px;
+      align-items: center;
+      padding: 0 16px;
+      background: rgba(250,251,247,.96);
+      border-bottom: 1px solid var(--line);
+    }
+    .traffic { display: flex; gap: 8px; }
+    .traffic i { width: 12px; height: 12px; display: block; border-radius: 50%; }
+    .traffic i:nth-child(1) { background: #ff5f57; }
+    .traffic i:nth-child(2) { background: #febc2e; }
+    .traffic i:nth-child(3) { background: #28c840; }
+    .window-title { text-align: center; color: #65716b; font-size: 13px; font-weight: 750; }
+    .title-actions { text-align: right; }
+    .ghost-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 9px;
+      background: #fff; color: var(--muted);
+    }
+    .app-shell { display: grid; grid-template-columns: 218px 1fr; height: calc(100% - 46px); }
+    .sidebar {
+      display: flex; flex-direction: column;
+      padding: 24px 14px 18px;
+      background: #f5f7f2;
+      border-right: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: center; gap: 11px; padding: 2px 10px 24px; }
+    .mark {
+      position: relative;
+      display: inline-flex; align-items: end; justify-content: center; gap: 3px;
+      width: 38px; height: 38px; padding: 8px;
+      color: var(--green);
+      background: #fff;
+      border: 1px solid rgba(32,168,90,.18);
+      border-radius: 12px;
+      box-shadow: 0 6px 16px rgba(18,95,52,.08);
+    }
+    .mark i { display: block; width: 5px; border-radius: 2px 2px 1px 1px; background: currentColor; }
+    .mark i:nth-child(1) { height: 10px; opacity: .45; }
+    .mark i:nth-child(2) { height: 17px; opacity: .72; }
+    .mark i:nth-child(3) { height: 23px; }
+    .brand-name { font-size: 18px; font-weight: 850; letter-spacing: -.02em; }
+    .brand-tag { margin-top: 1px; color: var(--green-deep); font-size: 12px; font-weight: 750; }
+    .side-nav { display: grid; gap: 7px; }
+    .side-nav button {
+      display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: center;
+      padding: 10px 11px; border: 0; border-radius: 13px; background: transparent;
+      color: #647069; text-align: left; cursor: pointer; font-weight: 750;
+    }
+    .side-nav button.active { color: var(--ink); background: #fff; box-shadow: 0 7px 20px rgba(21,40,30,.07); }
+    .nav-icon {
+      width: 29px; height: 29px; display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 9px; background: #e7ede7; font-family: var(--mono); font-size: 12px;
+    }
+    .side-nav button.active .nav-icon { color: #fff; background: var(--green); }
+    .side-foot { margin-top: auto; padding: 12px 10px 2px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .privacy-mini { display: flex; gap: 7px; align-items: flex-start; margin-top: 12px; }
+    .privacy-mini b { color: var(--green-deep); }
+    .content {
+      overflow: auto;
+      padding: 27px 30px 38px;
+      background:
+        linear-gradient(rgba(253,254,250,.88), rgba(253,254,250,.96)),
+        repeating-linear-gradient(90deg, transparent 0 47px, rgba(28,87,55,.025) 48px);
+    }
+    .page { display: none; }
+    .page.active { display: block; }
+    .page-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 21px; }
+    .page-head h2 { margin: 0; font-size: 29px; letter-spacing: -.035em; }
+    .page-head p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+    .sync-pill {
+      display: flex; align-items: center; gap: 7px; padding: 8px 11px;
+      color: #496057; background: #fff; border: 1px solid var(--line); border-radius: 999px; font-size: 12px;
+    }
+    .sync-pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+    .hero {
+      display: grid; grid-template-columns: 180px 1.35fr .78fr; gap: 22px; align-items:center;
+      padding: 25px 27px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: 0 14px 36px rgba(24,48,34,.06);
+    }
+    .hero-label { color: var(--muted); font-size: 13px; font-weight: 750; }
+    .token-value { margin: 5px 0 15px; font-size: 52px; font-weight: 900; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
+    .goal-meta { display: flex; justify-content: space-between; color: #56635d; font-size: 12px; font-weight: 750; }
+    .track { position: relative; height: 12px; margin-top: 8px; overflow: hidden; background: #e6ebe5; border-radius: 999px; }
+    .track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #72d897, var(--green)); }
+    .track::after {
+      content: ""; position: absolute; top: -3px; bottom: -3px; left: 66.666%; width: 2px;
+      background: var(--green-deep); box-shadow: 0 0 0 3px #fff;
+    }
+    .hero-caption { margin: 9px 0 0; color: var(--muted); font-size: 11px; }
+    .goal-dial {
+      position:relative; width:156px; height:156px; border-radius:50%;
+      background:repeating-conic-gradient(from -5deg,var(--green-deep) 0 7deg,transparent 7deg 10deg);
+    }
+    .goal-dial::before { content:""; position:absolute; inset:17px; border-radius:50%; background:#fff; box-shadow:inset 0 0 0 1px rgba(20,104,58,.08); }
+    .goal-dial::after { content:""; position:absolute; width:8px; height:8px; right:15px; top:24px; border-radius:50%; background:var(--amber); box-shadow:0 0 0 4px #fff; }
+    .goal-dial-copy { position:absolute; z-index:1; inset:0; display:grid; place-content:center; justify-items:center; }
+    .goal-dial-copy .mini-signal { display:flex; align-items:end; gap:3px; height:20px; margin-bottom:5px; }
+    .goal-dial-copy .mini-signal i { width:4px; border-radius:3px; background:var(--green-deep); }
+    .goal-dial-copy .mini-signal i:nth-child(1){height:8px;opacity:.45}.goal-dial-copy .mini-signal i:nth-child(2){height:13px;opacity:.7}.goal-dial-copy .mini-signal i:nth-child(3){height:19px}
+    .goal-dial-copy strong { font-size:24px; letter-spacing:-.05em; }
+    .goal-dial-copy small { margin-top:3px; color:var(--green-deep); font-size:10px; font-weight:850; }
+    .signal-card {
+      position: relative; overflow: hidden; padding: 18px 20px;
+      color: #ecfff3; background: var(--green-deep); border-radius: 17px;
+    }
+    .signal-card::after {
+      content: ""; position: absolute; width: 25px; height: 88px; right: 34px; bottom: -18px;
+      border-radius: 12px 12px 4px 4px; background: rgba(255,255,255,.08);
+      box-shadow: -38px 28px 0 rgba(255,255,255,.06), 38px -27px 0 rgba(255,255,255,.10);
+    }
+    .signal-card small { color: rgba(255,255,255,.68); font-weight: 750; }
+    .streak { margin: 7px 0 2px; font-size: 35px; font-weight: 900; letter-spacing: -.04em; }
+    .streak b { font-size: 14px; letter-spacing: 0; }
+    .signal-row { display: flex; gap: 5px; margin-top: 19px; }
+    .signal-row i { display: block; width: 19px; height: 6px; border-radius: 99px; background: rgba(255,255,255,.24); }
+    .signal-row i.on { background: var(--mint); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+    .panel { padding: 19px 20px; background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 18px; }
+    .panel-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 15px; }
+    .panel-head h3 { margin: 0; font-size: 15px; }
+    .panel-head span { color: var(--muted); font-size: 11px; }
+    .bar-row { display: grid; grid-template-columns: 94px 1fr 72px; align-items: center; gap: 11px; margin: 12px 0; font-size: 12px; }
+    .bar-row b { font-size: 12px; }
+    .mini-track { height: 7px; overflow: hidden; border-radius: 99px; background: #e9ece8; }
+    .mini-track i { display: block; height: 100%; border-radius: inherit; background: var(--green); }
+    .bar-row em { color: #59655f; font-style: normal; text-align: right; font-family: var(--mono); font-size: 11px; }
+    .metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 13px; margin-top: 18px; }
+    .metric { padding: 15px 16px; background: #f5f7f3; border-radius: 15px; }
+    .metric span { display: block; color: var(--muted); font-size: 11px; }
+    .metric strong { display: block; margin-top: 5px; font-size: 19px; letter-spacing: -.025em; }
+    .metric small { color: #87908c; font-size: 10px; }
+    .insight-strip { display:flex; flex-wrap:wrap; gap:8px; margin-top:13px; }
+    .insight-pill { padding:7px 10px; border:1px solid var(--line); border-radius:999px; color:#526159; background:#f8faf7; font-size:10px; font-weight:780; }
+    .insight-pill b { color:var(--green-deep); }
+    .agent-panel { margin-top:18px; }
+    .agent-head-actions { display:flex; gap:5px; }
+    .agent-head-actions b { padding:5px 8px; border-radius:8px; color:var(--muted); background:#eef2ed; font-size:10px; }
+    .agent-head-actions b.on { color:#fff; background:var(--ink); }
+    .agent-metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-bottom:13px; }
+    .agent-metrics div { padding:10px 11px; border-radius:12px; background:#f5f7f3; }
+    .agent-metrics span { display:block; color:var(--muted); font-size:9px; }
+    .agent-metrics strong { display:block; margin-top:3px; font-size:14px; }
+    .hourly-chart { height:82px; display:grid; grid-template-columns:repeat(24,1fr); align-items:end; gap:4px; padding:8px 0 0; border-bottom:1px solid var(--line); }
+    .hourly-chart i { display:block; min-height:3px; border-radius:3px 3px 1px 1px; background:linear-gradient(to top,#20a85a 0 72%,#df7044 72%); }
+    .hourly-axis { display:flex; justify-content:space-between; margin-top:6px; color:var(--muted); font-family:var(--mono); font-size:8px; }
+
+    .activity { display: grid; grid-template-columns: repeat(24, 1fr); gap: 4px; margin: 14px 0 20px; }
+    .activity i { aspect-ratio: 1; border-radius: 3px; background: #e5eae4; }
+    .activity i:nth-child(3n) { background: #c9ebd3; }
+    .activity i:nth-child(5n) { background: #78d397; }
+    .activity i:nth-child(11n) { background: #159653; }
+    .table { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; }
+    .tr { display: grid; grid-template-columns: 1fr 1.2fr 1.1fr 1fr; padding: 11px 14px; border-bottom: 1px solid #edf0ec; font-size: 12px; }
+    .tr:last-child { border-bottom: 0; }
+    .tr.head { color: var(--muted); background: #f5f7f3; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+
+    .community-hero { display: grid; grid-template-columns: 1.4fr .8fr; gap: 22px; }
+    .rank-card { padding: 23px; color: #fff; background: var(--ink); border-radius: 20px; }
+    .rank-card h3 { margin: 0; font-size: 24px; }
+    .rank-card p { margin: 8px 0 20px; color: rgba(255,255,255,.58); font-size: 12px; }
+    .primary {
+      border: 0; padding: 11px 16px; border-radius: 12px; color: #fff; background: var(--green); cursor: pointer; font-weight: 800;
+    }
+    .primary.light { color: var(--ink); background: var(--mint); }
+    .status-list { display: grid; gap: 10px; }
+    .status-item { display: flex; justify-content: space-between; padding: 13px 14px; background: #fff; border: 1px solid var(--line); border-radius: 13px; font-size: 12px; }
+    .status-item span { color: var(--muted); }
+    .privacy { margin-top: 18px; display: grid; grid-template-columns: repeat(3,1fr); gap: 13px; }
+    .privacy div { padding: 15px; background: #f4f7f3; border-radius: 14px; font-size: 11px; line-height: 1.5; }
+    .privacy b { display: block; margin-bottom: 4px; color: var(--green-deep); font-size: 12px; }
+
+    .settings-layout { display: grid; grid-template-columns: 170px 1fr; gap: 22px; }
+    .settings-nav { display: grid; align-content: start; gap: 6px; }
+    .settings-nav button { border: 0; padding: 10px 12px; border-radius: 11px; background: transparent; text-align: left; color: var(--muted); font-weight: 750; }
+    .settings-nav button.active { color: var(--ink); background: #e8efe9; }
+    .setting-group { padding: 20px; background: #fff; border: 1px solid var(--line); border-radius: 17px; }
+    .setting-group + .setting-group { margin-top: 14px; }
+    .setting-group h3 { margin: 0 0 15px; font-size: 15px; }
+    .setting-line { display: flex; justify-content: space-between; align-items: center; min-height: 44px; border-top: 1px solid #edf0ec; font-size: 12px; }
+    .setting-line:first-of-type { border-top: 0; }
+    .setting-line small { display: block; color: var(--muted); }
+    .segmented { display: flex; gap: 3px; padding: 3px; border-radius: 10px; background: #edf1ec; }
+    .segmented i { padding: 6px 9px; border-radius: 8px; color: var(--muted); font-style: normal; }
+    .segmented i.on { color: var(--ink); background: #fff; box-shadow: 0 2px 6px rgba(20,45,30,.08); }
+    .toggle { width: 35px; height: 20px; padding: 2px; border-radius: 99px; background: var(--green); }
+    .toggle::after { content: ""; display: block; width: 16px; height: 16px; margin-left: 15px; border-radius: 50%; background: #fff; }
+    .theme-grid { display:grid; grid-template-columns:repeat(9,1fr); gap:7px; margin-top:10px; }
+    .theme-chip { display:grid; justify-items:center; gap:5px; padding:8px 4px; border:1px solid var(--line); border-radius:11px; color:var(--muted); background:#fafbf8; font-size:9px; font-style:normal; }
+    .theme-chip::before { content:""; width:22px; height:22px; border-radius:50%; background:var(--swatch); box-shadow:inset 0 0 0 1px rgba(0,0,0,.08); }
+    .theme-chip.on { color:var(--ink); border-color:var(--green); background:var(--green-soft); font-weight:800; }
+
+    .mock-desktop {
+      position: relative; height: 830px; overflow: hidden; border-radius: 24px;
+      color: #fff; background: linear-gradient(145deg,#19211e,#0e1412); box-shadow: var(--shadow);
+    }
+    .menubar {
+      height: 39px; display: grid; grid-template-columns: 1fr auto; align-items: center;
+      padding: 0 18px; background: #050706; border-bottom: 1px solid #444;
+      font-size: 12px; font-weight: 750;
+    }
+    .menu-left { display: flex; gap: 20px; align-items: center; }
+    .menu-right { display: flex; gap: 16px; align-items: center; }
+    .menu-mark { display: inline-flex; align-items: end; gap: 2px; height: 16px; color: #fff; }
+    .menu-mark i { width: 3px; border-radius: 1px; background: currentColor; }
+    .menu-mark i:nth-child(1){height:7px}.menu-mark i:nth-child(2){height:11px}.menu-mark i:nth-child(3){height:15px}
+    .menu-highlight { display: flex; gap: 7px; align-items: center; padding: 3px 7px; border-radius: 7px; background: rgba(255,255,255,.10); }
+    .wallpaper {
+      height: calc(100% - 39px);
+      background:
+        radial-gradient(circle at 68% 32%, rgba(56,113,80,.22), transparent 18%),
+        radial-gradient(circle at 28% 80%, rgba(124,91,46,.18), transparent 24%), #111714;
+    }
+    .popover {
+      position: absolute; top: 49px; right: 262px; width: 390px;
+      padding: 18px; color: var(--ink); background: rgba(252,253,249,.98);
+      border: 1px solid rgba(255,255,255,.45); border-radius: 19px;
+      box-shadow: 0 30px 80px rgba(0,0,0,.48);
+    }
+    .pop-head { display: flex; align-items: center; gap: 10px; }
+    .pop-head .mark { width: 34px; height: 34px; padding: 7px; }
+    .pop-title { font-weight: 850; }
+    .pop-tag { color: var(--muted); font-size: 11px; }
+    .pop-status { margin-left: auto; color: var(--green-deep); font-size: 11px; }
+    .pop-value { margin: 17px 0 10px; font-size: 38px; font-weight: 900; letter-spacing: -.05em; }
+    .pop-summary { display:grid; grid-template-columns:120px 1fr; gap:17px; align-items:center; margin:14px 0; }
+    .pop-summary .goal-dial { width:112px; height:112px; }
+    .pop-summary .goal-dial::before { inset:13px; }
+    .pop-summary .goal-dial::after { right:10px; top:17px; width:6px; height:6px; }
+    .pop-summary .goal-dial-copy strong { font-size:19px; }
+    .pop-goal { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+    .pop-tools { margin: 17px 0; padding: 11px 13px; background: #f0f3ef; border-radius: 13px; }
+    .pop-tools .bar-row { grid-template-columns: 78px 1fr 55px; margin: 9px 0; }
+    .community-button { width: 100%; border: 0; padding: 11px; border-radius: 12px; color: #fff; background: var(--green-deep); cursor: pointer; font-weight: 850; }
+    .pop-insights { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin:-8px 0 10px; }
+    .pop-insights div { padding:8px 9px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+    .pop-insights span { display:block; color:var(--muted); font-size:9px; }
+    .pop-insights b { display:block; margin-top:2px; font-size:10px; }
+    .pop-actions { display: grid; grid-template-columns: repeat(4,1fr); gap: 7px; margin-top: 8px; }
+    .pop-actions button { border: 1px solid var(--line); padding: 9px 3px; border-radius: 11px; color: #56615b; background: #fff; font-size: 10px; font-weight: 750; }
+    .callout {
+      position: absolute; top: 53px; right: 22px; width: 215px; padding: 12px 14px;
+      color: #dce9e0; background: rgba(18,27,22,.92); border: 1px solid rgba(255,255,255,.10); border-radius: 13px; font-size: 11px; line-height: 1.5;
+    }
+    .callout strong { display: block; color: var(--mint); margin-bottom: 3px; }
+
+    .poster-stage { display: grid; grid-template-columns: 600px 1fr; gap: 30px; align-items: start; }
+    .poster {
+      position: relative; min-height: 790px; overflow: hidden; padding: 44px;
+      background: #f8faf4; border: 1px solid var(--line); border-radius: 28px; box-shadow: var(--shadow);
+    }
+    .poster::after {
+      content:""; position:absolute; width:54px; height:310px; right:16px; top:116px;
+      border-radius:28px 28px 8px 8px; background:rgba(32,168,90,.055);
+      box-shadow:-72px 112px 0 rgba(32,168,90,.04), -144px 184px 0 rgba(32,168,90,.025);
+    }
+    .poster-brand { display:flex; gap:13px; align-items:center; }
+    .poster-brand .mark { width:44px; height:44px; }
+    .poster h2 { margin: 68px 0 0; color: var(--green-deep); font-size: 22px; }
+    .poster-value { margin: 6px 0 26px; font-size: 72px; font-weight: 900; letter-spacing: -.06em; }
+    .poster-track { height: 18px; border-radius: 99px; background:#e0e8df; overflow:hidden; }
+    .poster-track i { display:block; width:100%; height:100%; background:linear-gradient(90deg,#91e2aa,var(--green)); }
+    .poster-meta { display:flex; justify-content:space-between; margin-top:9px; color:var(--muted); font-size:12px; }
+    .poster-grid { display:grid; grid-template-columns:1fr 1fr; gap:13px; margin-top:36px; }
+    .poster-grid div { padding:18px; background:#fff; border:1px solid var(--line); border-radius:16px; }
+    .poster-grid span { display:block; color:var(--muted); font-size:11px; }
+    .poster-grid strong { display:block; margin-top:5px; font-size:21px; }
+    .poster-foot { position:absolute; left:44px; right:44px; bottom:38px; display:flex; justify-content:space-between; color:var(--muted); font-size:11px; }
+    .notes { padding: 8px 6px; }
+    .notes h3 { margin: 0 0 13px; font-size: 22px; }
+    .notes ul { display: grid; gap: 11px; padding: 0; list-style: none; }
+    .notes li { padding: 13px 15px; background: rgba(252,253,249,.76); border: 1px solid rgba(40,65,53,.10); border-radius: 13px; color: #56625c; font-size: 12px; line-height: 1.55; }
+    .notes b { color: var(--ink); }
+
+    .admin-window { min-height: 790px; padding: 26px; background: #f3f5f1; border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); }
+    .admin-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
+    .admin-head h2 { margin:0; }
+    .admin-table { overflow:hidden; background:#fff; border:1px solid var(--line); border-radius:17px; }
+    .admin-row { display:grid; grid-template-columns:1.2fr .8fr .8fr .9fr; gap:10px; align-items:center; padding:13px 16px; border-top:1px solid #edf0ec; font-size:12px; }
+    .admin-row.head { border-top:0; color:var(--muted); background:#f7f8f5; font-size:10px; font-weight:800; }
+    .admin-row button { justify-self:start; border:1px solid #cdd8cf; padding:7px 10px; border-radius:9px; background:#fff; color:var(--green-deep); font-weight:800; }
+    .admin-row button.add { color:#6d5c39; }
+    dialog[open] { display:grid; place-items:center; }
+    .dialog-backdrop { position:absolute; inset:0; display:grid; place-items:center; background:rgba(17,27,21,.38); border-radius:24px; }
+    .dialog { width:440px; padding:22px; background:#fff; border-radius:18px; box-shadow:0 30px 90px rgba(0,0,0,.28); }
+    .dialog h3 { margin:0 0 6px; }
+    .dialog p { margin:0 0 17px; color:var(--muted); font-size:12px; }
+    .confirm-list { display:grid; gap:8px; padding:12px 14px; background:#f3f6f2; border-radius:13px; font-size:12px; }
+    .confirm-list div { display:flex; justify-content:space-between; }
+    .confirm-list span { color:var(--muted); }
+    .safe-note { margin-top:12px; padding:10px 12px; color:#5f543d; background:#fff5df; border-radius:11px; font-size:11px; line-height:1.5; }
+    .dialog-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+    .dialog-actions button { border:1px solid var(--line); padding:9px 13px; border-radius:10px; background:#fff; font-weight:800; }
+    .dialog-actions .primary { border:0; color:#fff; background:var(--green); }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <header class="board-head">
+      <div>
+        <p class="eyebrow">SUPERSEDED · 旧视觉探索稿 · 不代表 beta.8 最终代码</p>
+        <h1>这份探索稿已停用</h1>
+        <p class="board-note">最终 beta.8 固定使用 macOS 原生菜单栏圆环，并保留“每天一个亿”和圈数表达；本页中的分段信号环、刘海入口等只用于历史追溯，不是发布真源。</p>
+      </div>
+      <nav class="switcher" aria-label="预览场景">
+        <button class="active" data-canvas="desktop">主窗口</button>
+        <button data-canvas="popover">单屏入口</button>
+        <button data-canvas="settings">设置</button>
+        <button data-canvas="share">分享图</button>
+        <button data-canvas="admin">补发设备码</button>
+      </nav>
+    </header>
+
+    <section class="canvas active" id="desktop">
+      <div class="mac-window">
+        <div class="titlebar">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="window-title">TokenFleet</div>
+          <div class="title-actions"><span class="ghost-icon">↻</span></div>
+        </div>
+        <div class="app-shell">
+          <aside class="sidebar">
+            <div class="brand">
+              <span class="mark"><i></i><i></i><i></i></span>
+              <div><div class="brand-name">TokenFleet</div><div class="brand-tag">每天一个亿</div></div>
+            </div>
+            <nav class="side-nav">
+              <button class="active" data-page="today"><span class="nav-icon">01</span><span>今日消耗</span></button>
+              <button data-page="history"><span class="nav-icon">30</span><span>历史活动</span></button>
+              <button data-page="community"><span class="nav-icon">↗</span><span>社群排行</span></button>
+            </nav>
+            <div class="side-foot">
+              <b>设置</b> · 显示、采集、社群与更新
+              <div class="privacy-mini"><b>✓</b><span>支持日志仅在本机只读处理；提示词、回复和代码不进入统计或上传。</span></div>
+            </div>
+          </aside>
+          <section class="content">
+            <div class="page active" id="today">
+              <header class="page-head"><div><h2>今日消耗</h2><p>今天的 Token 使用节奏</p></div><span class="sync-pill"><i></i> 已同步 · 19:08</span></header>
+              <article class="hero">
+                <div class="goal-dial"><div class="goal-dial-copy"><span class="mini-signal"><i></i><i></i><i></i></span><strong>7.04 亿</strong><small>目标 704%</small></div></div>
+                <div>
+                  <div class="hero-label">今天已记录</div>
+                  <div class="token-value" style="font-size:32px;margin-bottom:12px">每天一个亿</div>
+                  <div class="goal-meta"><span>每日目标 1 亿</span><span>704%</span></div>
+                  <p class="hero-caption">信号环只填满一次；超过目标后保留真实倍数，不再显示“第 8 圈”。</p>
+                  <div class="insight-strip"><span class="insight-pill">相对节奏　<b>比近 7 个活跃日高 42%</b></span><span class="insight-pill">价格覆盖　<b>96%</b></span><span class="insight-pill">数据更新　<b>2 分钟前</b></span></div>
+                </div>
+                <aside class="signal-card"><small>连续活跃</small><div class="streak">8 <b>天</b></div><small>今天已续上</small><div class="signal-row"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></aside>
+              </article>
+              <div class="grid-2">
+                <article class="panel"><div class="panel-head"><h3>今日客户端</h3><span>按本地可靠字段</span></div><div class="bar-row"><b>Codex</b><div class="mini-track"><i style="width:100%"></i></div><em>7.04 亿</em></div><div class="bar-row"><b>Claude Code</b><div class="mini-track"><i style="width:0"></i></div><em>0</em></div></article>
+                <article class="panel"><div class="panel-head"><h3>今日模型</h3><span>Top 3</span></div><div class="bar-row"><b>GPT-5.6 Sol</b><div class="mini-track"><i style="width:76%"></i></div><em>5.35 亿</em></div><div class="bar-row"><b>GPT-5.6 Terra</b><div class="mini-track"><i style="width:24%"></i></div><em>1.69 亿</em></div></article>
+              </div>
+              <article class="panel agent-panel"><div class="panel-head"><div><h3>AI 使用节奏</h3><span>保留原 Agent 活跃能力，只改表达</span></div><div class="agent-head-actions"><b class="on">今日</b><b>近 7 日</b><b>全部</b><b>Codex</b><b>Claude</b></div></div><div class="agent-metrics"><div><span>Agent Token</span><strong>7.04 亿</strong></div><div><span>记录小时</span><strong>11 / 24</strong></div><div><span>近 7 日均</span><strong>2.31 亿</strong></div><div><span>缓存命中率</span><strong>82%</strong></div></div><div class="hourly-chart"><i style="height:4%"></i><i style="height:4%"></i><i style="height:4%"></i><i style="height:4%"></i><i style="height:8%"></i><i style="height:16%"></i><i style="height:34%"></i><i style="height:57%"></i><i style="height:31%"></i><i style="height:14%"></i><i style="height:22%"></i><i style="height:48%"></i><i style="height:73%"></i><i style="height:91%"></i><i style="height:64%"></i><i style="height:29%"></i><i style="height:18%"></i><i style="height:42%"></i><i style="height:78%"></i><i style="height:100%"></i><i style="height:69%"></i><i style="height:37%"></i><i style="height:18%"></i><i style="height:7%"></i></div><div class="hourly-axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div></article>
+              <div class="metrics"><div class="metric"><span>API 标准价估算</span><strong>$1,790.00</strong><small>示例 · 覆盖 96%，不等于账单</small></div><div class="metric"><span>本月日均</span><strong>2.31 亿</strong><small>按活跃日</small></div><div class="metric"><span>累计 Token</span><strong>28.4 亿</strong><small>本机记录</small></div><div class="metric"><span>活跃天数</span><strong>16 天</strong><small>历史累计</small></div></div>
+            </div>
+
+            <div class="page" id="history">
+              <header class="page-head"><div><h2>历史活动</h2><p>长期节奏和所有历史记录</p></div><span class="sync-pill"><i></i> 连续活跃 8 天</span></header>
+              <article class="panel"><div class="panel-head"><h3>近 8 个月活动</h3><span>颜色越深，用量越高</span></div><div class="activity">
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+              </div><div class="metrics"><div class="metric"><span>当前连续</span><strong>8 天</strong></div><div class="metric"><span>最长连续</span><strong>12 天</strong></div><div class="metric"><span>活跃天数</span><strong>16 天</strong></div><div class="metric"><span>费用覆盖</span><strong>96%</strong><small>其余暂未估算</small></div></div></article>
+              <article class="panel" style="margin-top:18px"><div class="panel-head"><h3>全部明细</h3><span>API 标准价估算 · 示例</span></div><div class="table"><div class="tr head"><span>日期</span><span>Token 消耗</span><span>估算费用</span><span>工具</span></div><div class="tr"><span>8 月 13 日</span><b>7.04 亿</b><span>$1,790.00 · 96%</span><span>Codex</span></div><div class="tr"><span>8 月 12 日</span><b>2.83 亿</b><span>$640.00 · 100%</span><span>Codex · Claude</span></div><div class="tr"><span>8 月 11 日</span><b>1.26 亿</b><span>暂未估算</span><span>Codex</span></div></div></article>
+            </div>
+
+            <div class="page" id="community">
+              <header class="page-head"><div><h2>社群排行</h2><p>和一群人一起，看见进步的速度</p></div><span class="sync-pill"><i></i> 已连接</span></header>
+              <div class="community-hero">
+                <article class="rank-card"><p class="eyebrow" style="color:#a8e7bd">COMMUNITY · 19:08 更新</p><h3>今天第 8 / 126 名</h3><p>超过 94% 参榜用户 · 主力客户端 Codex。公开榜只展示昵称与聚合用量，不上传内容。</p><button class="primary light">打开社群排行 ↗</button></article>
+                <div class="status-list"><div class="status-item"><span>自动同步</span><b>已开启</b></div><div class="status-item"><span>上次同步</span><b>19:08</b></div><div class="status-item"><span>连续活跃</span><b>8 天</b></div><div class="status-item"><span>登记设备</span><b>1 台</b></div></div>
+              </div>
+              <article class="panel" style="margin-top:18px"><div class="panel-head"><h3>公开与同步边界</h3><span>最小必要数据</span></div><div class="privacy"><div><b>公开</b>昵称、排名、聚合 Token、工具、模型和日趋势</div><div><b>不上传</b>提示词、回复、代码、文件、项目路径和会话正文</div><div><b>本机保存</b>设备凭据仅保存在 macOS 钥匙串</div></div></article>
+            </div>
+
+            <div class="page" id="settings-page">
+              <header class="page-head"><div><h2>设置</h2><p>显示、采集、社群与可信更新</p></div></header>
+              <div class="settings-layout"><nav class="settings-nav"><button class="active">显示</button><button>统计与采集</button><button>社群</button><button>系统与更新</button></nav><div><article class="setting-group"><h3>菜单栏与窗口</h3><div class="setting-line"><div><b>默认入口</b><small>单屏使用系统右侧紧凑图标</small></div><div class="segmented"><i class="on">紧凑</i><i>刘海旁</i></div></div><div class="setting-line"><div><b>主窗口找回</b><small>从应用程序或 Spotlight 再次打开</small></div><b>随时可用</b></div></article><article class="setting-group"><h3>九套主题</h3><small style="color:var(--muted)">主题控制界面；工具颜色保持固定，避免图表含义变化。</small><div class="theme-grid"><i class="theme-chip on" style="--swatch:#20a85a">青绿</i><i class="theme-chip" style="--swatch:#0ea5e9">海蓝</i><i class="theme-chip" style="--swatch:#10a3a3">信号青</i><i class="theme-chip" style="--swatch:#4258d0">靛蓝</i><i class="theme-chip" style="--swatch:#8b5cf6">紫藤</i><i class="theme-chip" style="--swatch:#db4f86">玫瑰</i><i class="theme-chip" style="--swatch:#e26f55">珊瑚</i><i class="theme-chip" style="--swatch:#f59e0b">琥珀</i><i class="theme-chip" style="--swatch:#52525b">石墨</i></div><div class="setting-line"><div><b>语言</b></div><div class="segmented"><i class="on">简体中文</i><i>English</i><i>繁體</i></div></div></article></div></div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="canvas" id="popover">
+      <div class="mock-desktop">
+        <div class="menubar"><div class="menu-left"><b>●</b><b>ChatGPT</b><span>文件</span><span>编辑</span><span>视图</span><span>窗口</span><span>帮助</span></div><div class="menu-right"><span class="menu-highlight"><span class="menu-mark"><i></i><i></i><i></i></span></span><span>✓</span><span>◉ 11</span><span>▮</span><span>⌁</span><span>77%</span><span>8月13日 周四</span></div></div>
+        <div class="wallpaper"></div>
+        <div class="popover">
+          <div class="pop-head"><span class="mark"><i></i><i></i><i></i></span><div><div class="pop-title">TokenFleet</div><div class="pop-tag">每天一个亿</div></div><div class="pop-status">● 已同步</div></div>
+          <div class="pop-summary"><div class="goal-dial"><div class="goal-dial-copy"><span class="mini-signal"><i></i><i></i><i></i></span><strong>7.04 亿</strong><small>目标 704%</small></div></div><div><div class="pop-value" style="margin:0 0 8px;font-size:22px">今天已记录</div><div class="pop-goal"><span>每日目标</span><b>1 亿</b></div><p class="hero-caption">分段信号环只填满一次</p></div></div>
+          <div class="pop-tools"><div class="bar-row"><b>Codex</b><div class="mini-track"><i style="width:100%"></i></div><em>7.04亿</em></div><div class="bar-row"><b>Claude</b><div class="mini-track"><i style="width:0"></i></div><em>0</em></div></div>
+          <div class="pop-insights"><div><span>相对节奏</span><b>比近 7 个活跃日高 42%</b></div><div><span>Agent 额度</span><b>5 小时剩余 73%</b></div></div>
+          <button class="community-button">社群排行　↗</button>
+          <div class="pop-actions"><button>主窗口</button><button>刷新</button><button>设置</button><button>退出</button></div>
+        </div>
+        <aside class="callout"><strong>单屏默认行为</strong>入口留在系统菜单栏右侧，只显示紧凑单色标识；不再把 88pt 胶囊放到屏幕中段。</aside>
+      </div>
+    </section>
+
+    <section class="canvas" id="settings">
+      <div class="mac-window">
+        <div class="titlebar"><div class="traffic"><i></i><i></i><i></i></div><div class="window-title">TokenFleet 设置</div><div></div></div>
+        <div class="content" style="height:calc(100% - 46px)">
+          <header class="page-head"><div><h2>设置</h2><p>保持能力不变，改成四组，窄窗口自动单列</p></div><span class="sync-pill"><i></i> 本地统计 + 社群日汇总</span></header>
+          <div class="settings-layout"><nav class="settings-nav"><button class="active">显示</button><button>统计与采集</button><button>社群</button><button>系统与更新</button></nav><div><article class="setting-group"><h3>显示</h3><div class="setting-line"><div><b>菜单栏入口</b><small>紧凑图标是单屏默认；刘海旁由用户主动选择</small></div><div class="segmented"><i class="on">紧凑</i><i>刘海旁</i></div></div><div class="setting-line"><div><b>菜单栏显示今日 Token</b><small>菜单栏空间充足时可开启</small></div><span class="toggle" style="background:#cbd4cc"></span></div><div class="setting-line"><div><b>主窗口找回</b><small>从应用程序或 Spotlight 再次打开</small></div><b>随时可用</b></div><div class="theme-grid"><i class="theme-chip on" style="--swatch:#20a85a">青绿</i><i class="theme-chip" style="--swatch:#0ea5e9">海蓝</i><i class="theme-chip" style="--swatch:#10a3a3">信号青</i><i class="theme-chip" style="--swatch:#4258d0">靛蓝</i><i class="theme-chip" style="--swatch:#8b5cf6">紫藤</i><i class="theme-chip" style="--swatch:#db4f86">玫瑰</i><i class="theme-chip" style="--swatch:#e26f55">珊瑚</i><i class="theme-chip" style="--swatch:#f59e0b">琥珀</i><i class="theme-chip" style="--swatch:#52525b">石墨</i></div></article><article class="setting-group"><h3>每日目标</h3><div class="setting-line"><div><b>每天一个亿</b><small>目标仍保留；超过后显示真实百分比，不计算圈数</small></div><b>1 亿 Token</b></div></article><article class="setting-group"><h3>可信更新</h3><div class="setting-line"><div><b>beta 更新通道</b><small>只接收同 Bundle ID、同 Team ID、已公证的 DMG</small></div><span class="toggle"></span></div><div class="setting-line"><div><b>当前状态</b><small>Developer ID 与更新源尚待 beta.8 发布链完成</small></div><b style="color:var(--amber)">待配置</b></div></article></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="canvas" id="share">
+      <div class="poster-stage">
+        <article class="poster"><div class="poster-brand"><span class="mark"><i></i><i></i><i></i></span><div><b>TokenFleet</b><div class="brand-tag">每天一个亿</div></div></div><h2>今天已记录</h2><div class="poster-value">7.04 亿</div><div class="poster-track"><i></i></div><div class="poster-meta"><span>每日目标 1 亿</span><b>704%</b></div><div class="poster-grid"><div><span>连续活跃</span><strong>8 天</strong></div><div><span>API 标准价估算</span><strong>$1,790.00</strong></div><div><span>相对节奏</span><strong>较近 7 个活跃日 +42%</strong></div><div><span>今天社群排名</span><strong>#8 / 126</strong></div></div><footer class="poster-foot"><span>价格覆盖 96% · 内容不进入统计或上传</span><b>TokenFleet</b></footer></article>
+        <aside class="notes"><p class="eyebrow">SHARE CARD</p><h3>分享图也做中度改版</h3><ul><li><b>能力保全：</b>今日成绩、昨日成绩、昨日节奏三种分享全部保留。</li><li><b>保留熟悉感：</b>浅色、绿色、“每天一个亿”和 Token 大数字全部保留。</li><li><b>去掉残留：</b>不再出现多圈健身环或 `tokenstep.app`，只使用 TokenFleet 标识。</li><li><b>口径清楚：</b>费用明确是 API 标准价估算，并同时显示覆盖率，不冒充真实账单。</li><li><b>错误可诊断：</b>渲染、编码、复制、保存四个阶段分别报错。</li></ul></aside>
+      </div>
+    </section>
+
+    <section class="canvas" id="admin">
+      <div class="admin-window">
+        <header class="admin-head"><div><p class="eyebrow">MEMBERS / DEVICES</p><h2>成员与设备</h2></div><button class="primary">新建成员</button></header>
+        <div class="admin-table"><div class="admin-row head"><span>成员</span><span>设备</span><span>最近同步</span><span>操作</span></div><div class="admin-row"><b>鑫仔</b><span>0 台 · 未绑定</span><span>—</span><button>补发设备码</button></div><div class="admin-row"><b>蓝鲸</b><span>2 台 · 正常</span><span>19:06</span><button class="add">添加新设备</button></div><div class="admin-row"><b>云帆</b><span>1 台 · 正常</span><span>18:42</span><button class="add">添加新设备</button></div></div>
+        <div class="dialog-backdrop"><section class="dialog"><p class="eyebrow">REISSUE DEVICE CODE</p><h3>给“鑫仔”补发设备码</h3><p>这是原成员的设备码，不会创建第二个人。</p><div class="confirm-list"><div><span>成员</span><b>鑫仔</b></div><div><span>当前设备</span><b>0 台</b></div><div><span>有效期</span><b>60 分钟</b></div><div><span>批次名额</span><b>不占用</b></div><div><span>成员数量</span><b>不增加</b></div></div><div class="safe-note">生成后旧的未使用有效码立即失效，只保留一个有效未用码；已使用码和审计记录不改变。</div><div class="dialog-actions"><button>取消</button><button class="primary">确认补发</button></div></section></div>
+      </div>
+    </section>
+  </main>
+  <script>
+    function activateCanvas(canvasID) {
+      const target = document.getElementById(canvasID);
+      if (!target || !target.classList.contains('canvas')) return;
+      document.querySelectorAll('[data-canvas]').forEach(item => item.classList.toggle('active', item.dataset.canvas === canvasID));
+      document.querySelectorAll('.canvas').forEach(canvas => canvas.classList.toggle('active', canvas === target));
+    }
+
+    function activatePage(pageID) {
+      const target = document.getElementById(pageID);
+      if (!target || !target.classList.contains('page')) return;
+      document.querySelectorAll('[data-page]').forEach(item => item.classList.toggle('active', item.dataset.page === pageID));
+      document.querySelectorAll('.page').forEach(page => page.classList.toggle('active', page === target));
+    }
+
+    document.querySelectorAll('[data-canvas]').forEach(button => {
+      button.addEventListener('click', () => {
+        activateCanvas(button.dataset.canvas);
+        history.replaceState(null, '', `#${button.dataset.canvas}`);
+      });
+    });
+    document.querySelectorAll('[data-page]').forEach(button => {
+      button.addEventListener('click', () => {
+        activatePage(button.dataset.page);
+      });
+    });
+
+    const initialCanvas = location.hash.slice(1);
+    if (initialCanvas) {
+      activateCanvas(initialCanvas);
+      requestAnimationFrame(() => scrollTo(0, 0));
+    }
+  </script>
+</body>
+</html>

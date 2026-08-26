@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct PopoverFooterView: View {
@@ -6,97 +5,59 @@ struct PopoverFooterView: View {
     @Environment(\.isScreenshotRendering) private var isScreenshotRendering
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Label(L("本地统计"), systemImage: "checkmark.shield.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(appState.settings.refreshIntervalSeconds == 0 ? L("手动刷新") : LFormat("刷新 %@", TokenStepFormat.intervalLabel(appState.settings.refreshIntervalSeconds)))
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 7) {
+            PopoverFooterButton(title: L("今日")) {
+                MainWindowPresenter.shared.show(appState: appState, section: .today)
             }
 
-            if appState.communityLeaderboardURL(
-                isScreenshotRendering: isScreenshotRendering
-            ) != nil {
-                Button {
-                    appState.openCommunityLeaderboard(
-                        isScreenshotRendering: isScreenshotRendering
-                    )
-                } label: {
-                    HStack(spacing: 9) {
-                        Image(systemName: "person.3.sequence.fill")
-                        Text(L("打开社群榜"))
-                        Spacer()
-                        Image(systemName: "arrow.up.right")
-                    }
-                    .font(.callout.weight(.heavy))
-                    .foregroundStyle(Color.tokenGreenDark)
-                    .padding(.horizontal, 15)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 42)
-                    .background(Color.tokenMint.opacity(0.24), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.tokenGreen.opacity(0.18))
-                    )
-                }
-                .buttonStyle(.plain)
-                .help(L("打开社群榜"))
-            }
-
-            HStack(spacing: 10) {
-                Button {
-                    MainWindowPresenter.shared.show(appState: appState)
-                } label: {
-                    Label(L("打开仪表盘"), systemImage: "arrow.up.right")
-                        .font(.system(size: 16, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .background(Color.tokenGreen, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                        .shadow(color: Color.tokenGreenDark.opacity(0.14), radius: 10, x: 0, y: 6)
-                }
-                .buttonStyle(.plain)
-                .help(L("打开仪表盘"))
-
-                PopoverActionButton(title: L("刷新"), symbol: "arrow.clockwise") {
-                    appState.refresh()
-                }
-                .disabled(appState.isRefreshing)
-
-                PopoverActionButton(title: L("设置"), symbol: "gearshape") {
+            PopoverFooterButton(title: L("社群榜单"), prominent: true) {
+                if appState.isCommunitySyncEnrollmentCompatible {
+                    MainWindowPresenter.shared.show(appState: appState, section: .community)
+                } else {
                     SettingsWindowPresenter.shared.show(appState: appState)
                 }
-
-                PopoverActionButton(title: L("退出"), symbol: "power") {
-                    NSApplication.shared.terminate(nil)
-                }
             }
+
+            PopoverFooterButton(title: appState.isRefreshing ? L("同步中") : L("刷新")) {
+                appState.refresh()
+            }
+            .disabled(appState.isRefreshing)
+
+            PopoverFooterButton(title: L("设置")) {
+                SettingsWindowPresenter.shared.show(appState: appState)
+            }
+        }
+        // Exported review images should keep the same colors as the real app,
+        // while remaining inert if a hosted screenshot view is ever displayed.
+        .allowsHitTesting(!isScreenshotRendering)
+        .padding(11)
+        .background(Color.tokenCanvas.opacity(0.62))
+        .overlay(alignment: .top) {
+            Rectangle().fill(Color.black.opacity(0.08)).frame(height: 1)
         }
     }
 }
 
-private struct PopoverActionButton: View {
+private struct PopoverFooterButton: View {
     var title: String
-    var symbol: String
+    var prominent = false
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 3) {
-                Image(systemName: symbol)
-                    .font(.system(size: 17, weight: .heavy))
-                    .frame(height: 20)
-                Text(title)
-                    .font(.caption2.weight(.heavy))
-            }
-            .foregroundStyle(Color.tokenInk.opacity(0.78))
-            .frame(width: 54, height: 54)
-            .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(Color.black.opacity(0.055)))
-            .shadow(color: Color.black.opacity(0.045), radius: 10, x: 0, y: 6)
+            Text(title)
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(prominent ? Color.white : Color.tokenInk.opacity(0.76))
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
+                .background(
+                    prominent ? Color.tokenGreen : Color.tokenSurface,
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(prominent ? Color.tokenGreen : Color.black.opacity(0.08))
+                )
         }
         .buttonStyle(.plain)
         .help(title)

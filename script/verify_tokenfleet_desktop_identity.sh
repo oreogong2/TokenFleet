@@ -132,12 +132,15 @@ assert_equal "$TEST_VERSION" "$(/usr/libexec/PlistBuddy -c 'Print TokenFleetRele
 assert_equal "0.0.1" "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$INFO_PLIST")" "CFBundleShortVersionString"
 
 APP_PATHS="$ROOT_DIR/TokenStepSwift/Sources/TokenStepSwift/Support/AppPaths.swift"
+APP_SOURCE="$ROOT_DIR/TokenStepSwift/Sources/TokenStepSwift/App/TokenStepApp.swift"
 AUTOSTART="$ROOT_DIR/TokenStepSwift/Sources/TokenStepSwift/Services/AutostartService.swift"
 LIFECYCLE="$ROOT_DIR/TokenStepSwift/Sources/TokenStepSwift/Support/LifecycleLogger.swift"
+MAIN_WINDOW_PRESENTER="$ROOT_DIR/TokenStepSwift/Sources/TokenStepSwift/Support/MainWindowPresenter.swift"
 SINGLE_INSTANCE="$ROOT_DIR/TokenStepSwift/Sources/TokenStepSwift/Support/SingleInstanceGuard.swift"
 UPDATER="$ROOT_DIR/TokenStepSwift/Sources/TokenStepSwift/Services/UpdateService.swift"
 HELPER="$ROOT_DIR/TokenStepSwift/Sources/TokenStepHelper/main.swift"
 POPOVER_FOOTER="$ROOT_DIR/TokenStepSwift/Sources/TokenStepSwift/Views/Popover/PopoverFooterView.swift"
+COMMUNITY_VIEW="$ROOT_DIR/TokenStepSwift/Sources/TokenStepSwift/Views/CommunityView.swift"
 BUILD_SCRIPT="$ROOT_DIR/script/build_swiftui_and_run.sh"
 RELEASE_SCRIPT="$ROOT_DIR/script/package_release.sh"
 RELEASE_WORKFLOW="$ROOT_DIR/.github/workflows/release.yml"
@@ -147,10 +150,17 @@ SOURCE_SIGNING="$ROOT_DIR/script/lib/tokenfleet_source_signing.sh"
 assert_source_has "$APP_PATHS" 'appendingPathComponent("TokenFleet", isDirectory: true)'
 assert_source_has "$APP_PATHS" 'TOKENFLEET_TEST_APP_SUPPORT_ROOT'
 assert_source_lacks "$APP_PATHS" 'appendingPathComponent("TokenStep", isDirectory: true)'
+assert_source_has "$APP_SOURCE" 'func applicationShouldHandleReopen('
+assert_source_has "$APP_SOURCE" 'TokenStepReopenObserver.shared.request(reason: reason)'
+assert_source_has "$APP_SOURCE" 'reopenHandler("application_reopen")'
 assert_source_has "$AUTOSTART" 'com.lingdong.TokenFleet'
 assert_source_lacks "$AUTOSTART" 'com.huangshu.TokenStep.login'
 assert_source_has "$LIFECYCLE" '.reopenRequested'
+assert_source_has "$LIFECYCLE" 'func request(reason: String)'
+assert_source_has "$LIFECYCLE" 'pendingReason = reason'
+assert_source_has "$LIFECYCLE" 'MainWindowPresenter.shared.show(appState: appState)'
 assert_source_lacks "$LIFECYCLE" 'com.huangshu.TokenStep.reopenRequested'
+assert_source_has "$MAIN_WINDOW_PRESENTER" 'window.deminiaturize(nil)'
 assert_source_has "$SINGLE_INSTANCE" 'TokenFleet.lock'
 assert_source_lacks "$SINGLE_INSTANCE" 'TokenStep.lock'
 assert_source_has "$UPDATER" 'TokenFleetUpdateAPIURL'
@@ -163,8 +173,10 @@ assert_source_has "$HELPER" '/Applications/TokenFleet.app'
 assert_source_has "$HELPER" '"-x", "TokenFleet"'
 assert_source_lacks "$HELPER" '/Applications/TokenStep.app'
 assert_source_lacks "$HELPER" '"-x", "TokenStepSwift"'
-assert_source_has "$POPOVER_FOOTER" 'appState.openCommunityLeaderboard('
+assert_source_has "$POPOVER_FOOTER" 'MainWindowPresenter.shared.show(appState: appState, section: .community)'
 assert_source_has "$POPOVER_FOOTER" '@Environment(\.isScreenshotRendering)'
+assert_source_has "$COMMUNITY_VIEW" 'appState.openCommunityLeaderboard(isScreenshotRendering: isScreenshotRendering)'
+assert_source_has "$COMMUNITY_VIEW" '@Environment(\.isScreenshotRendering)'
 assert_source_lacks "$BUILD_SCRIPT" 'pkill -f "TokenUsageMenu.py"'
 assert_source_lacks "$BUILD_SCRIPT" 'pkill -x "TokenStepSwift"'
 assert_source_lacks "$RELEASE_SCRIPT" 'rm -rf "$RELEASE_DIR"'

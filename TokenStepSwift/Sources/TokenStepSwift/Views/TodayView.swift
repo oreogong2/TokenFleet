@@ -2,56 +2,70 @@ import SwiftUI
 
 struct TodayView: View {
     @EnvironmentObject private var appState: AppState
+    var toolExpansionRequest: Int = 0
 
     var body: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 16) {
             hero
             todayBreakdownStrip
             TodayAgentWorkCard()
-            metricStrip
         }
     }
 
     private var hero: some View {
-        let progress = min(max(appState.progress, 0), 1)
-        let percent = TokenStepFormat.percent(appState.progress * 100)
+        let lap = appState.todayLap
         return TokenCard {
-            HStack(alignment: .center, spacing: 34) {
-                ZStack {
-                    ProgressRingView(progress: progress, lineWidth: 20, color: .tokenGreenDark)
-                    VStack(spacing: 6) {
-                        Text(TokenStepFormat.tokens(appState.today.totalTokens))
-                            .font(.system(size: 42, weight: .heavy, design: .rounded))
-                            .foregroundStyle(Color.tokenInk)
-                            .minimumScaleFactor(0.42)
-                            .lineLimit(1)
-                        Text(LFormat("目标 %@", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
-                            .font(.headline.weight(.bold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(width: 160)
-                }
-                .frame(width: 204, height: 204)
+            HStack(alignment: .center, spacing: 22) {
+                TokenFleetGoalDial(
+                    tokens: appState.today.totalTokens,
+                    goal: appState.settings.dailyGoalTokens,
+                    size: 145
+                )
+                .frame(width: 165)
 
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(L("今日目标进度"))
-                            .font(.title3.weight(.heavy))
-                            .foregroundStyle(Color.tokenInk)
-                        Text(percent)
-                            .font(.system(size: 44, weight: .heavy, design: .rounded))
-                            .foregroundStyle(Color.tokenGreenDark)
-                            .monospacedDigit()
-                    }
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(lap.lapStatusText)
+                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.tokenGreenDark)
+                        .monospacedDigit()
 
-                    ProgressView(value: progress)
-                        .tint(Color.tokenGreenDark)
-                        .frame(maxWidth: 360)
+                    Text(TokenStepFormat.tokens(appState.today.totalTokens))
+                        .font(.system(size: 43, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.tokenInk)
+                        .monospacedDigit()
+                        .minimumScaleFactor(0.62)
+                        .lineLimit(1)
 
-                    HStack(spacing: 10) {
-                        MetricPill(label: L("每日目标"), value: TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true))
-                        MetricPill(label: L("消耗金额"), value: TokenStepFormat.money(appState.today.cost))
-                        MetricPill(label: L("本月均值"), value: TokenStepFormat.tokens(appState.monthAverage, compact: true))
+                    Text(
+                        "\(lap.perLapGoalText) · "
+                            + LFormat("今日真实进度 %@", TokenStepFormat.percent(appState.progress * 100))
+                    )
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(.secondary)
+
+                    LazyVGrid(
+                        columns: [GridItem(.flexible()), GridItem(.flexible())],
+                        spacing: 7
+                    ) {
+                        TodayHeroMetric(
+                            label: L("API 标准价估算"),
+                            value: TokenStepFormat.estimatedMoney(
+                                appState.today.cost,
+                                coverage: appState.today.pricingCoverage
+                            )
+                        )
+                        TodayHeroMetric(
+                            label: L("可估价 Token"),
+                            value: TokenStepFormat.pricingCoverage(appState.today.pricingCoverage)
+                        )
+                        TodayHeroMetric(
+                            label: L("连续活跃"),
+                            value: localizedStreakDays(
+                                days: appState.activeStreak.days,
+                                isLowerBound: appState.activeStreak.isLowerBound
+                            )
+                        )
+                        TodayHeroMetric(label: L("社群排名"), value: communityRankValue)
                     }
                 }
 
@@ -60,93 +74,102 @@ struct TodayView: View {
         }
     }
 
-    private var metricStrip: some View {
-        HStack(spacing: 18) {
-            CompactMetricCard(label: L("累计 Token 消耗"), value: TokenStepFormat.tokens(appState.snapshot.totals.tokens), detail: L("所有本机记录"))
-            CompactMetricCard(label: L("活跃天数"), value: localizedDays(appState.snapshot.totals.activeDays), detail: L("有 AI 使用的日期"))
-            CompactMetricCard(label: L("达标天数"), value: localizedDays(appState.goalDays), detail: L("达到每日目标"))
+    @ViewBuilder
+    private var pricingDetail: some View {
+        if let priced = appState.today.pricedTokens,
+           let unpriced = appState.today.unpricedTokens,
+           let version = appState.today.pricingVersion {
+            Text(
+                LFormat(
+                    "已计价 %@ · 未计价 %@ · %@",
+                    TokenStepFormat.tokens(priced, compact: true),
+                    TokenStepFormat.tokens(unpriced, compact: true),
+                    version
+                )
+            )
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
         }
     }
 
     private var todayBreakdownStrip: some View {
-        HStack(alignment: .top, spacing: 22) {
-            TodayBreakdownCard(title: L("今日客户端"), rows: todayToolRows, maxRows: 3)
-            TodayBreakdownCard(title: L("今日模型"), rows: todayModelRows, maxRows: 4)
+        HStack(alignment: .top, spacing: 12) {
+            TodayBreakdownCard(title: L("今日模型消耗"), rows: todayModelRows)
+            TodayBreakdownCard(
+                title: L("今日工具消耗"),
+                rows: todayToolRows,
+                expansionRequest: toolExpansionRequest
+            )
         }
-    }
-
-    private func localizedDays(_ count: Int) -> String {
-        TokenStepLocalization.language == .en ? "\(count)d" : "\(count) 天"
     }
 
     private var todayToolRows: [TodayBreakdownRow] {
         let total = appState.today.totalTokens
         guard total > 0 else { return [] }
-        let primaryTools = ["Codex", "Claude Code"]
-        let primaryRows = primaryTools.map { name in
+        return orderedToolEntries(appState.today.tools).map { name, tokens in
             TodayBreakdownRow(
                 name: name,
-                tokens: appState.today.tools[name] ?? 0,
-                percent: Double(appState.today.tools[name] ?? 0) * 100 / Double(total),
+                tokens: tokens,
+                percent: Double(tokens) * 100 / Double(total),
                 color: tokenToolColor(name)
             )
         }
-        let extraRows = appState.today.tools
-            .filter { !primaryTools.contains($0.key) && $0.value > 0 }
-            .sorted { $0.value > $1.value }
-            .map { name, tokens in
-                TodayBreakdownRow(
-                    name: name,
-                    tokens: tokens,
-                    percent: Double(tokens) * 100 / Double(total),
-                    color: tokenToolColor(name)
-                )
-            }
-        return primaryRows + extraRows
     }
 
     private var todayModelRows: [TodayBreakdownRow] {
-        breakdownRows(from: appState.today.models) { _ in nil }
+        breakdownRows(from: appState.today.models)
     }
 
-    private func breakdownRows(from values: [String: Int], color: (String) -> Color?) -> [TodayBreakdownRow] {
+    private func breakdownRows(from values: [String: Int]) -> [TodayBreakdownRow] {
         let total = appState.today.totalTokens
         guard total > 0 else { return [] }
         return values
             .filter { $0.value > 0 }
-            .sorted { $0.value > $1.value }
+            .sorted {
+                if $0.value == $1.value { return $0.key < $1.key }
+                return $0.value > $1.value
+            }
             .map { name, tokens in
                 TodayBreakdownRow(
                     name: name,
                     tokens: tokens,
                     percent: Double(tokens) * 100 / Double(total),
-                    color: color(name)
+                    color: nil
                 )
             }
     }
+
+    private var communityRankValue: String {
+        guard appState.isCommunitySyncEnrollmentCompatible else { return L("未连接") }
+        guard let rank = appState.communityRank?.rank,
+              let total = appState.communityRank?.totalEntries
+        else { return L("等待读取") }
+        return "#\(rank) / \(total)"
+    }
 }
 
-private struct CompactMetricCard: View {
+private struct TodayHeroMetric: View {
     var label: String
     var value: String
-    var detail: String
 
     var body: some View {
-        TokenCard {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(label)
-                    .font(.callout.weight(.bold))
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.system(size: 27, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.tokenInk)
-                    .minimumScaleFactor(0.66)
-                    .lineLimit(1)
-                Text(detail)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline.weight(.heavy))
+                .foregroundStyle(Color.tokenInk)
+                .minimumScaleFactor(0.58)
+                .lineLimit(1)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color.tokenTrack.opacity(0.25),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
     }
 }

@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TokenFleet beta.8 视觉方向对比</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --accent: #20a85a;
+      --accent-deep: #08683a;
+      --accent-soft: #e5f6e9;
+      --ink: #1c2521;
+      --muted: #748079;
+      --line: #dfe5df;
+      --paper: #eef1ec;
+      --surface: #fbfcf9;
+      --amber: #e9a12c;
+      --shadow: 0 20px 52px rgba(23, 43, 32, .12), 0 2px 8px rgba(23, 43, 32, .05);
+      --sans: "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
+      --mono: "SFMono-Regular", "Menlo", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 1180px;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.24) 1px, transparent 1px),
+        linear-gradient(rgba(255,255,255,.24) 1px, transparent 1px),
+        radial-gradient(circle at 12% -8%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 31%),
+        #e9ece7;
+      background-size: 44px 44px, 44px 44px, auto;
+      font-family: var(--sans);
+      font-weight: 550;
+    }
+
+    button { font: inherit; }
+    .board { width: 100%; max-width: 1560px; margin: 0 auto; padding: 30px 28px 54px; }
+    .topline { display: flex; justify-content: space-between; align-items: flex-end; gap: 28px; }
+    .eyebrow { margin: 0 0 6px; color: var(--accent-deep); font: 800 11px/1.2 var(--mono); letter-spacing: .14em; }
+    h1 { margin: 0; font-size: 34px; letter-spacing: -.045em; }
+    .lead { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+    .status-note { padding: 10px 13px; border: 1px solid rgba(28,37,33,.09); border-radius: 13px; background: rgba(255,255,255,.62); color: #5d6962; font-size: 12px; }
+    .status-note b { color: var(--ink); }
+
+    .control-deck {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: center;
+      margin: 22px 0 18px;
+      padding: 13px 15px;
+      border: 1px solid rgba(28,37,33,.10);
+      border-radius: 18px;
+      background: rgba(251,252,249,.82);
+      box-shadow: 0 10px 30px rgba(25,42,33,.06);
+      backdrop-filter: blur(16px);
+    }
+    .surface-tabs, .themes { display: flex; align-items: center; gap: 6px; }
+    .surface-tabs button {
+      border: 0; border-radius: 11px; padding: 9px 14px; color: #647069; background: transparent; cursor: pointer; font-weight: 750;
+    }
+    .surface-tabs button.active { color: white; background: var(--ink); box-shadow: 0 7px 15px rgba(22,31,27,.18); }
+    .themes span { margin-right: 3px; color: var(--muted); font-size: 11px; }
+    .theme-dot { width: 22px; height: 22px; padding: 0; border: 3px solid white; border-radius: 50%; background: var(--swatch); box-shadow: 0 0 0 1px rgba(21,29,25,.14); cursor: pointer; }
+    .theme-dot.active { box-shadow: 0 0 0 2px var(--ink); }
+
+    .comparison-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: start; }
+    .direction {
+      position: relative;
+      padding: 15px;
+      border: 1px solid rgba(28,37,33,.11);
+      border-radius: 22px;
+      background: rgba(252,253,250,.80);
+      transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+    }
+    .direction:hover { transform: translateY(-2px); box-shadow: 0 18px 44px rgba(22,42,31,.09); }
+    .direction.recommended { border-color: color-mix(in srgb, var(--accent) 46%, white); background: color-mix(in srgb, var(--accent-soft) 32%, white); }
+    .direction.selected { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent), 0 20px 46px rgba(22,42,31,.10); }
+    .direction-head { min-height: 94px; display: flex; justify-content: space-between; gap: 14px; padding: 3px 3px 12px; }
+    .direction-kicker { color: var(--muted); font: 800 10px/1.3 var(--mono); letter-spacing: .11em; }
+    .direction h2 { margin: 5px 0 4px; font-size: 21px; letter-spacing: -.035em; }
+    .direction-head p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .badge { height: fit-content; white-space: nowrap; padding: 6px 8px; color: var(--accent-deep); background: var(--accent-soft); border-radius: 999px; font-size: 10px; font-weight: 850; }
+    .badge.reference { color: #6a736e; background: #edf0ed; }
+
+    .mock-window { height: 618px; overflow: hidden; border: 1px solid #d8ded9; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+    .mock-titlebar { height: 34px; display: grid; grid-template-columns: 80px 1fr 80px; align-items: center; padding: 0 11px; border-bottom: 1px solid #e3e8e3; background: #f6f7f4; }
+    .traffic { display: flex; gap: 5px; }
+    .traffic i { width: 8px; height: 8px; border-radius: 50%; background: #ff5f57; }
+    .traffic i:nth-child(2) { background: #febc2e; }
+    .traffic i:nth-child(3) { background: #28c840; }
+    .mock-titlebar b { color: #717b75; text-align: center; font-size: 10px; }
+    .mock-window .surface { display: none; height: calc(100% - 34px); }
+    .mock-window .surface.active { display: block; }
+
+    .mini-sidebar-layout { display: grid; grid-template-columns: 112px 1fr; height: 100%; }
+    .mini-sidebar { display: flex; flex-direction: column; gap: 5px; padding: 16px 9px; background: #f1f3ef; border-right: 1px solid #e0e5e0; }
+    .mini-brand { display: flex; align-items: center; gap: 6px; margin: 0 5px 11px; font-size: 12px; font-weight: 850; }
+    .fleet-mark { display: inline-flex; align-items: end; justify-content: center; gap: 2px; width: 24px; height: 24px; padding: 5px; color: var(--accent); background: white; border: 1px solid color-mix(in srgb, var(--accent) 25%, white); border-radius: 8px; }
+    .fleet-mark i { width: 3px; border-radius: 3px 3px 1px 1px; background: currentColor; }
+    .fleet-mark i:nth-child(1) { height: 6px; opacity: .45; }
+    .fleet-mark i:nth-child(2) { height: 10px; opacity: .72; }
+    .fleet-mark i:nth-child(3) { height: 14px; }
+    .mini-nav { padding: 7px 8px; border-radius: 9px; color: #69736d; font-size: 10px; font-weight: 750; }
+    .mini-nav.active { color: var(--ink); background: white; box-shadow: 0 5px 13px rgba(26,43,33,.06); }
+    .mini-nav.rank { color: var(--accent-deep); }
+    .mini-main { overflow: hidden; padding: 17px; }
+    .page-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 13px; }
+    .page-title h3 { margin: 0; font-size: 18px; letter-spacing: -.04em; }
+    .page-title span { color: #637068; font-size: 9px; }
+    .sync { padding: 5px 7px; border: 1px solid #e0e6e0; border-radius: 999px; background: white; }
+
+    .legacy-hero { display: grid; grid-template-columns: 132px 1fr; gap: 17px; align-items: center; padding: 18px; border: 1px solid #e1e6e1; border-radius: 16px; background: white; }
+    .legacy-ring { position: relative; width: 124px; height: 124px; border-radius: 50%; background: conic-gradient(var(--accent-deep) 0 19%, #e9ecea 19% 100%); }
+    .legacy-ring::before { content: ""; position: absolute; inset: 16px; border-radius: 50%; background: white; }
+    .legacy-ring div { position: absolute; z-index: 1; inset: 0; display: grid; place-content: center; text-align: center; }
+    .legacy-ring strong { font-size: 21px; }
+    .legacy-ring small { margin-top: 3px; color: #7c8680; font-size: 9px; }
+    .big-number { font-size: 39px; font-weight: 900; letter-spacing: -.06em; }
+    .goal-copy { color: var(--accent-deep); font-size: 19px; font-weight: 850; }
+    .subcopy { margin-top: 5px; color: var(--muted); font-size: 10px; }
+
+    .signal-hero { display: grid; grid-template-columns: 130px 1fr; gap: 18px; align-items: center; padding: 18px; border: 1px solid #e1e6e1; border-radius: 17px; background: white; }
+    .signal-ring { position: relative; width: 124px; height: 124px; border-radius: 50%; background: repeating-conic-gradient(from -4deg, var(--accent-deep) 0 7deg, transparent 7deg 11deg); }
+    .signal-ring::before { content: ""; position: absolute; inset: 16px; border-radius: 50%; background: white; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 12%, white); }
+    .signal-ring div { position: absolute; z-index: 1; inset: 0; display: grid; place-content: center; text-align: center; }
+    .signal-ring strong { font-size: 22px; letter-spacing: -.05em; }
+    .signal-ring small { margin-top: 3px; color: var(--accent-deep); font-size: 9px; font-weight: 800; }
+    .metric-line { display: flex; align-items: flex-end; gap: 9px; margin-top: 3px; }
+    .metric-line em { margin-bottom: 7px; color: var(--accent-deep); font-size: 11px; font-style: normal; font-weight: 800; }
+    .compact-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-top: 10px; }
+    .compact-stats div { padding: 9px; border: 1px solid #e4e9e4; border-radius: 10px; background: #fafbf8; }
+    .compact-stats span { display: block; color: var(--muted); font-size: 8px; }
+    .compact-stats b { display: block; margin-top: 4px; font-size: 11px; }
+    .compact-stats b.accent { color: var(--accent-deep); }
+
+    .enhanced-hero { padding: 17px; color: white; border-radius: 17px; background: linear-gradient(135deg, var(--accent-deep), color-mix(in srgb, var(--accent) 78%, #123c32)); overflow: hidden; position: relative; }
+    .enhanced-hero::after { content: ""; position: absolute; right: -32px; top: -52px; width: 168px; height: 168px; border: 24px solid rgba(255,255,255,.07); border-radius: 50%; }
+    .enhanced-top { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 14px; }
+    .enhanced-top .big-number { font-size: 40px; }
+    .enhanced-top small { color: rgba(255,255,255,.66); font-size: 9px; }
+    .mini-signal { display: flex; align-items: end; gap: 3px; height: 25px; margin: 8px 6px 0 0; }
+    .mini-signal i { width: 5px; border-radius: 3px; background: #b7f2cb; }
+    .mini-signal i:nth-child(1) { height: 9px; opacity: .45; }.mini-signal i:nth-child(2) { height: 16px; opacity: .72; }.mini-signal i:nth-child(3) { height: 24px; }
+    .enhanced-stats { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 14px; }
+    .enhanced-stats div { padding: 9px; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; background: rgba(255,255,255,.08); }
+    .enhanced-stats span { display: block; color: rgba(255,255,255,.62); font-size: 8px; }.enhanced-stats b { font-size: 10px; }
+
+    .tool-panel, .chart-panel { margin-top: 10px; padding: 12px; border: 1px solid #e2e7e2; border-radius: 13px; background: white; }
+    .panel-label { display: flex; justify-content: space-between; margin-bottom: 9px; font-size: 9px; }.panel-label span { color: var(--muted); }
+    .tool-row { display: grid; grid-template-columns: 60px 1fr 54px; gap: 6px; align-items: center; margin: 7px 0; font-size: 9px; }
+    .tool-row em { text-align: right; color: #58635d; font-style: normal; }
+    .tool-track { height: 6px; overflow: hidden; border-radius: 99px; background: #e8ebe8; }.tool-track i { display: block; width: var(--value); height: 100%; border-radius: inherit; background: var(--accent); }
+    .spark { height: 62px; display: flex; align-items: end; gap: 5px; padding-top: 7px; border-bottom: 1px solid #e3e7e3; }
+    .spark i { flex: 1; height: var(--h); border-radius: 3px 3px 0 0; background: color-mix(in srgb, var(--accent) 70%, white); }
+
+    .popover-stage { height: 100%; padding: 46px 22px; background: radial-gradient(circle at 50% 10%, rgba(25,35,30,.06), transparent 40%), #eef0ed; }
+    .popover-card { overflow: hidden; border: 1px solid #d8ded8; border-radius: 22px; background: rgba(253,254,251,.97); box-shadow: 0 24px 55px rgba(22,38,29,.16); }
+    .popover-head { display: flex; justify-content: space-between; align-items: center; padding: 13px 16px; border-bottom: 1px solid #e4e8e4; }
+    .popover-brand { display: flex; align-items: center; gap: 8px; }.popover-brand b { font-size: 13px; }.popover-brand small { display: block; color: var(--muted); font-size: 8px; }
+    .popover-body { display: grid; grid-template-columns: 112px 1fr; gap: 15px; align-items: center; padding: 17px; }
+    .popover-card.enhanced .popover-body { grid-template-columns: 1fr; text-align: center; }
+    .popover-card.enhanced .signal-ring { margin: 0 auto; }
+    .popover-card.enhanced .metric-line { justify-content: center; }
+    .popover-tools { padding: 0 17px 12px; }
+    .popover-actions { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; padding: 11px; border-top: 1px solid #e4e8e4; background: #f8f9f6; }
+    .popover-actions button { min-width: 0; border: 1px solid #dce2dc; border-radius: 9px; padding: 8px 3px; color: #515e57; background: white; font-size: 8px; font-weight: 800; }
+    .popover-actions button.rank { color: white; border-color: var(--accent); background: var(--accent); }
+
+    .rank-page { height: 100%; padding: 17px; background: #fbfcf9; }
+    .rank-hero { padding: 18px; border-radius: 17px; color: white; background: var(--ink); }
+    .rank-hero .eyebrow { color: color-mix(in srgb, var(--accent) 60%, white); }
+    .rank-hero h3 { margin: 6px 0 4px; font-size: 23px; }.rank-hero p { margin: 0; color: rgba(255,255,255,.58); font-size: 9px; }
+    .rank-list { margin-top: 10px; overflow: hidden; border: 1px solid #e1e6e1; border-radius: 13px; background: white; }
+    .rank-row { display: grid; grid-template-columns: 32px 1fr 70px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #edf0ed; font-size: 9px; }.rank-row:last-child { border: 0; }
+    .rank-row.me { color: var(--accent-deep); background: var(--accent-soft); font-weight: 850; }.rank-row em { text-align: right; font-style: normal; }
+    .privacy-note { margin-top: 10px; padding: 10px; color: #65716a; background: #f2f4f1; border-radius: 10px; font-size: 8px; line-height: 1.55; }
+
+    .why { min-height: 77px; margin: 12px 2px 0; color: #657169; font-size: 11px; line-height: 1.55; }
+    .why b { color: var(--ink); }
+    .choose { width: 100%; border: 1px solid #d8ded8; border-radius: 12px; padding: 10px; color: #4f5b55; background: white; cursor: pointer; font-weight: 800; }
+    .choose:hover, .direction.selected .choose { color: white; border-color: var(--accent); background: var(--accent); }
+
+    .decision-bar { position: sticky; bottom: 14px; z-index: 5; display: none; align-items: center; justify-content: space-between; gap: 18px; margin-top: 18px; padding: 14px 16px; color: white; border-radius: 16px; background: rgba(24,34,29,.94); box-shadow: 0 20px 52px rgba(17,27,21,.22); backdrop-filter: blur(18px); }
+    .decision-bar.show { display: flex; animation: rise .24s ease both; }
+    .decision-bar p { margin: 0; font-size: 13px; }.decision-bar small { display: block; margin-top: 3px; color: rgba(255,255,255,.58); font-size: 10px; }
+    .decision-bar button { border: 1px solid rgba(255,255,255,.16); border-radius: 10px; padding: 8px 11px; color: white; background: rgba(255,255,255,.08); cursor: pointer; }
+    @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <header class="topline">
+      <div>
+        <p class="eyebrow">TOKENFLEET · VISUAL DIRECTION REVIEW</p>
+        <h1>beta.8 视觉方向同屏对比</h1>
+        <p class="lead">三版使用同一份示意数据。先看整体感觉，再切换“单屏入口 / 今日主窗口 / 社群排行”。</p>
+      </div>
+      <div class="status-note"><b>只改预览，不改正式 App</b><br>推荐先看中间的 A 版</div>
+    </header>
+
+    <section class="control-deck">
+      <nav class="surface-tabs" aria-label="预览页面">
+        <button class="active" data-surface="popover">单屏入口</button>
+        <button data-surface="today">今日主窗口</button>
+        <button data-surface="rank">社群排行</button>
+      </nav>
+      <div class="themes" aria-label="主题颜色">
+        <span>换个颜色看</span>
+        <button class="theme-dot active" style="--swatch:#20a85a" data-accent="#20a85a" data-deep="#08683a" data-soft="#e5f6e9" aria-label="青绿"></button>
+        <button class="theme-dot" style="--swatch:#168ad4" data-accent="#168ad4" data-deep="#0b5f9a" data-soft="#e4f2fb" aria-label="海蓝"></button>
+        <button class="theme-dot" style="--swatch:#10a3a3" data-accent="#10a3a3" data-deep="#087272" data-soft="#e2f5f4" aria-label="信号青"></button>
+        <button class="theme-dot" style="--swatch:#4a5ed3" data-accent="#4a5ed3" data-deep="#30419d" data-soft="#eaecfb" aria-label="靛蓝"></button>
+        <button class="theme-dot" style="--swatch:#8b5cf6" data-accent="#8b5cf6" data-deep="#6240b5" data-soft="#f0eafd" aria-label="紫藤"></button>
+        <button class="theme-dot" style="--swatch:#d84d82" data-accent="#d84d82" data-deep="#9a3159" data-soft="#fbe8ef" aria-label="玫瑰"></button>
+        <button class="theme-dot" style="--swatch:#de7056" data-accent="#de7056" data-deep="#a44b38" data-soft="#fbeae6" aria-label="珊瑚"></button>
+        <button class="theme-dot" style="--swatch:#e59a1e" data-accent="#e59a1e" data-deep="#a76a08" data-soft="#fcf1dc" aria-label="琥珀"></button>
+        <button class="theme-dot" style="--swatch:#62656b" data-accent="#62656b" data-deep="#3d4045" data-soft="#eeeff0" aria-label="石墨"></button>
+      </div>
+    </section>
+
+    <section class="comparison-grid">
+      <article class="direction" data-choice="beta7">
+        <header class="direction-head"><div><div class="direction-kicker">REFERENCE · BETA.7</div><h2>原版参考</h2><p>熟悉、直接，但圆环和信息表达像旧产品。</p></div><span class="badge reference">只作参照</span></header>
+        <div class="mock-window">
+          <div class="mock-titlebar"><span class="traffic"><i></i><i></i><i></i></span><b>TokenFleet</b></div>
+          <section class="surface active" data-view="popover">
+            <div class="popover-stage"><div class="popover-card">
+              <header class="popover-head"><div class="popover-brand"><span class="fleet-mark"><i></i><i></i><i></i></span><div><b>TokenFleet</b><small>每天一个亿</small></div></div><span class="sync">● 已同步</span></header>
+              <div class="popover-body"><div class="legacy-ring"><div><strong>4.19亿</strong><small>第 5 圈</small></div></div><div><div class="goal-copy">第 5 圈 · 19%</div><div class="big-number">4.19亿</div><div class="subcopy">每圈目标 1 亿</div></div></div>
+              <div class="popover-tools"><div class="tool-row"><b>Codex</b><span class="tool-track"><i style="--value:100%"></i></span><em>4.19亿</em></div><div class="tool-row"><b>Claude</b><span class="tool-track"><i style="--value:0%"></i></span><em>0</em></div></div>
+              <footer class="popover-actions"><button>仪表盘</button><button>刷新</button><button>设置</button></footer>
+            </div></div>
+          </section>
+          <section class="surface" data-view="today"><div class="mini-sidebar-layout"><aside class="mini-sidebar"><div class="mini-brand"><span class="fleet-mark"><i></i><i></i><i></i></span>TokenFleet</div><span class="mini-nav active">今日消耗</span><span class="mini-nav">历史活动</span><span class="mini-nav">隐私</span><span class="mini-nav">设置</span></aside><div class="mini-main"><header class="page-title"><div><h3>今日消耗</h3><span>今天的 Token 使用节奏</span></div><span class="sync">已同步</span></header><div class="legacy-hero"><div class="legacy-ring"><div><strong>4.19亿</strong><small>第 5 圈</small></div></div><div><div class="goal-copy">第 5 圈 · 19%</div><div class="big-number">4.19亿</div><div class="subcopy">消耗金额 $419.00</div></div></div><div class="tool-panel"><div class="panel-label"><b>今日客户端</b><span>今日</span></div><div class="tool-row"><b>Codex</b><span class="tool-track"><i style="--value:100%"></i></span><em>4.19亿</em></div><div class="tool-row"><b>Claude</b><span class="tool-track"><i style="--value:0%"></i></span><em>0</em></div></div><div class="chart-panel"><div class="panel-label"><b>Agent 工作强度</b><span>24 小时</span></div><div class="spark"><i style="--h:17%"></i><i style="--h:38%"></i><i style="--h:70%"></i><i style="--h:48%"></i><i style="--h:82%"></i><i style="--h:42%"></i><i style="--h:63%"></i><i style="--h:31%"></i><i style="--h:76%"></i><i style="--h:54%"></i><i style="--h:22%"></i><i style="--h:8%"></i></div></div></div></div></section>
+          <section class="surface" data-view="rank"><div class="rank-page"><header class="page-title"><div><h3>社群排行</h3><span>beta.7 需要从其他位置进入</span></div></header><div class="privacy-note">当前问题：菜单栏弹窗没有显性入口，主导航也不够直接，因此用户容易以为没有社群榜。</div></div></section>
+        </div>
+        <p class="why"><b>保留价值：</b>结构简单、学习成本最低。<br><b>主要问题：</b>圈数记忆太像步数产品，社群榜不显眼，费用口径也不准确。</p>
+        <button class="choose">我更喜欢原版感觉</button>
+      </article>
+
+      <article class="direction recommended" data-choice="a">
+        <header class="direction-head"><div><div class="direction-kicker">DIRECTION A · CONTINUITY</div><h2>稳妥收敛版</h2><p>保留原布局，只换标识、补能力、减文字。</p></div><span class="badge">我推荐</span></header>
+        <div class="mock-window">
+          <div class="mock-titlebar"><span class="traffic"><i></i><i></i><i></i></span><b>TokenFleet beta.8</b></div>
+          <section class="surface active" data-view="popover">
+            <div class="popover-stage"><div class="popover-card">
+              <header class="popover-head"><div class="popover-brand"><span class="fleet-mark"><i></i><i></i><i></i></span><div><b>TokenFleet</b><small>每天一个亿</small></div></div><span class="sync">● 已同步</span></header>
+              <div class="popover-body"><div class="signal-ring"><div><strong>4.19亿</strong><small>今日信号 419%</small></div></div><div><div class="goal-copy">每天一个亿</div><div class="metric-line"><div class="big-number">4.19亿</div><em>419%</em></div><div class="compact-stats"><div><span>价格估算</span><b>$236.38</b></div><div><span>连续活跃</span><b>44 天</b></div><div><span>相对节奏</span><b class="accent">+18%</b></div></div></div></div>
+              <div class="popover-tools"><div class="tool-row"><b>Codex</b><span class="tool-track"><i style="--value:84.8%"></i></span><em>3.55亿</em></div><div class="tool-row"><b>其他模型</b><span class="tool-track"><i style="--value:15.2%"></i></span><em>0.64亿</em></div></div>
+              <footer class="popover-actions"><button>今日</button><button class="rank">社群榜</button><button>刷新</button><button>设置</button></footer>
+            </div></div>
+          </section>
+          <section class="surface" data-view="today"><div class="mini-sidebar-layout"><aside class="mini-sidebar"><div class="mini-brand"><span class="fleet-mark"><i></i><i></i><i></i></span>TokenFleet</div><span class="mini-nav active">今日消耗</span><span class="mini-nav">历史活动</span><span class="mini-nav rank">社群排行</span><span class="mini-nav">设置</span></aside><div class="mini-main"><header class="page-title"><div><h3>今日消耗</h3><span>今天的 Token 使用节奏</span></div><span class="sync">● 已同步</span></header><div class="signal-hero"><div class="signal-ring"><div><strong>4.19亿</strong><small>今日信号 419%</small></div></div><div><div class="goal-copy">每天一个亿</div><div class="metric-line"><div class="big-number">4.19亿</div><em>419%</em></div><div class="compact-stats"><div><span>API 标准价估算</span><b>$236.38</b></div><div><span>连续活跃</span><b>44 天</b></div><div><span>较近 7 个活跃日</span><b class="accent">+18%</b></div></div></div></div><div class="tool-panel"><div class="panel-label"><b>今日工具与模型</b><span>真实本地字段</span></div><div class="tool-row"><b>Codex</b><span class="tool-track"><i style="--value:84.8%"></i></span><em>3.55亿</em></div><div class="tool-row"><b>其他模型</b><span class="tool-track"><i style="--value:15.2%"></i></span><em>0.64亿</em></div></div><div class="chart-panel"><div class="panel-label"><b>今日时间轨迹</b><span>Token · 非工时</span></div><div class="spark"><i style="--h:17%"></i><i style="--h:38%"></i><i style="--h:70%"></i><i style="--h:48%"></i><i style="--h:82%"></i><i style="--h:42%"></i><i style="--h:63%"></i><i style="--h:31%"></i><i style="--h:76%"></i><i style="--h:54%"></i><i style="--h:22%"></i><i style="--h:8%"></i></div></div></div></div></section>
+          <section class="surface" data-view="rank"><div class="mini-sidebar-layout"><aside class="mini-sidebar"><div class="mini-brand"><span class="fleet-mark"><i></i><i></i><i></i></span>TokenFleet</div><span class="mini-nav">今日消耗</span><span class="mini-nav">历史活动</span><span class="mini-nav active rank">社群排行</span><span class="mini-nav">设置</span></aside><div class="rank-page"><header class="page-title"><div><h3>社群排行</h3><span>显性一级入口</span></div><span class="sync">● 已连接</span></header><div class="rank-hero"><p class="eyebrow">COMMUNITY · TODAY</p><h3>今天第 8 / 126 名</h3><p>超过 94% 参榜用户 · 主力客户端 Codex</p></div><div class="rank-list"><div class="rank-row"><b>1</b><span>蓝鲸</span><em>9.32亿</em></div><div class="rank-row"><b>2</b><span>云帆</span><em>8.74亿</em></div><div class="rank-row me"><b>8</b><span>我 · TokenFleet</span><em>4.19亿</em></div><div class="rank-row"><b>9</b><span>北辰</span><em>3.96亿</em></div></div><div class="privacy-note">只公开昵称、排名和聚合用量；不上传提示词、回复、代码或路径。</div></div></div></section>
+        </div>
+        <p class="why"><b>变化程度：</b>约 20%，最接近你已经熟悉的 App。<br><b>记忆点：</b>分段信号环替代步数圈；“每天一个亿”、浅色与大数字全部保留。</p>
+        <button class="choose">我选 A：稳妥收敛</button>
+      </article>
+
+      <article class="direction" data-choice="b">
+        <header class="direction-head"><div><div class="direction-kicker">DIRECTION B · LIGHT UPGRADE</div><h2>轻度增强版</h2><p>更有 TokenFleet 个性，但比上一稿克制。</p></div><span class="badge reference">增强</span></header>
+        <div class="mock-window">
+          <div class="mock-titlebar"><span class="traffic"><i></i><i></i><i></i></span><b>TokenFleet beta.8</b></div>
+          <section class="surface active" data-view="popover">
+            <div class="popover-stage"><div class="popover-card enhanced">
+              <header class="popover-head"><div class="popover-brand"><span class="fleet-mark"><i></i><i></i><i></i></span><div><b>TokenFleet</b><small>每天一个亿</small></div></div><span class="sync">● 已同步</span></header>
+              <div class="popover-body"><div class="signal-ring"><div><strong>4.19亿</strong><small>今日信号 419%</small></div></div><div><div class="goal-copy">每天一个亿</div><div class="metric-line"><div class="big-number">4.19亿</div><em>419%</em></div><div class="compact-stats"><div><span>价格估算</span><b>$236.38</b></div><div><span>连续活跃</span><b>44 天</b></div><div><span>相对节奏</span><b class="accent">+18%</b></div></div></div></div>
+              <footer class="popover-actions"><button>今日</button><button class="rank">社群榜</button><button>刷新</button><button>设置</button></footer>
+            </div></div>
+          </section>
+          <section class="surface" data-view="today"><div class="mini-sidebar-layout"><aside class="mini-sidebar"><div class="mini-brand"><span class="fleet-mark"><i></i><i></i><i></i></span>TokenFleet</div><span class="mini-nav active">今日消耗</span><span class="mini-nav">历史活动</span><span class="mini-nav rank">社群排行</span><span class="mini-nav">设置</span></aside><div class="mini-main"><header class="page-title"><div><h3>今日消耗</h3><span>今天的 Token 使用节奏</span></div><span class="sync">● 已同步</span></header><div class="enhanced-hero"><div class="enhanced-top"><div><small>今天已记录</small><div class="big-number">4.19亿</div><b>每天一个亿 · 419%</b></div><span class="mini-signal"><i></i><i></i><i></i></span></div><div class="enhanced-stats"><div><span>API 标准价估算</span><b>$236.38 · 覆盖 84.8%</b></div><div><span>相对节奏</span><b>较近 7 个活跃日 +18%</b></div><div><span>连续活跃</span><b>44 天</b></div><div><span>今日社群排名</span><b>#8 / 126</b></div></div></div><div class="tool-panel"><div class="panel-label"><b>工具流量</b><span>真实本地字段</span></div><div class="tool-row"><b>Codex</b><span class="tool-track"><i style="--value:84.8%"></i></span><em>3.55亿</em></div><div class="tool-row"><b>其他模型</b><span class="tool-track"><i style="--value:15.2%"></i></span><em>0.64亿</em></div></div><div class="chart-panel"><div class="panel-label"><b>时间轨迹</b><span>Token · 非工时</span></div><div class="spark"><i style="--h:17%"></i><i style="--h:38%"></i><i style="--h:70%"></i><i style="--h:48%"></i><i style="--h:82%"></i><i style="--h:42%"></i><i style="--h:63%"></i><i style="--h:31%"></i><i style="--h:76%"></i><i style="--h:54%"></i><i style="--h:22%"></i><i style="--h:8%"></i></div></div></div></div></section>
+          <section class="surface" data-view="rank"><div class="mini-sidebar-layout"><aside class="mini-sidebar"><div class="mini-brand"><span class="fleet-mark"><i></i><i></i><i></i></span>TokenFleet</div><span class="mini-nav">今日消耗</span><span class="mini-nav">历史活动</span><span class="mini-nav active rank">社群排行</span><span class="mini-nav">设置</span></aside><div class="rank-page"><header class="page-title"><div><h3>舰队排行</h3><span>TokenFleet 社群</span></div><span class="sync">● 已连接</span></header><div class="rank-hero" style="background:linear-gradient(135deg,var(--accent-deep),var(--ink))"><p class="eyebrow">FLEET SIGNAL · TODAY</p><h3>今天第 8 / 126 名</h3><p>比昨天前进 3 位 · 连续活跃 44 天</p></div><div class="rank-list"><div class="rank-row"><b>1</b><span>蓝鲸</span><em>9.32亿</em></div><div class="rank-row"><b>2</b><span>云帆</span><em>8.74亿</em></div><div class="rank-row me"><b>8</b><span>我 · TokenFleet</span><em>4.19亿</em></div><div class="rank-row"><b>9</b><span>北辰</span><em>3.96亿</em></div></div><div class="privacy-note">只公开昵称、排名和聚合用量；不上传提示词、回复、代码或路径。</div></div></div></section>
+        </div>
+        <p class="why"><b>变化程度：</b>约 35%，比 A 版更有品牌感，但仍使用熟悉导航。<br><b>记忆点：</b>把今日成绩、价格、节奏和排名合成一张“使用信号卡”。</p>
+        <button class="choose">我选 B：轻度增强</button>
+      </article>
+    </section>
+
+    <aside class="decision-bar" id="decisionBar"><div><p id="decisionText"></p><small>你可以继续切换页面和颜色；最终告诉我选哪版、哪些细节要混合。</small></div><button id="clearChoice">重新选择</button></aside>
+  </main>
+
+  <script>
+    const surfaceButtons = [...document.querySelectorAll('[data-surface]')];
+    const surfaces = [...document.querySelectorAll('.surface')];
+    surfaceButtons.forEach(button => button.addEventListener('click', () => {
+      surfaceButtons.forEach(item => item.classList.toggle('active', item === button));
+      surfaces.forEach(surface => surface.classList.toggle('active', surface.dataset.view === button.dataset.surface));
+    }));
+
+    const root = document.documentElement;
+    document.querySelectorAll('.theme-dot').forEach(button => button.addEventListener('click', () => {
+      document.querySelectorAll('.theme-dot').forEach(item => item.classList.toggle('active', item === button));
+      root.style.setProperty('--accent', button.dataset.accent);
+      root.style.setProperty('--accent-deep', button.dataset.deep);
+      root.style.setProperty('--accent-soft', button.dataset.soft);
+    }));
+
+    const labels = { beta7: '你暂时更喜欢 beta.7 的原版感觉', a: '你选择了 A：稳妥收敛版', b: '你选择了 B：轻度增强版' };
+    const decisionBar = document.getElementById('decisionBar');
+    const decisionText = document.getElementById('decisionText');
+    document.querySelectorAll('.choose').forEach(button => button.addEventListener('click', () => {
+      const card = button.closest('.direction');
+      document.querySelectorAll('.direction').forEach(item => item.classList.toggle('selected', item === card));
+      decisionText.textContent = labels[card.dataset.choice];
+      decisionBar.classList.add('show');
+    }));
+    document.getElementById('clearChoice').addEventListener('click', () => {
+      document.querySelectorAll('.direction').forEach(item => item.classList.remove('selected'));
+      decisionBar.classList.remove('show');
+    });
+  </script>
+</body>
+</html>

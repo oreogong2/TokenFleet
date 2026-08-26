@@ -26,6 +26,11 @@ class Settings:
     public_max_scan_rows: int = 250_000
     public_cache_ttl_seconds: int = 15
     public_cache_max_entries: int = 1_024
+    community_share_grant_ttl_seconds: int = 120
+    community_share_grant_issue_attempts: int = 6
+    community_share_grant_redeem_attempts: int = 12
+    community_share_grant_rate_limit_window_seconds: int = 60
+    community_share_grant_rate_limit_max_keys: int = 10_000
     claim_rate_limit_attempts: int = 10
     claim_rate_limit_window_seconds: int = 60
     claim_rate_limit_max_keys: int = 10_000
@@ -115,6 +120,36 @@ class Settings:
                 os.getenv(
                     "PUBLIC_CACHE_MAX_ENTRIES",
                     defaults.public_cache_max_entries,
+                )
+            ),
+            community_share_grant_ttl_seconds=int(
+                os.getenv(
+                    "COMMUNITY_SHARE_GRANT_TTL_SECONDS",
+                    defaults.community_share_grant_ttl_seconds,
+                )
+            ),
+            community_share_grant_issue_attempts=int(
+                os.getenv(
+                    "COMMUNITY_SHARE_GRANT_ISSUE_ATTEMPTS",
+                    defaults.community_share_grant_issue_attempts,
+                )
+            ),
+            community_share_grant_redeem_attempts=int(
+                os.getenv(
+                    "COMMUNITY_SHARE_GRANT_REDEEM_ATTEMPTS",
+                    defaults.community_share_grant_redeem_attempts,
+                )
+            ),
+            community_share_grant_rate_limit_window_seconds=int(
+                os.getenv(
+                    "COMMUNITY_SHARE_GRANT_RATE_LIMIT_WINDOW_SECONDS",
+                    defaults.community_share_grant_rate_limit_window_seconds,
+                )
+            ),
+            community_share_grant_rate_limit_max_keys=int(
+                os.getenv(
+                    "COMMUNITY_SHARE_GRANT_RATE_LIMIT_MAX_KEYS",
+                    defaults.community_share_grant_rate_limit_max_keys,
                 )
             ),
             claim_rate_limit_attempts=int(

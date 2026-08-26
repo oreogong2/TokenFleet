@@ -49,6 +49,38 @@ final class UsageSnapshotRefreshPolicyTests: XCTestCase {
         )
     }
 
+    func testPricingCatalogChangeDoesNotMasqueradeAsAUsageRefresh() {
+        let snapshot = makeSnapshot(
+            accountingRevision: UsageCollector.codexAccountingRevision,
+            records: 1,
+            pricingVersion: "public-usd-2026-08-13"
+        )
+
+        XCTAssertNil(
+            UsageSnapshotRefreshPolicy.reason(
+                snapshot: snapshot,
+                refreshIntervalSeconds: 0,
+                now: now
+            )
+        )
+    }
+
+    func testFuturePricingCatalogIsNotDowngraded() {
+        let snapshot = makeSnapshot(
+            accountingRevision: UsageCollector.codexAccountingRevision,
+            records: 1,
+            pricingVersion: "public-usd-2026-08-15"
+        )
+
+        XCTAssertNil(
+            UsageSnapshotRefreshPolicy.reason(
+                snapshot: snapshot,
+                refreshIntervalSeconds: 0,
+                now: now
+            )
+        )
+    }
+
     func testEmptyLegacySnapshotDoesNotCreateARefreshLoop() {
         let snapshot = makeSnapshot(accountingRevision: nil, records: 0)
 
@@ -61,11 +93,20 @@ final class UsageSnapshotRefreshPolicyTests: XCTestCase {
         )
     }
 
-    private func makeSnapshot(accountingRevision: Int?, records: Int) -> UsageSnapshot {
+    private func makeSnapshot(
+        accountingRevision: Int?,
+        records: Int,
+        pricingVersion: String? = TokenPricingCatalog.version
+    ) -> UsageSnapshot {
         UsageSnapshot(
             generatedAt: ISO8601DateFormatter().string(from: now),
             timezone: "Asia/Shanghai",
-            totals: UsageTotals(tokens: 100, cost: 0, activeDays: 1),
+            totals: UsageTotals(
+                tokens: records * 100,
+                cost: 0,
+                activeDays: records > 0 ? 1 : 0,
+                pricingVersion: pricingVersion
+            ),
             daily: [
                 DailyUsage(
                     date: "2026-07-21",

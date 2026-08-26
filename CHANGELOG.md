@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.1.0-beta.8 - Unreleased
+
+### Desktop identity, accuracy, and recovery
+
+- Replaced the inherited multi-ring fitness skin with one clean TokenFleet goal
+  ring while keeping “100M a day”, uncapped goal percentages and lap context,
+  familiar navigation, full tool/model detail, quota views, and all three
+  share-card workflows.
+- Added relative pace, current streak, contextual community rank, a discoverable
+  community action, and nine accessible themes with stable tool identity colors.
+- Replaced the unrelated external rank card with TokenFleet's device-authenticated
+  community rank context; private profiles remain unranked and no schema migration
+  is required.
+- Fixed the single-screen entry to macOS's native, compact right-side menu-bar
+  item so TokenFleet cannot cover Apple or third-party status items. Legacy
+  notch/automatic placement values are normalized to the native menu bar; users
+  with enough space may opt into the ring plus today's Token count.
+- Added an AppKit reopen bridge so a running TokenFleet can always restore its
+  single main window from Applications or Spotlight when macOS hides the native
+  menu-bar ring on a crowded built-in display. Early reopen requests are held
+  until app state binds, and a minimized main window is explicitly restored.
+- Kept client-first upgrades compatible with beta.7's production public-board
+  rows, which do not yet include beta.8's derived primary tool/model fields.
+  The App still rejects partial or malformed beta.8 dimensions, shows the real
+  public board without inventing missing fields, and neutrally reports personal
+  rank as temporarily unavailable when that separate signed read fails.
+- Added a versioned public API price catalog with model- and component-specific
+  rates, source-cost priority, pricing coverage, and explicit unpriced handling.
+  Ambiguous Anthropic cache-write TTLs no longer erase the known cost components.
+- Kept WorkBuddy unsupported because its observed project logs colocate usage with
+  conversation/tool content; beta.8 does not open those files. Kimi and DeepSeek
+  remain explicitly experimental only when real CC Switch proxy rows exist.
+- Reworked image export around explicit render, PNG/JPEG encoding, clipboard,
+  and file-write failures, and replaced the inherited icon with a TokenFleet
+  progress-ring icon.
+- Added a safe existing-member device-code reissue path that keeps the member,
+  invitation-batch count, and consumed-code audit rows unchanged, expires every
+  older live unused code in the same member-locked transaction, and never stores
+  the one-time plaintext code.
+- Built the macOS App and helper as universal arm64 + x86_64 binaries and expanded
+  CI with a native `macos-15-intel` lifecycle gate; Windows CI exercises install,
+  same-origin upgrade, preview, status, DPAPI, scheduled-task, and uninstall paths.
+  Windows uninstall is idempotent when the scheduled task is already absent and
+  still removes it when present.
+- The headless Intel runner validates native x86_64 logic, collectors, builds,
+  and source lifecycle; because it exposes no Metal device, the same x86_64
+  share-card render/copy/save path is executed under Rosetta on a GPU-capable
+  Apple runner instead of being silently skipped.
+- Documented strict feasibility and privacy boundaries for Kimi Code, DeepSeek,
+  Cursor, and Gemini CLI; only observed CC Switch proxy rows are labeled as
+  experimental support. Supported source logs are processed read-only on the
+  device; prompt, response, and code fields are not included in statistics or
+  uploaded, while local paths and request/session identifiers may be retained
+  only as incremental and deduplication metadata. The privacy card counts only
+  sources that actually contributed usage, not disabled, missing, or deliberately
+  unsupported collectors.
+- Added prerelease-channel rules and an explicit beta.7 migration plan. Existing
+  source installs can manually upgrade from a reviewed, pinned commit while
+  retaining the same per-Mac source-signing identity; this path does not require
+  a paid Apple Developer account. A Developer ID signed/notarized package and
+  pinned HTTPS automatic-update feed remain optional future distribution work.
+
 ## 0.1.0-beta.7 - 2026-08-11
 
 ### Community experience refinement

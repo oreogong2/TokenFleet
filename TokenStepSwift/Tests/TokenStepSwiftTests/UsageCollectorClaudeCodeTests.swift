@@ -61,8 +61,12 @@ final class UsageCollectorClaudeCodeTests: XCTestCase {
         let snapshot = UsageCollector.collectClaudeCodeUsageSnapshot(rootURL: root)
 
         XCTAssertEqual(snapshot.totals.tokens, 4_000_000)
-        XCTAssertEqual(snapshot.totals.cost, 36.75)
-        XCTAssertEqual(snapshot.daily.first?.cost, 36.75)
+        XCTAssertEqual(snapshot.totals.cost, 30.5)
+        XCTAssertEqual(snapshot.daily.first?.cost, 30.5)
+        XCTAssertEqual(snapshot.totals.pricedTokens, 3_000_000)
+        XCTAssertEqual(snapshot.totals.unpricedTokens, 1_000_000)
+        XCTAssertEqual(snapshot.daily.first?.pricedTokens, 3_000_000)
+        XCTAssertEqual(snapshot.daily.first?.unpricedTokens, 1_000_000)
     }
 
     private var fixtureLines: [String] {

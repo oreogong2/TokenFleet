@@ -274,6 +274,44 @@ class DeviceResponse(StrictModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
+class DeviceCommunityRankResponse(StrictModel):
+    public_id: str
+    nickname: Annotated[str | None, Field(min_length=1, max_length=128)]
+    public_profile_enabled: bool
+    period: Literal["today"] = "today"
+    metric: Literal["tokens"] = "tokens"
+    rank: Annotated[int, Field(ge=1)] | None
+    total_entries: Annotated[int, Field(ge=0)]
+    metric_value: NonNegativeIntegerString | None
+    primary_tool: Annotated[str | None, Field(min_length=1, max_length=128)] = None
+    primary_model: Annotated[str | None, Field(min_length=1, max_length=128)] = None
+    totals: PublicUsageTotals | None = None
+
+
+class CommunityShareGrantIssueRequest(StrictModel):
+    """The signed route intentionally accepts only an empty JSON object."""
+
+
+class CommunityShareGrantResponse(StrictModel):
+    grant: Annotated[
+        str,
+        Field(min_length=43, max_length=128, pattern=r"^[A-Za-z0-9_-]+$"),
+    ]
+    expires_at: datetime
+    public_id: str
+
+
+class CommunityShareGrantRedeemRequest(StrictModel):
+    grant: Annotated[
+        str,
+        Field(min_length=43, max_length=128, pattern=r"^[A-Za-z0-9_-]+$"),
+    ]
+
+
+class CommunityShareGrantRedeemResponse(StrictModel):
+    public_id: str
+
+
 class DeviceStatusUpdate(StrictModel):
     is_active: Annotated[bool, Field(strict=True)]
 
@@ -490,6 +528,12 @@ class PublicLeaderboardEntry(StrictModel):
     public_id: str
     nickname: str
     metric_value: NonNegativeIntegerString | None
+    primary_tool: str | None
+    primary_tool_tokens: NonNegativeIntegerString | None
+    tool_count: int
+    primary_model: str | None
+    primary_model_tokens: NonNegativeIntegerString | None
+    model_count: int
     totals: PublicUsageTotals
 
 

@@ -4,14 +4,10 @@ struct PopoverQuotaCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        TokenCard {
-            VStack(alignment: .leading, spacing: 13) {
+        VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Circle()
-                        .fill(Color.tokenGreen)
-                        .frame(width: 8, height: 8)
                     Text(L("Agent 剩余额度"))
-                        .font(.callout.weight(.heavy))
+                        .font(.system(size: 9, weight: .heavy))
                         .foregroundStyle(Color.tokenInk)
                     Spacer()
                     if appState.isRefreshingCodexQuota {
@@ -20,17 +16,17 @@ struct PopoverQuotaCard: View {
                             .scaleEffect(0.72)
                     } else if let fetchedAt = appState.codexQuota.fetchedAt {
                         Text(quotaFetchedText(fetchedAt))
-                            .font(.caption2.weight(.bold))
+                            .font(.system(size: 7, weight: .bold))
                             .foregroundStyle(.secondary)
                     } else if let fetchedAt = appState.claudeQuota.fetchedAt {
                         Text(quotaFetchedText(fetchedAt))
-                            .font(.caption2.weight(.bold))
+                            .font(.system(size: 7, weight: .bold))
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 if appState.hasAnyQuota {
-                    VStack(spacing: 12) {
+                    HStack(alignment: .top, spacing: 7) {
                         if appState.codexQuota.isAvailable {
                             quotaSection(title: "Codex", quota: appState.codexQuota)
                         }
@@ -41,53 +37,60 @@ struct PopoverQuotaCard: View {
                 } else {
                     HStack(spacing: 10) {
                         Image(systemName: "terminal")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(Color.tokenGreen)
                             .frame(width: 28, height: 28)
                             .background(Color.tokenMint.opacity(0.22), in: Circle())
                         VStack(alignment: .leading, spacing: 2) {
                             Text(L("暂未读取到 Agent 额度"))
-                                .font(.caption.weight(.heavy))
+                                .font(.system(size: 8, weight: .heavy))
                                 .foregroundStyle(Color.tokenInk.opacity(0.76))
                             Text(L("打开并登录 Codex / Claude Code 后会自动显示。"))
-                                .font(.caption2.weight(.semibold))
+                                .font(.system(size: 7, weight: .semibold))
                                 .foregroundStyle(.secondary)
                         }
                     }
                     .padding(.vertical, 2)
                 }
-            }
         }
-        .padding(.vertical, -2)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.tokenMint.opacity(0.16), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.tokenGreen.opacity(0.14)))
+        .padding(.horizontal, 20)
+        .padding(.bottom, 13)
     }
 
     private func quotaSection(title: String, quota: CodexQuotaSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.caption.weight(.heavy))
+                .font(.system(size: 8, weight: .heavy))
                 .foregroundStyle(Color.tokenInk.opacity(0.76))
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 quotaRow(quota.fiveHour, fallbackTitle: L("5 小时"))
                 quotaRow(quota.sevenDay, fallbackTitle: L("7 天"))
             }
         }
+        .padding(7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.tokenSurface.opacity(0.82), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private func quotaRow(_ window: CodexQuotaWindow?, fallbackTitle: String) -> some View {
         HStack(spacing: 10) {
             Text(window?.title ?? fallbackTitle)
-                .font(.caption.weight(.heavy))
+                .font(.system(size: 7, weight: .heavy))
                 .foregroundStyle(Color.tokenInk.opacity(0.72))
-                .frame(width: 44, alignment: .leading)
+                .frame(width: 38, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
                     Text(window.map { LFormat("剩余 %@", TokenStepFormat.percent($0.remainingPercent)) } ?? L("等待同步"))
-                        .font(.caption.weight(.heavy))
+                        .font(.system(size: 7, weight: .heavy))
                         .foregroundStyle(window == nil ? .secondary : Color.tokenInk.opacity(0.82))
                     Spacer()
                     Text(window.map { quotaResetText($0.resetsAt) } ?? L("等待重置"))
-                        .font(.caption2.weight(.bold))
+                        .font(.system(size: 6, weight: .bold))
                         .foregroundStyle(.secondary)
                 }
                 GeometryReader { proxy in
@@ -101,7 +104,7 @@ struct PopoverQuotaCard: View {
                         }
                     }
                 }
-                .frame(height: 6)
+                .frame(height: 4)
             }
         }
     }

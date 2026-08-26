@@ -2,7 +2,10 @@ import AppKit
 import SwiftUI
 
 enum TokenIslandMetrics {
-    static let expandedCardSize = NSSize(width: 356, height: 238)
+    // Kept as a safe fallback for legacy settings. The active beta.8 path is
+    // the native menu bar; if an old panel is ever restored it must never clip
+    // its footer or quota row.
+    static let expandedCardSize = NSSize(width: 356, height: 338)
     static let expandedCornerRadius: CGFloat = 28
     static let expandedShadowMargin: CGFloat = 26
 
@@ -21,7 +24,7 @@ struct TokenIslandWindowView: View {
     var onTap: () -> Void
 
     var body: some View {
-        TokenIslandRingView(
+        TokenIslandCompactView(
             tokens: appState.today.totalTokens,
             lap: appState.todayLap,
             refreshing: appState.isRefreshing,
@@ -62,7 +65,7 @@ struct TokenIslandPopoverWindowView: View {
     }
 }
 
-struct TokenIslandRingView: View {
+struct TokenIslandCompactView: View {
     var tokens: Int
     var lap: TokenStepLapProgress
     var refreshing: Bool
@@ -71,18 +74,18 @@ struct TokenIslandRingView: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(nsImage: StatusBarIconRenderer.progressRing(
-                progress: min(max(lap.rawProgress, 0), 1),
-                lap: 1,
-                refreshing: refreshing,
-                size: 16,
-                radius: 6.2,
-                lineWidth: 2.15,
-                showsCenterDot: false
-            ))
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 15, height: 15)
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.27), lineWidth: 2.2)
+                Circle()
+                    .trim(from: 0.06, to: min(max(lap.currentLapProgress, 0.06), 1))
+                    .stroke(
+                        Color.white.opacity(refreshing ? 0.48 : 0.92),
+                        style: StrokeStyle(lineWidth: 2.2, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+            }
+            .frame(width: 15, height: 15)
                 .accessibilityLabel("\(L("今日目标进度")) \(TokenStepFormat.percent(lap.rawProgress * 100))")
                 .id("\(theme.id)-\(language.resolved.id)")
 
@@ -112,7 +115,7 @@ private struct TokenIslandExpandedView: View {
             header
 
             HStack(alignment: .center, spacing: 16) {
-                ring
+                signalSummary
                 VStack(alignment: .leading, spacing: 7) {
                     Text(L("今日目标进度"))
                         .font(.system(size: 20, weight: .heavy, design: .rounded))
@@ -157,7 +160,7 @@ private struct TokenIslandExpandedView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            TokenStepMark(size: 28)
+            TokenFleetSignalMark(size: 28)
             VStack(alignment: .leading, spacing: 1) {
                 Text("TokenFleet")
                     .font(.caption.weight(.heavy))
@@ -182,22 +185,18 @@ private struct TokenIslandExpandedView: View {
         }
     }
 
-    private var ring: some View {
-        ZStack {
-            ProgressRingView(progress: min(max(lap.rawProgress, 0), 1), lineWidth: 9, color: .tokenGreenDark)
-            VStack(spacing: 2) {
-                Text(TokenStepFormat.tokens(appState.today.totalTokens, compact: true))
-                    .font(.system(size: 17, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.tokenInk)
-                    .minimumScaleFactor(0.62)
-                    .lineLimit(1)
-                Text(TokenStepFormat.percent(lap.rawProgress * 100))
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(Color.tokenInk.opacity(0.48))
-            }
-            .frame(width: 66)
+    private var signalSummary: some View {
+        VStack(spacing: 8) {
+            TokenFleetSignalMark(size: 58)
+            Text(TokenStepFormat.percent(lap.rawProgress * 100))
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(Color.tokenGreenDark)
+                .monospacedDigit()
+            ProgressView(value: min(max(lap.rawProgress, 0), 1))
+                .tint(Color.tokenGreenDark)
+                .frame(width: 76)
         }
-        .frame(width: 86, height: 86)
+        .frame(width: 86)
     }
 }
 

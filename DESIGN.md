@@ -86,7 +86,7 @@ to turn every section into a card.
 
 ### Don't
 
-- Do not use a giant ring, dark competitor-style long list, capsule tag wall, or
+- Do not use a giant multi-lap fitness ring, dark competitor-style long list, capsule tag wall, or
   oversized marketing headline.
 - Do not use “圈数” or “航段” when the direct meaning is Token usage or progress.
 - Do not claim support for a tool or model that has not actually been observed.

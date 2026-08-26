@@ -13,8 +13,20 @@ const NAMES = [
   "演示·银河",
 ];
 
-const TOOLS = ["Codex", "Claude Code", "Kimi CLI", "Cursor"];
-const MODELS = ["gpt-5.2-codex", "claude-opus-4.1", "kimi-k2", "gpt-5"];
+const DEMO_COMBINATIONS = [
+  { tool: "Codex", model: "gpt-5.6-sol" },
+  { tool: "Claude Code", model: "claude-opus-4.1" },
+  { tool: "Codex", model: "gpt-5.2-codex" },
+  { tool: "Claude Code", model: "claude-sonnet-4" },
+  { tool: "CC Switch", model: "kimi-k2" },
+  { tool: "CC Switch", model: "deepseek-v3" },
+];
+const TOOLS = [...new Set(DEMO_COMBINATIONS.map(({ tool }) => tool))];
+const MODELS = [...new Set(DEMO_COMBINATIONS.map(({ model }) => model))];
+// This exists solely for the local, clearly labelled demo.  Production never
+// accepts a front-end value as proof of membership; it redeems a one-time
+// server-issued grant.
+export const DEMO_COMMUNITY_SHARE_GRANT = "demo_community_share_grant_0123456789_abcdefghijklmnop";
 
 function pause(milliseconds) {
   return milliseconds > 0
@@ -22,9 +34,9 @@ function pause(milliseconds) {
     : Promise.resolve();
 }
 
-function totalsFor(index, { unpriced = false, extreme = false } = {}) {
+function totalsFor(index, { unpriced = false } = {}) {
   const factor = BigInt(15 - index);
-  const input = extreme ? 900719925474099312345n : factor * 7340000n;
+  const input = factor * 7340000n;
   const output = factor * 1830000n;
   const cacheRead = factor * 21540000n;
   const cacheWrite = factor * 2410000n;
@@ -43,21 +55,24 @@ function totalsFor(index, { unpriced = false, extreme = false } = {}) {
   };
 }
 
-const records = NAMES.map((nickname, index) => ({
-  public_id: `demo-${index + 1}`,
-  nickname,
-  rank: index + 1,
-  totals: totalsFor(index, { unpriced: index === 3, extreme: index === 1 }),
-  tool: TOOLS[index % TOOLS.length],
-  model: MODELS[index % MODELS.length],
-}));
+const records = NAMES.map((nickname, index) => {
+  const combination = DEMO_COMBINATIONS[index % DEMO_COMBINATIONS.length];
+  return {
+    public_id: `demo-${index + 1}`,
+    nickname,
+    rank: index + 1,
+    totals: totalsFor(index, { unpriced: index === 3 }),
+    tool: combination.tool,
+    model: combination.model,
+  };
+});
 
 const outsideRecord = {
   public_id: "outside-100",
-  nickname: "榜外参赛者",
+  nickname: "演示·远航",
   rank: 137,
   totals: totalsFor(13),
-  tool: "Kimi CLI",
+  tool: "CC Switch",
   model: "kimi-k2",
 };
 
@@ -69,11 +84,18 @@ function metricValue(record, metric) {
 
 function publicEntry(record, metric) {
   const value = metricValue(record, metric);
+  const primaryTokens = (BigInt(record.totals.total_tokens) * 4n / 5n).toString();
   return {
     rank: metric === "cost" && value === null ? null : record.rank,
     public_id: record.public_id,
     nickname: record.nickname,
     metric_value: value,
+    primary_tool: record.tool,
+    primary_tool_tokens: primaryTokens,
+    tool_count: 2,
+    primary_model: record.model,
+    primary_model_tokens: primaryTokens,
+    model_count: 2,
     totals: { ...record.totals },
   };
 }
@@ -265,6 +287,14 @@ export function createCommunityDemoApi({ empty = false, locationRef = globalThis
         enrollment_token: "demo_batch_once_7Yp4_K2m9_A8q6_H3v5_N1s7",
         expires_at: "2026-08-10T13:00:00Z",
       };
+    },
+    async redeemCommunityShareGrant(grant) {
+      if (String(grant || "") !== DEMO_COMMUNITY_SHARE_GRANT) {
+        const error = new Error("分享凭证已失效，请返回 App 重新打开排行榜");
+        error.status = 403;
+        throw error;
+      }
+      return { public_id: "demo-1" };
     },
   };
 }

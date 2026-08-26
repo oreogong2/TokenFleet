@@ -1,6 +1,6 @@
-# TokenStep 统计方案
+# TokenFleet 匿名统计方案
 
-TokenStep 默认是 local-first 工具，不上传 token 数、代码、prompt 或对话正文。
+TokenFleet 默认是 local-first 工具，不上传 token 数、代码、prompt 或对话正文。
 
 ## GitHub 下载统计
 
@@ -27,7 +27,7 @@ python3 script/github_download_stats.py --format json
 导出 CSV：
 
 ```bash
-python3 script/github_download_stats.py --format csv > tokenstep-downloads.csv
+python3 script/github_download_stats.py --format csv > tokenfleet-downloads.csv
 ```
 
 可以看到：
@@ -50,10 +50,10 @@ python3 script/github_download_stats.py --format csv > tokenstep-downloads.csv
 
 需要先做两件事：
 
-1. 在 Aptabase 创建 TokenStep 项目。
+1. 在 Aptabase 创建独立的 TokenFleet 项目。
 2. 拿到项目的 App Key。
 
-接入后，TokenStep 每天最多发送一次匿名心跳，例如：
+接入后，TokenFleet 每天最多发送一次匿名心跳，例如：
 
 ```json
 {

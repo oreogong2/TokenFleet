@@ -222,6 +222,43 @@ class Device(Base):
     user: Mapped[User] = relationship(back_populates="devices")
 
 
+class CommunityShareGrant(Base):
+    """One-time, short-lived bridge from a signed device to the public Web UI.
+
+    The raw grant is deliberately never persisted.  It can only identify a
+    member's already-public profile for a single browser-page redemption; it
+    is not a login credential and does not authorize any write operation.
+    """
+
+    __tablename__ = "community_share_grants"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "org_id"], ["users.id", "users.org_id"], ondelete="CASCADE"
+        ),
+        ForeignKeyConstraint(
+            ["device_id", "user_id", "org_id"],
+            ["devices.id", "devices.user_id", "devices.org_id"],
+            ondelete="CASCADE",
+        ),
+        Index("uq_community_share_grant_hash", "grant_hash", unique=True),
+        Index("ix_community_share_grant_expires", "expires_at"),
+        Index("ix_community_share_grant_device_consumed", "device_id", "consumed_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    org_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    device_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    grant_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
 class DeviceNonce(Base):
     __tablename__ = "device_nonces"
     __table_args__ = (
