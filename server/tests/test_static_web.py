@@ -42,11 +42,17 @@ def test_optional_same_origin_web_mount_keeps_api_routes_ahead_of_spa(
     with TestClient(app) as client:
         root = client.get("/")
         assert "TokenFleet test shell" in root.text
+        assert root.headers["cache-control"] == "no-cache"
         _assert_security_headers(root)
+        revalidated = client.get("/", headers={"if-none-match": root.headers["etag"]})
+        assert revalidated.status_code == 304
         stylesheet = client.get("/styles.css")
         assert stylesheet.headers["content-type"].startswith("text/css")
+        assert "cache-control" not in stylesheet.headers
         _assert_security_headers(stylesheet)
-        assert "TokenFleet test shell" in client.get("/people/member-id").text
+        spa_fallback = client.get("/people/member-id")
+        assert "TokenFleet test shell" in spa_fallback.text
+        assert spa_fallback.headers["cache-control"] == "no-cache"
         unauthorized_api = client.get("/api/v1/me")
         assert unauthorized_api.status_code == 401
         assert unauthorized_api.headers["cache-control"] == "no-store"
