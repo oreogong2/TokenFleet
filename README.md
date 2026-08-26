@@ -18,8 +18,9 @@ TokenFleet 包含原生 macOS 菜单栏 App 和轻量 Windows 参赛端，用来
 
 ## 当前发布方式
 
-> **官方社群当前客户端版本为 beta.8。** 新成员请按正式加入指南固定检出
-> `6cd21ef5138f00fe1182b5da3ad0a9fdf3fdcc00`；已经在使用这一版本的成员无需更新或重装。
+> **当前正式版本是 beta.8（tag `v0.1.0-beta.8`）。** 已经在使用 beta.8 客户端的成员无需更新或重装；
+> 新成员请按[正式加入指南](https://scn2sjohx0z1.feishu.cn/docx/I6rCdR1sKoQ3l7x7TgpcRp2lnLc)
+> 安装，客户端仍固定检出 `6cd21ef5138f00fe1182b5da3ad0a9fdf3fdcc00`。
 > 线上成员 Web 已部署 beta.8 入口隔离热修 `a5a89f372cc10761a534a589ab2d825fa1ccd5b9`，
 > 这次热修不修改客户端、同步协议、昵称、设备身份或历史数据，也不要求成员更新客户端。
 
@@ -127,7 +128,7 @@ test "$(git rev-parse HEAD)" = "<reviewed-commit-sha>"
 ./script/install_from_source.sh
 ```
 
-升级时在同一 clone 切换到管理员给出的新 tag，再重复相同安装命令。回滚和卸载：
+升级时在同一 clone 切换到管理员给出并复核的完整 commit SHA，再重复相同安装命令。回滚和卸载：
 
 ```bash
 ./script/rollback_source_install.sh
