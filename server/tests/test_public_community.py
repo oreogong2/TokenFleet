@@ -512,6 +512,86 @@ def test_public_projection_exact_only_norm_cost_and_privacy_contract(harness) ->
     assert public_price["public_estimate"] is True
 
 
+def test_public_model_projection_merges_case_variants_without_rewriting_ledger(
+    harness,
+) -> None:
+    _enable_alpha_public_board(harness)
+    participant = _create_participant(
+        harness,
+        display_name="模型大小写",
+        public_profile_enabled=True,
+    )
+    device = _enroll_participant(harness, participant)
+    buckets = [
+        _bucket(
+            harness,
+            tool="Claude Code",
+            model="glm-5.3",
+            input_tokens=10,
+            output_tokens=2,
+            cache_read_tokens=100,
+            cache_write_tokens=0,
+        ),
+        _bucket(
+            harness,
+            tool="ZCode",
+            model="GLM-5.3",
+            input_tokens=20,
+            output_tokens=3,
+            cache_read_tokens=200,
+            cache_write_tokens=0,
+        ),
+    ]
+    uploaded = harness.signed_post(device, harness.usage_payload(buckets=buckets))
+    assert uploaded.status_code == 200
+
+    leaderboard = harness.client.get(
+        "/api/v1/public/leaderboard",
+        params={"period": "all", "model": "gLm-5.3"},
+    )
+    assert leaderboard.status_code == 200
+    payload = leaderboard.json()
+    assert payload["available_models"] == ["GLM-5.3"]
+    assert payload["entries"][0]["metric_value"] == "335"
+    assert payload["entries"][0]["primary_model"] == "GLM-5.3"
+    assert payload["entries"][0]["primary_model_tokens"] == "335"
+    assert payload["entries"][0]["model_count"] == 1
+
+    public_id = participant["participant"]["public_id"]
+    detail = harness.client.get(
+        f"/api/v1/public/members/{public_id}",
+        params={"period": "all", "model": "glm-5.3"},
+    )
+    assert detail.status_code == 200
+    detail_payload = detail.json()
+    assert detail_payload["model_distribution_total"] == 1
+    assert detail_payload["model_distribution"] == [
+        {
+            "name": "GLM-5.3",
+            "totals": {
+                "input_tokens": "30",
+                "output_tokens": "5",
+                "cache_read_tokens": "300",
+                "cache_write_tokens": "0",
+                "norm_tokens": "35",
+                "total_tokens": "335",
+                "estimated_cost_microunits": None,
+                "cost_currency": None,
+                "unpriced": True,
+                "mixed_currency": False,
+            },
+        }
+    ]
+
+    with harness.session_factory() as session:
+        stored_models = set(
+            session.scalars(
+                select(DailyUsage.model).where(DailyUsage.device_id == device.id)
+            )
+        )
+    assert stored_models == {"GLM-5.3", "glm-5.3"}
+
+
 def test_authenticated_device_reads_only_its_public_rank_context(harness) -> None:
     _enable_alpha_public_board(harness)
     first = _create_participant(harness, display_name="领航员")

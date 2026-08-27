@@ -91,7 +91,7 @@ tokenfleet connect
 
 `https://token.ipwriter.com` 仅作为客户端安装参数，不是网页入口，请勿在浏览器打开裸域名；成员网页只使用 `/install`、`/rank` 或完整批次邀请链接。
 
-安装时固定社群地址，升级必须保持一致，`connect` 不接受 `--server` 并会隐藏一次性码输入。连接后，Windows 当前用户 DPAPI 保护设备 secret，计划任务自动同步；`tokenfleet open-rank` 可打开公榜。Windows 首版采集 Codex / Claude Code，支持安全连接、自动同步和上榜，但暂不采集 CC Switch，也不是 macOS 完整桌面明细界面的复刻。
+安装时固定社群地址，升级必须保持一致，`connect` 不接受 `--server` 并会隐藏一次性码输入。连接后，Windows 当前用户 DPAPI 保护设备 secret，计划任务自动同步；`tokenfleet open-rank` 可打开公榜。Windows 采集 Codex / Claude Code，并在 ZCode 独立用量库存在时只读 `model_usage` 完成行；支持安全连接、自动同步和上榜，但暂不采集 CC Switch，也不是 macOS 完整桌面明细界面的复刻。
 
 ## 5. 何时可以卸载 TokenStep
 

@@ -194,6 +194,7 @@ class MemberAggregate:
     usage: UsageAggregate = field(default_factory=UsageAggregate)
     tools: dict[str, UsageAggregate] = field(default_factory=dict)
     models: dict[str, UsageAggregate] = field(default_factory=dict)
+    model_labels: dict[str, str] = field(default_factory=dict, repr=False)
 
 
 def resolve_public_organization(
@@ -285,7 +286,7 @@ def _base_public_usage_query(
     if tool is not None:
         query = query.where(DailyUsage.tool == tool)
     if model is not None:
-        query = query.where(DailyUsage.model == model)
+        query = query.where(_model_matches(model))
     if public_id is not None:
         query = query.where(User.public_id == public_id)
     return query
@@ -474,8 +475,39 @@ def _member_aggregates(
         tool_name = str(row.tool)
         model_name = str(row.model)
         member.tools.setdefault(tool_name, UsageAggregate()).add_group(row)
-        member.models.setdefault(model_name, UsageAggregate()).add_group(row)
+        _add_case_insensitive_group(
+            member.models,
+            member.model_labels,
+            model_name,
+            row,
+        )
     return members
+
+
+def _model_matches(model: str):
+    """Match public model filters without splitting provider casing variants."""
+
+    return func.lower(DailyUsage.model) == model.lower()
+
+
+def _add_case_insensitive_group(
+    aggregates: dict[str, UsageAggregate],
+    labels: dict[str, str],
+    raw_label: str,
+    row,
+) -> None:
+    identity = raw_label.casefold()
+    display_label = labels.get(identity)
+    if display_label is None:
+        display_label = raw_label
+        labels[identity] = display_label
+        aggregates[display_label] = UsageAggregate()
+    elif raw_label < display_label:
+        aggregate = aggregates.pop(display_label)
+        display_label = raw_label
+        labels[identity] = display_label
+        aggregates[display_label] = aggregate
+    aggregates[display_label].add_group(row)
 
 
 def _primary_usage(
@@ -499,8 +531,11 @@ def _distribution_aggregates(
     query: Select,
     *,
     dimension,
+    case_insensitive: bool = False,
 ) -> dict[object, UsageAggregate]:
     aggregates: dict[object, UsageAggregate] = {}
+    casefolded_aggregates: dict[str, UsageAggregate] = {}
+    labels: dict[str, str] = {}
     grouped_query = _grouped_usage_query(
         session,
         query,
@@ -508,9 +543,17 @@ def _distribution_aggregates(
     )
     for row in session.execute(grouped_query):
         dimension_value = row[0]
-        aggregate = aggregates.setdefault(dimension_value, UsageAggregate())
-        aggregate.add_group(row)
-    return aggregates
+        if case_insensitive:
+            _add_case_insensitive_group(
+                casefolded_aggregates,
+                labels,
+                str(dimension_value),
+                row,
+            )
+        else:
+            aggregate = aggregates.setdefault(dimension_value, UsageAggregate())
+            aggregate.add_group(row)
+    return casefolded_aggregates if case_insensitive else aggregates
 
 
 def _available_labels(
@@ -519,6 +562,7 @@ def _available_labels(
     *,
     dimension,
     max_scan_rows: int,
+    case_insensitive: bool = False,
 ) -> list[str]:
     bounded_labels = (
         public_scope_query.with_only_columns(
@@ -532,7 +576,7 @@ def _available_labels(
     label_column = next(iter(bounded_labels.c))
     distinct_labels = select(label_column).distinct().subquery()
     distinct_label_column = next(iter(distinct_labels.c))
-    return list(
+    labels = list(
         session.scalars(
             select(distinct_label_column)
             .order_by(
@@ -542,6 +586,15 @@ def _available_labels(
             .limit(PUBLIC_DISTRIBUTION_LIMIT)
         )
     )
+    if not case_insensitive:
+        return labels
+    preferred: dict[str, str] = {}
+    for label in labels:
+        identity = label.casefold()
+        current = preferred.get(identity)
+        if current is None or label < current:
+            preferred[identity] = label
+    return sorted(preferred.values(), key=lambda label: (label.casefold(), label))
 
 
 def _metric_value(aggregate: UsageAggregate, metric: PublicMetric) -> int | None:
@@ -644,7 +697,7 @@ def build_public_leaderboard(
     if tool is not None:
         query = query.where(DailyUsage.tool == tool)
     if model is not None:
-        query = query.where(DailyUsage.model == model)
+        query = query.where(_model_matches(model))
     # Enforce the budget before caller-controlled tool/model filters. Otherwise
     # a missing or rare label can match zero rows while still forcing the database
     # to walk the entire public period to prove that result.
@@ -663,6 +716,7 @@ def build_public_leaderboard(
         public_scope_query,
         dimension=DailyUsage.model,
         max_scan_rows=max_scan_rows,
+        case_insensitive=True,
     )
     members = _member_aggregates(session, query)
     response_timezones = TimezoneAggregate()
@@ -829,7 +883,7 @@ def build_public_member_detail(
     if tool is not None:
         query = query.where(DailyUsage.tool == tool)
     if model is not None:
-        query = query.where(DailyUsage.model == model)
+        query = query.where(_model_matches(model))
     _preflight_cost_currency(session, query, metric)
     members = _member_aggregates(session, query)
     target_query = query.where(User.public_id == public_id)
@@ -842,6 +896,7 @@ def build_public_member_detail(
         session,
         target_query,
         dimension=DailyUsage.model,
+        case_insensitive=True,
     )
     days = _distribution_aggregates(
         session,

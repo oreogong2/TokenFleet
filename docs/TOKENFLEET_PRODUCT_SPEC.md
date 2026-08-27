@@ -11,7 +11,7 @@
 TokenFleet 首版是一套面向邀请制社群的 AI Token 本地账本与排行榜：
 
 - macOS 客户端保留 TokenStep 的所有个人统计能力；
-- Windows 10/11 参赛端采集 Codex / Claude Code 本地 JSONL，以 DPAPI 保护设备
+- Windows 10/11 参赛端采集 Codex / Claude Code 本地 JSONL 和 ZCode 独立 SQLite 用量表，以 DPAPI 保护设备
   凭据，通过计划任务自动同步并可打开公榜；首版不承诺与 macOS 相同的完整桌面明细；
 - 社群管理员创建单批最多 50 人、最长 90 天且可随时关闭的受限批次链接（默认 24 小时，90 天需显式选择）；同一社群可创建多个批次，受邀成员
   自己填写唯一昵称并明确同意公开，系统给每人生成短期、单次设备接入码；参赛者
@@ -92,7 +92,7 @@ TokenFleet 首版是一套面向邀请制社群的 AI Token 本地账本与排�
 
 ## 3. TokenStep 能力对齐
 
-本节能力对齐适用于 macOS 原生客户端。Windows 首版只覆盖 Codex / Claude Code
+本节能力对齐适用于 macOS 原生客户端。Windows 只覆盖 Codex / Claude Code 与 ZCode 本地用量
 采集、DPAPI 安全连接、手动与计划任务同步、状态/预览命令和打开公榜，不宣称具备
 本节全部原生桌面能力。
 

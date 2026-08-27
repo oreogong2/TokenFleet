@@ -69,6 +69,28 @@ final class UsageCollectorExperimentalAgentTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(work.cacheHitRate), 2.0 / 30.0, accuracy: 0.000_001)
     }
 
+    func testZCodeCollectorRejectsAmbiguousReasoningTotals() throws {
+        let database = try makeZCodeDatabase(rowsSQL: """
+        insert into model_usage (
+            id, logical_request_id, session_id, query_source, provider_id, model_id, status, started_at,
+            input_tokens, output_tokens, reasoning_tokens, cache_creation_input_tokens, cache_read_input_tokens,
+            provider_total_tokens, computed_total_tokens, tool_call_count
+        ) values
+            ('z-ambiguous', 'logical-1', 'session-z', 'cli', 'openai', 'gpt-5', 'completed',
+             1717200000000, 30, 10, 5, 3, 2, 40, 45, 4);
+        """)
+
+        let snapshot = UsageCollector.collectUsageSnapshotForTests(
+            zCodeDatabaseURL: database,
+            includeExperimentalAgentSources: true
+        )
+
+        XCTAssertEqual(snapshot.sources["ZCode"]?.status, "missing_valid_rows")
+        XCTAssertEqual(snapshot.sources["ZCode"]?.records, 0)
+        XCTAssertEqual(snapshot.totals.tokens, 0)
+        XCTAssertTrue(snapshot.agentWork.isEmpty)
+    }
+
     func testHermesCollectorReadsSessionUsageWithoutMessageContent() throws {
         let database = try makeHermesDatabase(rowsSQL: """
         insert into sessions (

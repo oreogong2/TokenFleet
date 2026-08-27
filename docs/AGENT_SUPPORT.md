@@ -9,6 +9,21 @@ TokenFleet 的原则是：能从本地日志中稳定读到 token 数，才进�
 | Codex | 已支持 | `~/.codex/sessions` / `~/.codex/archived_sessions`，必要时回退 SQLite | 读取本地 token_count 事件，只统计数量；可选读取 5h / 7d 额度。 |
 | Claude Code | 已支持 | `~/.claude/projects` | 读取 assistant message 的 usage 字段，按 `message.id` 去重，避免 thinking / text / tool_use 多行重复累计；可选通过 Claude Code 本机钥匙串凭证读取 usage 额度。 |
 
+## ZCode（macOS 需主动开启；Windows 自动识别用量库）
+
+macOS 的 ZCode 采集默认关闭。成员在 TokenFleet 的“设置 → 统计与采集”中主动开启
+“启用 ZCode / Hermes”后，TokenFleet 只读
+`~/.zcode/cli/db/db.sqlite` 的独立 `model_usage` 表，只接受已完成且 Token 大于 0
+的模型请求，并按用量行 ID 去重。若非零的 `computed_total_tokens` 或
+`provider_total_tokens` 与可上传四类 Token 分项合计不一致，采集器会失败关闭该行，
+不会猜测 `reasoning_tokens` 是否已包含在输出中。
+
+这项实验采集不读取 `transcript.jsonl`、对话正文、工具参数、代码、项目路径或账号凭据，
+也不读取 ZCode Coding Plan 的远程剩余额度。若设置页显示“结构待适配”，说明当前
+ZCode 版本的本地用量表与已验证 schema 不一致，应提交脱敏的版本号、列名和行数诊断，
+不得上传数据库或完整日志。Windows 客户端在该数据库存在时自动采集，已按 Windows 11、
+ZCode 0.16.5 的 `model_usage` 字段补齐回归；它不打开 `transcript.jsonl`。
+
 ## 实验支持：CC Switch Proxy
 
 TokenFleet 对 CC Switch 的支持定位为实验性的高级统计来源，source 名称为 `CC Switch Proxy`。它用于识别 Claude Code / Codex / Gemini 等客户端通过 CC Switch 或类似第三方模型路由工具发起真实代理请求时的 token、上游计费模型和成本。

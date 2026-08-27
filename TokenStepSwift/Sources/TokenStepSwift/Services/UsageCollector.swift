@@ -1937,14 +1937,22 @@ enum UsageCollector {
 
         let records = rows.compactMap { row -> UsageRecord? in
             guard let day = dayString(fromEpoch: row["started_at"] as Any) else { return nil }
+            let rawInputTokens = max(0, integerValue(row["input_tokens"] as Any))
+            let outputTokens = max(0, integerValue(row["output_tokens"] as Any))
+            let reasoningTokens = max(0, integerValue(row["reasoning_tokens"] as Any))
             let computedTotal = integerValue(row["computed_total_tokens"] as Any)
             let providerTotal = integerValue(row["provider_total_tokens"] as Any)
+            let (componentTotal, componentTotalOverflow) = rawInputTokens.addingReportingOverflow(outputTokens)
+            guard !componentTotalOverflow,
+                  reasoningTokens <= outputTokens,
+                  [computedTotal, providerTotal].allSatisfy({ $0 <= 0 || $0 == componentTotal })
+            else { return nil }
             let usage = canonicalUsageCounts(
-                rawInputTokens: integerValue(row["input_tokens"] as Any),
-                outputTokens: integerValue(row["output_tokens"] as Any),
+                rawInputTokens: rawInputTokens,
+                outputTokens: outputTokens,
                 cacheCreationInputTokens: integerValue(row["cache_creation_input_tokens"] as Any),
                 cacheReadInputTokens: integerValue(row["cache_read_input_tokens"] as Any),
-                reasoningOutputTokens: integerValue(row["reasoning_tokens"] as Any),
+                reasoningOutputTokens: reasoningTokens,
                 inputIncludesCachedTokens: true,
                 explicitTotalTokens: computedTotal > 0 ? computedTotal : providerTotal
             )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -79,14 +80,15 @@ class UsageRecord:
 @dataclass
 class CollectionDiagnostics:
     source_files: dict[str, int] = field(
-        default_factory=lambda: {"Codex": 0, "Claude Code": 0}
+        default_factory=lambda: {"Codex": 0, "Claude Code": 0, "ZCode": 0}
     )
     exact_records: dict[str, int] = field(
-        default_factory=lambda: {"Codex": 0, "Claude Code": 0}
+        default_factory=lambda: {"Codex": 0, "Claude Code": 0, "ZCode": 0}
     )
     skipped_records: dict[str, int] = field(
-        default_factory=lambda: {"Codex": 0, "Claude Code": 0}
+        default_factory=lambda: {"Codex": 0, "Claude Code": 0, "ZCode": 0}
     )
+    zcode_status: str = "missing_db"
     cc_switch_status: str = "unsupported_in_windows_v1"
 
 
@@ -142,6 +144,9 @@ def collect_usage(home: Path, *, history_days: int = 366) -> CollectionResult:
     claude_records, incomplete_claude_buckets = _collect_claude(
         claude_paths, diagnostics
     )
+    zcode_records, incomplete_zcode_buckets = _collect_zcode(
+        home / ".zcode" / "cli" / "db" / "db.sqlite", diagnostics
+    )
     today = datetime.now(timezone.utc).astimezone(SHANGHAI).date()
     oldest = today - timedelta(days=history_days - 1)
     codex_records = [
@@ -149,6 +154,9 @@ def collect_usage(home: Path, *, history_days: int = 366) -> CollectionResult:
     ]
     claude_records = [
         record for record in claude_records if _day_is_in_range(record.day, oldest, today)
+    ]
+    zcode_records = [
+        record for record in zcode_records if _day_is_in_range(record.day, oldest, today)
     ]
     incomplete_codex_buckets = {
         key for key in incomplete_codex_buckets if _day_is_in_range(key[0], oldest, today)
@@ -158,9 +166,16 @@ def collect_usage(home: Path, *, history_days: int = 366) -> CollectionResult:
         for key in incomplete_claude_buckets
         if _day_is_in_range(key[0], oldest, today)
     }
+    incomplete_zcode_buckets = {
+        key for key in incomplete_zcode_buckets if _day_is_in_range(key[0], oldest, today)
+    }
     buckets = _aggregate(
-        codex_records + claude_records,
-        excluded_keys=incomplete_codex_buckets | incomplete_claude_buckets,
+        codex_records + claude_records + zcode_records,
+        excluded_keys=(
+            incomplete_codex_buckets
+            | incomplete_claude_buckets
+            | incomplete_zcode_buckets
+        ),
     )
     return CollectionResult(buckets=buckets, diagnostics=diagnostics)
 
@@ -638,6 +653,201 @@ def _prefer_claude(candidate: _ClaudeCandidate, existing: _ClaudeCandidate) -> b
     if candidate.timestamp != existing.timestamp:
         return candidate.timestamp > existing.timestamp
     return candidate.line_number > existing.line_number
+
+
+_ZCODE_REQUIRED_COLUMN_GROUPS: dict[str, tuple[str, ...]] = {
+    "id": ("id",),
+    "status": ("status",),
+    "started_at": ("started_at",),
+    "model": ("model_id",),
+    "input": ("input_tokens",),
+    "output": ("output_tokens",),
+    "reasoning": ("reasoning_tokens",),
+    "cache_read": ("cache_read_input_tokens", "cache_read_tokens"),
+    "cache_write": (
+        "cache_creation_input_tokens",
+        "cache_creation_tokens",
+        "cache_write_tokens",
+    ),
+}
+
+
+def _collect_zcode(
+    database: Path, diagnostics: CollectionDiagnostics
+) -> tuple[list[UsageRecord], set[tuple[str, str, str]]]:
+    """Read ZCode's dedicated usage table without opening session transcripts."""
+    if not database.is_file():
+        diagnostics.zcode_status = "missing_db"
+        return [], set()
+    diagnostics.source_files["ZCode"] = 1
+
+    try:
+        connection = sqlite3.connect(
+            database.resolve().as_uri() + "?mode=ro",
+            uri=True,
+            timeout=2.0,
+            isolation_level=None,
+        )
+    except (OSError, sqlite3.Error):
+        diagnostics.zcode_status = "unreadable_db"
+        return [], set()
+
+    try:
+        connection.row_factory = sqlite3.Row
+        cursor = connection.cursor()
+        try:
+            cursor.execute("PRAGMA query_only = ON")
+            cursor.execute("PRAGMA busy_timeout = 2000")
+            cursor.execute("PRAGMA table_info(model_usage)")
+            columns = {str(row["name"]) for row in cursor.fetchall()}
+            if not columns:
+                diagnostics.zcode_status = "missing_table"
+                return [], set()
+
+            selected: dict[str, str] = {}
+            for logical_name, candidates in _ZCODE_REQUIRED_COLUMN_GROUPS.items():
+                actual = next(
+                    (candidate for candidate in candidates if candidate in columns), None
+                )
+                if actual is None:
+                    diagnostics.zcode_status = "schema_mismatch"
+                    return [], set()
+                selected[logical_name] = actual
+
+            session_expression = "session_id" if "session_id" in columns else "''"
+            computed_expression = (
+                "COALESCE(computed_total_tokens, 0)"
+                if "computed_total_tokens" in columns
+                else "0"
+            )
+            provider_expression = (
+                "COALESCE(provider_total_tokens, 0)"
+                if "provider_total_tokens" in columns
+                else "0"
+            )
+            query = f"""
+                SELECT
+                    {selected['id']} AS request_id,
+                    {session_expression} AS session_id,
+                    {selected['started_at']} AS started_at,
+                    {selected['model']} AS model_id,
+                    COALESCE({selected['input']}, 0) AS input_tokens,
+                    COALESCE({selected['output']}, 0) AS output_tokens,
+                    COALESCE({selected['reasoning']}, 0) AS reasoning_tokens,
+                    COALESCE({selected['cache_read']}, 0) AS cache_read_tokens,
+                    COALESCE({selected['cache_write']}, 0) AS cache_write_tokens,
+                    {computed_expression} AS computed_total_tokens,
+                    {provider_expression} AS provider_total_tokens
+                FROM model_usage
+                WHERE {selected['status']} = 'completed'
+                ORDER BY {selected['started_at']}, {selected['id']}
+            """
+            cursor.execute(query)
+            rows = [dict(row) for row in cursor.fetchall()]
+        finally:
+            cursor.close()
+    except sqlite3.Error:
+        diagnostics.zcode_status = "query_failed"
+        return [], set()
+    finally:
+        connection.close()
+
+    records: list[UsageRecord] = []
+    incomplete: set[tuple[str, str, str]] = set()
+    for row in rows:
+        timestamp = _parse_epoch_time(row["started_at"])
+        day = _day(timestamp)
+        model = _model(row["model_id"])
+        raw_values = {
+            name: _strict_nonnegative_integer(row[name])
+            for name in (
+                "input_tokens",
+                "output_tokens",
+                "reasoning_tokens",
+                "cache_read_tokens",
+                "cache_write_tokens",
+                "computed_total_tokens",
+                "provider_total_tokens",
+            )
+        }
+        known_bucket = (day, "ZCode", model) if day is not None else None
+        if timestamp is None or any(value is None for value in raw_values.values()):
+            diagnostics.skipped_records["ZCode"] += 1
+            if known_bucket is not None:
+                incomplete.add(known_bucket)
+            continue
+
+        input_total = raw_values["input_tokens"]
+        output = raw_values["output_tokens"]
+        cache_read = raw_values["cache_read_tokens"]
+        cache_write = raw_values["cache_write_tokens"]
+        assert input_total is not None
+        assert output is not None
+        assert cache_read is not None
+        assert cache_write is not None
+        counts = UsageCounts(input_total, output, cache_read, cache_write)
+        reasoning = raw_values["reasoning_tokens"]
+        assert reasoning is not None
+        explicit_totals = (
+            raw_values["computed_total_tokens"] or 0,
+            raw_values["provider_total_tokens"] or 0,
+        )
+        if (
+            not counts.exact
+            or reasoning > output
+            or any(
+                explicit_total > 0 and explicit_total != counts.total
+                for explicit_total in explicit_totals
+            )
+        ):
+            diagnostics.skipped_records["ZCode"] += 1
+            if known_bucket is not None:
+                incomplete.add(known_bucket)
+            continue
+        if counts.total <= 0 or day is None:
+            continue
+        records.append(UsageRecord(day, "ZCode", model, counts))
+
+    diagnostics.exact_records["ZCode"] = len(records)
+    diagnostics.zcode_status = "ok" if records else "missing_valid_rows"
+    return records, incomplete
+
+
+def _strict_nonnegative_integer(value: Any) -> int | None:
+    if type(value) is int:
+        parsed = value
+    elif isinstance(value, float) and value.is_integer():
+        parsed = int(value)
+    elif isinstance(value, str) and value.isdigit():
+        parsed = int(value)
+    else:
+        return None
+    return parsed if 0 <= parsed <= MAX_TOKEN_VALUE else None
+
+
+def _parse_epoch_time(value: Any) -> datetime | None:
+    if type(value) not in (int, float) or isinstance(value, bool):
+        if not isinstance(value, str):
+            return None
+        try:
+            number = float(value)
+        except ValueError:
+            return None
+    else:
+        number = float(value)
+    if not number.is_integer() or number <= 0:
+        return None
+    magnitude = abs(number)
+    if magnitude >= 100_000_000_000_000_000:
+        number /= 1_000_000_000
+    elif magnitude >= 100_000_000_000_000:
+        number /= 1_000_000
+    elif magnitude >= 100_000_000_000:
+        number /= 1_000
+    try:
+        return datetime.fromtimestamp(number, timezone.utc)
+    except (OSError, OverflowError, ValueError):
+        return None
 
 
 def _aggregate(
