@@ -69,7 +69,7 @@ class CollectorTests(unittest.TestCase):
                 ) VALUES
                     ('request-ok', 'session-1', 'builtin:bigmodel-coding-plan',
                      'GLM-5.3', 'completed', 1787616000000,
-                     100, 30, 7, 10, 40, NULL, 137),
+                     100, 30, 7, 10, 40, NULL, 130),
                     ('request-error', 'session-1', 'builtin:bigmodel-coding-plan',
                      'GLM-5.3', 'error', 1787616060000,
                      999, 999, 0, 0, 0, 1998, 1998),
@@ -114,6 +114,32 @@ class CollectorTests(unittest.TestCase):
             )
             self.assertEqual(result.total_tokens, 130)
 
+    def test_zcode_collector_rejects_ambiguous_reasoning_totals(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            database = home / ".zcode" / "cli" / "db" / "db.sqlite"
+            create_zcode_database(
+                database,
+                """
+                INSERT INTO model_usage (
+                    id, session_id, provider_id, model_id, status, started_at,
+                    input_tokens, output_tokens, reasoning_tokens,
+                    cache_creation_input_tokens, cache_read_input_tokens,
+                    provider_total_tokens, computed_total_tokens
+                ) VALUES
+                    ('ambiguous-reasoning', 'session-1',
+                     'builtin:bigmodel-coding-plan', 'GLM-5.3', 'completed',
+                     1787616000000, 100, 30, 7, 10, 40, 130, 137);
+                """,
+            )
+
+            result = collect_usage(home)
+
+            self.assertEqual(result.buckets, [])
+            self.assertEqual(result.diagnostics.zcode_status, "missing_valid_rows")
+            self.assertEqual(result.diagnostics.exact_records["ZCode"], 0)
+            self.assertEqual(result.diagnostics.skipped_records["ZCode"], 1)
+
     def test_zcode_collector_reads_committed_rows_while_wal_database_is_open(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary)
@@ -142,8 +168,8 @@ class CollectorTests(unittest.TestCase):
                         5,
                         0,
                         30,
-                        105,
-                        105,
+                        100,
+                        100,
                     ),
                 )
                 writer.commit()

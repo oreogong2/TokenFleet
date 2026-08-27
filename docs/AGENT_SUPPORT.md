@@ -14,7 +14,9 @@ TokenFleet 的原则是：能从本地日志中稳定读到 token 数，才进�
 macOS 的 ZCode 采集默认关闭。成员在 TokenFleet 的“设置 → 统计与采集”中主动开启
 “启用 ZCode / Hermes”后，TokenFleet 只读
 `~/.zcode/cli/db/db.sqlite` 的独立 `model_usage` 表，只接受已完成且 Token 大于 0
-的模型请求，并按用量行 ID 去重。
+的模型请求，并按用量行 ID 去重。若非零的 `computed_total_tokens` 或
+`provider_total_tokens` 与可上传四类 Token 分项合计不一致，采集器会失败关闭该行，
+不会猜测 `reasoning_tokens` 是否已包含在输出中。
 
 这项实验采集不读取 `transcript.jsonl`、对话正文、工具参数、代码、项目路径或账号凭据，
 也不读取 ZCode Coding Plan 的远程剩余额度。若设置页显示“结构待适配”，说明当前

@@ -788,14 +788,17 @@ def _collect_zcode(
         counts = UsageCounts(input_total, output, cache_read, cache_write)
         reasoning = raw_values["reasoning_tokens"]
         assert reasoning is not None
-        explicit_total = max(
+        explicit_totals = (
             raw_values["computed_total_tokens"] or 0,
             raw_values["provider_total_tokens"] or 0,
         )
         if (
             not counts.exact
             or reasoning > output
-            or (counts.total <= 0 and explicit_total > 0)
+            or any(
+                explicit_total > 0 and explicit_total != counts.total
+                for explicit_total in explicit_totals
+            )
         ):
             diagnostics.skipped_records["ZCode"] += 1
             if known_bucket is not None:
