@@ -18,9 +18,9 @@ TokenFleet 包含原生 macOS 菜单栏 App 和轻量 Windows 参赛端，用来
 
 ## 当前发布方式
 
-> **当前正式版本是 beta.8（tag `v0.1.0-beta.8`）。** 已经在使用 beta.8 客户端的成员无需更新或重装；
+> **当前正式版本是 beta.8（tag `v0.1.0-beta.8`）。** 已经正常使用的成员无需更新或重装；只有希望把 ZCode 用量也计入榜单的旧成员才需要按正式加入指南原位升级。
 > 新成员请按[正式加入指南](https://scn2sjohx0z1.feishu.cn/docx/I6rCdR1sKoQ3l7x7TgpcRp2lnLc)
-> 安装，客户端仍固定检出 `6cd21ef5138f00fe1182b5da3ad0a9fdf3fdcc00`。
+> 安装，客户端固定检出 `05d037b98d1be77c90687a4e3c99c9c724b2da35`。Windows 检测到 ZCode 用量库后会自动采集；macOS 需在“设置 → 统计与采集”主动开启 ZCode / Hermes。
 > 线上成员 Web 会在 beta.8 tag 基础上滚动部署经复核的服务端/网页热修；这些服务器热修不修改
 > 客户端固定提交、同步协议、昵称、设备身份或历史数据，也不要求成员更新客户端。
 
