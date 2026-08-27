@@ -694,53 +694,58 @@ def _collect_zcode(
 
     try:
         connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA query_only = ON")
-        connection.execute("PRAGMA busy_timeout = 2000")
-        columns = {
-            str(row["name"])
-            for row in connection.execute("PRAGMA table_info(model_usage)")
-        }
-        if not columns:
-            diagnostics.zcode_status = "missing_table"
-            return [], set()
-
-        selected: dict[str, str] = {}
-        for logical_name, candidates in _ZCODE_REQUIRED_COLUMN_GROUPS.items():
-            actual = next((candidate for candidate in candidates if candidate in columns), None)
-            if actual is None:
-                diagnostics.zcode_status = "schema_mismatch"
+        cursor = connection.cursor()
+        try:
+            cursor.execute("PRAGMA query_only = ON")
+            cursor.execute("PRAGMA busy_timeout = 2000")
+            cursor.execute("PRAGMA table_info(model_usage)")
+            columns = {str(row["name"]) for row in cursor.fetchall()}
+            if not columns:
+                diagnostics.zcode_status = "missing_table"
                 return [], set()
-            selected[logical_name] = actual
 
-        session_expression = "session_id" if "session_id" in columns else "''"
-        computed_expression = (
-            "COALESCE(computed_total_tokens, 0)"
-            if "computed_total_tokens" in columns
-            else "0"
-        )
-        provider_expression = (
-            "COALESCE(provider_total_tokens, 0)"
-            if "provider_total_tokens" in columns
-            else "0"
-        )
-        query = f"""
-            SELECT
-                {selected['id']} AS request_id,
-                {session_expression} AS session_id,
-                {selected['started_at']} AS started_at,
-                {selected['model']} AS model_id,
-                COALESCE({selected['input']}, 0) AS input_tokens,
-                COALESCE({selected['output']}, 0) AS output_tokens,
-                COALESCE({selected['reasoning']}, 0) AS reasoning_tokens,
-                COALESCE({selected['cache_read']}, 0) AS cache_read_tokens,
-                COALESCE({selected['cache_write']}, 0) AS cache_write_tokens,
-                {computed_expression} AS computed_total_tokens,
-                {provider_expression} AS provider_total_tokens
-            FROM model_usage
-            WHERE {selected['status']} = 'completed'
-            ORDER BY {selected['started_at']}, {selected['id']}
-        """
-        rows = connection.execute(query).fetchall()
+            selected: dict[str, str] = {}
+            for logical_name, candidates in _ZCODE_REQUIRED_COLUMN_GROUPS.items():
+                actual = next(
+                    (candidate for candidate in candidates if candidate in columns), None
+                )
+                if actual is None:
+                    diagnostics.zcode_status = "schema_mismatch"
+                    return [], set()
+                selected[logical_name] = actual
+
+            session_expression = "session_id" if "session_id" in columns else "''"
+            computed_expression = (
+                "COALESCE(computed_total_tokens, 0)"
+                if "computed_total_tokens" in columns
+                else "0"
+            )
+            provider_expression = (
+                "COALESCE(provider_total_tokens, 0)"
+                if "provider_total_tokens" in columns
+                else "0"
+            )
+            query = f"""
+                SELECT
+                    {selected['id']} AS request_id,
+                    {session_expression} AS session_id,
+                    {selected['started_at']} AS started_at,
+                    {selected['model']} AS model_id,
+                    COALESCE({selected['input']}, 0) AS input_tokens,
+                    COALESCE({selected['output']}, 0) AS output_tokens,
+                    COALESCE({selected['reasoning']}, 0) AS reasoning_tokens,
+                    COALESCE({selected['cache_read']}, 0) AS cache_read_tokens,
+                    COALESCE({selected['cache_write']}, 0) AS cache_write_tokens,
+                    {computed_expression} AS computed_total_tokens,
+                    {provider_expression} AS provider_total_tokens
+                FROM model_usage
+                WHERE {selected['status']} = 'completed'
+                ORDER BY {selected['started_at']}, {selected['id']}
+            """
+            cursor.execute(query)
+            rows = [dict(row) for row in cursor.fetchall()]
+        finally:
+            cursor.close()
     except sqlite3.Error:
         diagnostics.zcode_status = "query_failed"
         return [], set()
