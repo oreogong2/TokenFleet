@@ -4,6 +4,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from tokenfleet.collectors import collect_usage
@@ -28,7 +29,7 @@ def codex_usage(input_tokens: int, output_tokens: int, cached: int) -> dict:
 
 def create_zcode_database(path: Path, rows_sql: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         connection.executescript(
             f"""
             CREATE TABLE model_usage (
@@ -118,7 +119,7 @@ class CollectorTests(unittest.TestCase):
             home = Path(temporary)
             database = home / ".zcode" / "cli" / "db" / "db.sqlite"
             create_zcode_database(database, "")
-            with sqlite3.connect(database) as writer:
+            with closing(sqlite3.connect(database)) as writer:
                 writer.execute("PRAGMA journal_mode = WAL")
                 writer.execute(
                     """
@@ -158,7 +159,7 @@ class CollectorTests(unittest.TestCase):
             home = Path(temporary)
             database = home / ".zcode" / "cli" / "db" / "db.sqlite"
             database.parent.mkdir(parents=True)
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection:
                 connection.execute("CREATE TABLE model_usage (id TEXT, status TEXT)")
 
             mismatch = collect_usage(home)
