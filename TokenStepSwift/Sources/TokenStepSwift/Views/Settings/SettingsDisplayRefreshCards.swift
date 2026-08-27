@@ -112,27 +112,76 @@ struct SettingsRefreshCard: View {
 }
 
 struct SettingsExperimentalAgentSourcesCard: View {
+    @EnvironmentObject private var appState: AppState
+
     var body: some View {
-        SettingsCard(title: L("实验来源"), symbol: "point.3.connected.trianglepath.dotted", height: 180) {
-            VStack(spacing: 8) {
-                sourceLine(name: L("Kimi / DeepSeek"), detail: L("仅真实 CC Switch 代理行"), status: L("实验性"), tint: .orange)
-                sourceLine(name: L("Cursor / Gemini CLI"), detail: L("暂无稳定隐私安全字段"), status: L("暂不支持"), tint: .secondary)
-                sourceLine(name: "WorkBuddy", detail: L("不扫描目录或文件"), status: L("暂不支持"), tint: .secondary)
+        SettingsCard(title: L("实验来源"), symbol: "point.3.connected.trianglepath.dotted", height: 196) {
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsToggleRow(
+                    title: L("启用 ZCode / Hermes"),
+                    isOn: Binding(
+                        get: { appState.settings.showExperimentalAgentSources },
+                        set: { appState.setExperimentalAgentSourcesVisible($0) }
+                    )
+                )
+
+                Text(L("只读取本地 usage 字段，不读取对话正文。"))
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                sourceLine(name: "ZCode", sourceKey: "ZCode")
+                sourceLine(name: "Hermes Agent", sourceKey: "Hermes Agent")
             }
         }
     }
 
-    private func sourceLine(name: String, detail: String, status: String, tint: Color) -> some View {
-        HStack(spacing: 8) {
+    private func sourceLine(name: String, sourceKey: String) -> some View {
+        let status = normalizedStatus(appState.snapshot.sources[sourceKey]?.status)
+        let active = status == "ok"
+        let refreshing = status == "refreshing" || status == "pending_refresh"
+        return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(name).font(.system(size: 9, weight: .heavy)).foregroundStyle(Color.tokenInk)
-                Text(detail).font(.system(size: 7, weight: .semibold)).foregroundStyle(.secondary)
+                Text(L("本地只读 usage 数据"))
+                    .font(.system(size: 7, weight: .semibold))
+                    .foregroundStyle(.secondary)
             }
             Spacer()
-            Text(status).font(.system(size: 7, weight: .heavy)).foregroundStyle(tint)
+            Text(statusText(status))
+                .font(.system(size: 7, weight: .heavy))
+                .foregroundStyle(active ? Color.tokenGreenDark : refreshing ? .orange : .secondary)
         }
         .padding(.horizontal, 10)
-        .frame(height: 38)
+        .frame(height: 34)
         .background(Color.tokenTrack.opacity(0.28), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    private func normalizedStatus(_ status: String?) -> String {
+        guard appState.settings.showExperimentalAgentSources else {
+            return "disabled"
+        }
+        if appState.isRefreshing {
+            return "refreshing"
+        }
+        if status == nil || status == "disabled" {
+            return "pending_refresh"
+        }
+        return status ?? "missing"
+    }
+
+    private func statusText(_ status: String) -> String {
+        switch status {
+        case "ok": return L("已计入实验统计")
+        case "discovered_no_usage": return L("已发现，暂不可统计")
+        case "refreshing": return L("刷新中")
+        case "pending_refresh": return L("等待刷新")
+        case "disabled": return L("默认关闭")
+        case "missing_db", "missing": return L("未发现数据源")
+        case "missing_valid_rows": return L("暂无可用 usage")
+        case "schema_mismatch", "schema_unreadable", "missing_table": return L("结构待适配")
+        case "unreadable_db": return L("无法读取")
+        default: return L("等待同步")
+        }
     }
 }

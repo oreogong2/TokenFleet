@@ -57,6 +57,7 @@ POPOVER_TODAY_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/Popover/PopoverTod
 MAIN_WINDOW_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/MainWindowView.swift"
 TODAY_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/TodayView.swift"
 PRIVACY_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/Settings/SettingsUpdateAutostartPrivacyCards.swift"
+EXPERIMENTAL_SOURCES_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Views/Settings/SettingsDisplayRefreshCards.swift"
 APP_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/App/TokenStepApp.swift"
 LIFECYCLE_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Support/LifecycleLogger.swift"
 MAIN_WINDOW_PRESENTER_SOURCE="$SWIFT_DIR/Sources/TokenStepSwift/Support/MainWindowPresenter.swift"
@@ -112,6 +113,15 @@ rg -Fq '内容字段不进入统计或上传' "$PRIVACY_SOURCE" \
   || { echo "privacy card does not state the content-field boundary" >&2; exit 1; }
 rg -Fq '路径仅作本机增量定位' "$PRIVACY_SOURCE" \
   || { echo "privacy card does not disclose local path metadata" >&2; exit 1; }
+
+rg -Fq 'title: L("启用 ZCode / Hermes")' "$EXPERIMENTAL_SOURCES_SOURCE" \
+  || { echo "ZCode/Hermes opt-in control is missing from the settings UI" >&2; exit 1; }
+rg -Fq 'get: { appState.settings.showExperimentalAgentSources }' "$EXPERIMENTAL_SOURCES_SOURCE" \
+  || { echo "ZCode/Hermes settings control does not read the persisted opt-in" >&2; exit 1; }
+rg -Fq 'set: { appState.setExperimentalAgentSourcesVisible($0) }' "$EXPERIMENTAL_SOURCES_SOURCE" \
+  || { echo "ZCode/Hermes settings control does not activate the collector" >&2; exit 1; }
+rg -Fq 'sourceLine(name: "ZCode", sourceKey: "ZCode")' "$EXPERIMENTAL_SOURCES_SOURCE" \
+  || { echo "ZCode collector status is missing from the settings UI" >&2; exit 1; }
 
 SOURCE_LIST="$BUILD_DIR/sources.list"
 if ! rg --files "$SWIFT_DIR/Sources/TokenStepSwift" -g '*.swift' >"$SOURCE_LIST"; then

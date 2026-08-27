@@ -164,7 +164,7 @@
 | 旧能力 | 原始 TokenStep / beta.7 | beta.8 处理 | 奥哥确认 |
 | --- | --- | --- | --- |
 | 外部 Token Rank 身份、排名与“自动 / 显示 / 隐藏” | 旧版存在 | 🔁 用 TokenFleet 自有社群身份、本人排名和公榜替代；不再读取旧外部身份 | ✅ 已确认替代 |
-| ZCode / Hermes / WorkBuddy 旧实验开关 | beta.7 设置存在 | 🔁 改成真实采集器状态；没有可靠字段不显示为已支持 | ✅ 已确认替代 |
+| ZCode / Hermes / WorkBuddy 旧实验开关 | beta.7 设置存在 | 🔁 ZCode / Hermes 保留默认关闭的主动开启入口并显示真实采集状态；WorkBuddy 仍不打开混合内容日志 | ✅ 已确认边界 |
 | TokenStep / 生财 / OpenToken 用户可见文案 | 旧版和 beta.7 有残留 | 🔁 从 App、公开仓库用户界面和产品叙事移除；许可证 / NOTICE / 源码归属保留 | ✅ 已确认边界 |
 | 多圈步数式视觉 | 原始 TokenStep 强记忆点 | 🔁 保留“圈数感”和每天一个亿，但不照搬步数皮肤 | ✅ 已落地 |
 
