@@ -1,6 +1,6 @@
 # TokenFleet 社群成员安装与多设备登记
 
-状态：官方社群当前 Mac 与 Windows 客户端均为 beta.8，固定安装提交是 `6cd21ef5138f00fe1182b5da3ad0a9fdf3fdcc00`。已经正常使用这一版本的成员无需更新或重装；新成员继续固定检出该提交。线上成员 Web 的入口隔离热修不修改客户端、同步协议、昵称、设备身份或历史数据。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
+状态：官方社群正式版本仍为 beta.8（tag `v0.1.0-beta.8`），当前源码安装固定提交是 `05d037b98d1be77c90687a4e3c99c9c724b2da35`。已经正常使用的成员无需更新或重装；只有希望把 ZCode 用量也计入榜单的旧成员才需要按本文原位升级，新成员固定检出该提交。Windows 安装或升级后若检测到 ZCode 用量库会自动采集；macOS 需在“设置 → 统计与采集”主动开启 ZCode / Hermes。线上成员 Web 的滚动热修不修改同步协议、昵称、设备身份或历史数据。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
 
 ## 1. 三套身份不要混在一起
 
@@ -86,9 +86,9 @@ test "$(git rev-parse HEAD)" = "<new-reviewed-commit-sha>"
 
 ## 5. Windows 10/11：源码安装与登记
 
-状态：Windows 客户端为 beta。已有成员在真实环境成功使用，发布门禁也在真实
-Windows runner 上覆盖 DPAPI、计划任务、源码安装、升级与卸载；在完成正式的
-Windows 10/11 真机全项验收前，尚不称为正式认证版本（与 `clients/windows/README.md` 口径一致）。
+状态：Windows 客户端为 beta。已在 Windows 11（10.0.22631）+ ZCode 0.16.5
+真机完成采集、升级、凭据保留与同步验收，发布门禁也在 Windows runner 上覆盖
+DPAPI、计划任务、源码安装、升级与卸载；Windows 10 继续按 beta 支持，尚未宣称完成同等真机全项认证。
 
 Windows 首版需要 Python 3.10 或更高版本。下载或克隆经过复核的 TokenFleet 发布版本，进入仓库根目录后运行：
 
