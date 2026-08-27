@@ -114,7 +114,7 @@ tokenfleet sync
 tokenfleet open-rank
 ```
 
-Windows 首版采集 Codex 与 Claude Code 本地 JSONL，支持安全连接、自动同步和上榜；暂不采集 CC Switch，也没有与 macOS 原生 App 等同的完整桌面历史与统计界面。完整说明与卸载方式见 `clients/windows/README.md`。
+Windows 参赛端采集 Codex 与 Claude Code 本地 JSONL；若存在 ZCode 独立用量库，还会只读 `model_usage` 完成行，不读取转录或 Coding Plan 额度。它支持安全连接、自动同步和上榜；暂不采集 CC Switch，也没有与 macOS 原生 App 等同的完整桌面历史与统计界面。完整说明与卸载方式见 `clients/windows/README.md`。
 
 ## 6. 与 TokenStep 短期共存
 

@@ -86,6 +86,7 @@ def _preview_value(result) -> dict[str, object]:  # type: ignore[no-untyped-def]
         "source_files": result.diagnostics.source_files,
         "exact_records": result.diagnostics.exact_records,
         "skipped_records": result.diagnostics.skipped_records,
+        "zcode": result.diagnostics.zcode_status,
         "cc_switch": result.diagnostics.cc_switch_status,
         "privacy": "daily aggregates only; no prompts, responses, code, paths, or account IDs",
     }
@@ -171,7 +172,8 @@ def _status(args: argparse.Namespace, paths: ClientPaths) -> int:
         "last_sync_at": state.last_sync_at,
         "last_bucket_count": state.last_bucket_count,
         "last_uploaded_tokens": state.last_uploaded_tokens,
-        "collectors": ["Codex JSONL", "Claude Code JSONL"],
+        "collectors": ["Codex JSONL", "Claude Code JSONL", "ZCode SQLite"],
+        "zcode": "automatic_if_usage_database_exists",
         "cc_switch": "unsupported_in_windows_v1",
     }
     _print_value(value, as_json=args.as_json)

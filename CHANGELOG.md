@@ -32,6 +32,9 @@
 - Kept WorkBuddy unsupported because its observed project logs colocate usage with
   conversation/tool content; beta.8 does not open those files. Kimi and DeepSeek
   remain explicitly experimental only when real CC Switch proxy rows exist.
+- Added Windows ZCode 0.16.5 usage collection from the dedicated read-only
+  `model_usage` SQLite table. Only completed request token metadata is aggregated;
+  ZCode transcripts, Coding Plan credentials, and remaining quota are not read.
 - Reworked image export around explicit render, PNG/JPEG encoding, clipboard,
   and file-write failures, and replaced the inherited icon with a TokenFleet
   progress-ring icon.

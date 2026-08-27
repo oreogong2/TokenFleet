@@ -23,6 +23,7 @@
 - [x] Claude Code message/response/request 去重测试通过。
 - [x] CC Switch 仅接收 2xx、proxy、token > 0，且跨来源去重测试通过。
 - [x] ZCode macOS 实验采集默认关闭；设置页可主动开启并展示真实状态，采集器只读独立 SQLite `model_usage` 表，完成行、Token 口径和默认关闭均有回归覆盖。
+- [x] ZCode Windows 采集只读独立 SQLite `model_usage` 表；0.16.5 字段、完成行过滤、缓存拆分、schema 不匹配失败关闭及不读取 transcript 均有回归覆盖。
 - [x] 今日目标圆环、圈数、紧凑原生菜单栏及旧 Token Island 设置迁移通过源码 typecheck、双架构构建与窗口规则检查。
 - [ ] 历史、活动墙、统计、模型、工具和成本正常。
 - [x] 9 套主题、三种语言、刷新与更新通道规则已通过源码门禁、本地化检查和独立对比度检查；开机启动仍需真实安装环境 E2E。

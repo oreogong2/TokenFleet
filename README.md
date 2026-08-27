@@ -80,10 +80,10 @@ TokenFleet 把分散在不同 AI 工具里的用量汇成一份本地日志，�
 
 - Codex：读取本地 JSONL 用量元数据并维护逐会话增量缓存；缓存异常时自动重建，必要时回退 Codex 本地 SQLite 汇总。
 - Claude Code：读取 `~/.claude/projects/**/*.jsonl` 里的 usage 元数据。
-- ZCode（macOS，实验支持）：默认关闭；成员在“设置 → 统计与采集”主动开启后，只读 `~/.zcode/cli/db/db.sqlite` 的独立 `model_usage` 用量表，不读取会话 transcript，也不读取 ZCode Coding Plan 剩余额度。
+- ZCode：只读 `~/.zcode/cli/db/db.sqlite` 的独立 `model_usage` 用量表，不读取会话 transcript，也不读取 ZCode Coding Plan 剩余额度；macOS 需在“设置 → 统计与采集”主动开启，Windows 在数据库存在时自动采集。
 - CC Switch（macOS）：实验支持，读取本机 `proxy_request_logs` 中成功且 token 数大于 0 的请求行。
 - 额度显示：Codex 读取本机 Codex 账户限额；Claude Code 会在本机读取 Claude Code 钥匙串凭证，并请求 Anthropic usage 接口获取 5 小时 / 7 天剩余额度。
-- Windows 10/11 参赛端：读取 Codex 与 Claude Code 本地 JSONL，用当前用户 DPAPI 保护设备 secret，通过计划任务自动同步，并提供预览、状态、手动同步和打开公榜命令。
+- Windows 10/11 参赛端：读取 Codex、Claude Code 本地 JSONL 及 ZCode 独立用量 SQLite，用当前用户 DPAPI 保护设备 secret，通过计划任务自动同步，并提供预览、状态、手动同步和打开公榜命令。
 
 Windows 首版不采集 CC Switch，也尚未提供与 macOS 原生 App 等同的完整桌面历史与统计界面。Kimi Code、Gemini CLI、OpenCode 等候选只在出现真实需求并完成可靠本地日志验证后增加，首版不猜数据。
 

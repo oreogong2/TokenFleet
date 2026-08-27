@@ -76,8 +76,9 @@ origin。普通设置只能保存 device ID 和非敏感状态，不能出现明
 重新登记该 ID 时，服务端复用原 `device_id` 和用量自然键、重新启用设备并轮换
 secret；旧 secret 立即失效。该 ID 若已属于另一成员则返回 409，不能转移历史。
 
-Windows 首版采用同一 TeamSync v1 协议，但只采集 Codex / Claude Code 本地 JSONL，
-通过当前用户计划任务自动同步；它不采集 CC Switch，也不提供与 macOS 原生 App
+Windows 采用同一 TeamSync v1 协议，采集 Codex / Claude Code 本地 JSONL，并在
+ZCode 独立用量库存在时只读 `model_usage` 完成行；通过当前用户计划任务自动同步。
+它不读取 ZCode transcript 或 Coding Plan 额度，不采集 CC Switch，也不提供与 macOS 原生 App
 等同的完整桌面历史和统计界面。
 
 ## 3. HMAC 请求

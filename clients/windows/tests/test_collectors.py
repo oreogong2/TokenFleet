@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,7 +26,170 @@ def codex_usage(input_tokens: int, output_tokens: int, cached: int) -> dict:
     }
 
 
+def create_zcode_database(path: Path, rows_sql: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(path) as connection:
+        connection.executescript(
+            f"""
+            CREATE TABLE model_usage (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at INTEGER NOT NULL,
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
+                provider_total_tokens INTEGER,
+                computed_total_tokens INTEGER NOT NULL DEFAULT 0
+            );
+            {rows_sql}
+            """
+        )
+
+
 class CollectorTests(unittest.TestCase):
+    def test_collects_zcode_0165_model_usage_without_opening_transcripts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary) / "用户 Profile #1"
+            home.mkdir()
+            database = home / ".zcode" / "cli" / "db" / "db.sqlite"
+            create_zcode_database(
+                database,
+                """
+                INSERT INTO model_usage (
+                    id, session_id, provider_id, model_id, status, started_at,
+                    input_tokens, output_tokens, reasoning_tokens,
+                    cache_creation_input_tokens, cache_read_input_tokens,
+                    provider_total_tokens, computed_total_tokens
+                ) VALUES
+                    ('request-ok', 'session-1', 'builtin:bigmodel-coding-plan',
+                     'GLM-5.3', 'completed', 1787616000000,
+                     100, 30, 7, 10, 40, NULL, 137),
+                    ('request-error', 'session-1', 'builtin:bigmodel-coding-plan',
+                     'GLM-5.3', 'error', 1787616060000,
+                     999, 999, 0, 0, 0, 1998, 1998),
+                    ('request-zero', 'session-1', 'builtin:bigmodel-coding-plan',
+                     'GLM-5.3-Flash', 'completed', 1787616120000,
+                     0, 0, 0, 0, 0, 0, 0);
+                """,
+            )
+            transcript = (
+                home
+                / ".zcode"
+                / "cli"
+                / "agents"
+                / "sess-private"
+                / "agent-private"
+                / "transcript.jsonl"
+            )
+            transcript.parent.mkdir(parents=True)
+            transcript.write_text("private conversation content", encoding="utf-8")
+
+            result = collect_usage(home)
+
+            self.assertEqual(result.diagnostics.zcode_status, "ok")
+            self.assertEqual(result.diagnostics.source_files["ZCode"], 1)
+            self.assertEqual(result.diagnostics.exact_records["ZCode"], 1)
+            self.assertEqual(result.diagnostics.skipped_records["ZCode"], 0)
+            self.assertEqual(len(result.buckets), 1)
+            self.assertEqual(
+                result.buckets[0],
+                {
+                    "date": "2026-08-25",
+                    "timezone": "Asia/Shanghai",
+                    "tool": "ZCode",
+                    "model": "GLM-5.3",
+                    "source": "local",
+                    "input_tokens": 50,
+                    "output_tokens": 30,
+                    "cache_read_tokens": 40,
+                    "cache_write_tokens": 10,
+                    "completeness": "exact",
+                },
+            )
+            self.assertEqual(result.total_tokens, 130)
+
+    def test_zcode_collector_reads_committed_rows_while_wal_database_is_open(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            database = home / ".zcode" / "cli" / "db" / "db.sqlite"
+            create_zcode_database(database, "")
+            with sqlite3.connect(database) as writer:
+                writer.execute("PRAGMA journal_mode = WAL")
+                writer.execute(
+                    """
+                    INSERT INTO model_usage (
+                        id, session_id, provider_id, model_id, status, started_at,
+                        input_tokens, output_tokens, reasoning_tokens,
+                        cache_creation_input_tokens, cache_read_input_tokens,
+                        provider_total_tokens, computed_total_tokens
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "live-request",
+                        "live-session",
+                        "builtin:bigmodel-coding-plan",
+                        "GLM-5.3-Flash",
+                        "completed",
+                        1787616000000,
+                        80,
+                        20,
+                        5,
+                        0,
+                        30,
+                        105,
+                        105,
+                    ),
+                )
+                writer.commit()
+
+                result = collect_usage(home)
+
+            self.assertEqual(result.diagnostics.zcode_status, "ok")
+            self.assertEqual(result.total_tokens, 100)
+            self.assertEqual(result.buckets[0]["model"], "GLM-5.3-Flash")
+
+    def test_zcode_schema_mismatch_and_inexact_rows_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            database = home / ".zcode" / "cli" / "db" / "db.sqlite"
+            database.parent.mkdir(parents=True)
+            with sqlite3.connect(database) as connection:
+                connection.execute("CREATE TABLE model_usage (id TEXT, status TEXT)")
+
+            mismatch = collect_usage(home)
+            self.assertEqual(mismatch.buckets, [])
+            self.assertEqual(mismatch.diagnostics.zcode_status, "schema_mismatch")
+
+            database.unlink()
+            create_zcode_database(
+                database,
+                """
+                INSERT INTO model_usage (
+                    id, session_id, provider_id, model_id, status, started_at,
+                    input_tokens, output_tokens, reasoning_tokens,
+                    cache_creation_input_tokens, cache_read_input_tokens,
+                    provider_total_tokens, computed_total_tokens
+                ) VALUES
+                    ('valid', 'session-1', 'builtin:bigmodel-coding-plan',
+                     'GLM-5.3', 'completed', 1787616000000,
+                     100, 30, 0, 10, 40, 130, 130),
+                    ('invalid-cache', 'session-1', 'builtin:bigmodel-coding-plan',
+                     'GLM-5.3', 'completed', 1787616060000,
+                     10, 5, 0, 0, 20, 35, 35);
+                """,
+            )
+
+            inexact = collect_usage(home)
+            self.assertEqual(inexact.buckets, [])
+            self.assertEqual(inexact.diagnostics.zcode_status, "ok")
+            self.assertEqual(inexact.diagnostics.exact_records["ZCode"], 1)
+            self.assertEqual(inexact.diagnostics.skipped_records["ZCode"], 1)
+
     def test_collects_exact_codex_deltas_and_claude_deduplication(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary)

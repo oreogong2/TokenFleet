@@ -15,6 +15,10 @@ issues a separate one-time code for every device.
 
 - Native Codex JSONL under `%USERPROFILE%\.codex\sessions`.
 - Native Claude Code JSONL under `%USERPROFILE%\.claude\projects`.
+- ZCode 0.16.5-compatible request usage under
+  `%USERPROFILE%\.zcode\cli\db\db.sqlite`. TokenFleet opens the database
+  read-only and queries only completed rows from `model_usage`; it never opens
+  ZCode `transcript.jsonl` files or reads Coding Plan credentials/quota.
 - Exact daily `date × tool × model` aggregates using the existing TeamSync v1
   HMAC contract. If a relevant local record cannot be safely attributed, the
   affected Claude Code aggregate is withheld instead of being reported as exact.
@@ -80,7 +84,9 @@ tokenfleet sync
 tokenfleet open-rank
 ```
 
-`preview` and `status` never print prompt text, response text, code, source
+`preview --json` reports the ZCode collector as `ok`, `missing_db`,
+`schema_mismatch`, or another non-sensitive diagnostic. `preview` and `status`
+never print prompt text, response text, code, source
 paths, AI account IDs, enrollment codes, or the device secret. `open-rank`
 opens only `<connected HTTPS origin>/rank` without credentials in the URL.
 
@@ -91,6 +97,6 @@ tokenfleet uninstall --yes
 ```
 
 This removes the scheduled task, local state, DPAPI ciphertext, installed files,
-and the user PATH entry. It does not touch `.codex`, `.claude`, other AI tools,
+and the user PATH entry. It does not touch `.codex`, `.claude`, `.zcode`, other AI tools,
 their third-party credentials, or server-side history. Ask an administrator to
 disable the old device if immediate server-side revocation is required.
