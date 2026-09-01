@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — 主流 Agent 实验来源扩展
+## 0.1.0-beta.9 - 2026-09-01
 
 ### 升级前必须知道
 
@@ -24,7 +24,7 @@
 - TeamSync 的 `tool` 与 `model` 仍是自由字符串，本轮没有服务端 schema 或 migration；旧客户端可继续统计和同步原有来源。
 - 想使用新增来源的用户需要升级 Mac 客户端；不使用新增来源的老用户无需强制升级。
 
-## 0.1.0-beta.8 - Unreleased
+## 0.1.0-beta.8 - 2026-08-26
 
 ### Desktop identity, accuracy, and recovery
 

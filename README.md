@@ -18,10 +18,10 @@ TokenFleet 包含原生 macOS 菜单栏 App 和轻量 Windows 参赛端，用来
 
 ## 当前发布方式
 
-> **当前正式版本是 beta.8（tag `v0.1.0-beta.8`）。** 已经正常使用的成员无需更新或重装；只有希望把 ZCode 用量也计入榜单的旧成员才需要按正式加入指南原位升级。
+> **当前发布版本是 beta.9（tag `v0.1.0-beta.9`）。** 这是源码分发版本，不会自动安装到老用户电脑；希望统计新增 Agent 的成员需要按正式加入指南原位升级。已经开启“实验 Agent 来源”的用户升级后会自动扫描本轮新增固定目录，并补计窗口内最多 180 天历史，个人总量和排行榜上涨属于正常补计。
 > 新成员请按[正式加入指南](https://scn2sjohx0z1.feishu.cn/docx/I6rCdR1sKoQ3l7x7TgpcRp2lnLc)
-> 安装，客户端固定检出 `05d037b98d1be77c90687a4e3c99c9c724b2da35`。Windows 检测到 ZCode 用量库后会自动采集；macOS 需在“设置 → 统计与采集”主动开启 ZCode / Hermes。
-> 线上成员 Web 会在 beta.8 tag 基础上滚动部署经复核的服务端/网页热修；这些服务器热修不修改
+> 安装，客户端固定检出本次 GitHub Release 标注的完整 commit SHA。Windows 检测到 ZCode 用量库后会自动采集；macOS 的新增 Agent 需在“设置 → 统计与采集”开启“实验 Agent 来源”。
+> 线上成员 Web 会在发布 tag 基础上滚动部署经复核的服务端/网页热修；这些服务器热修不修改
 > 客户端固定提交、同步协议、昵称、设备身份或历史数据，也不要求成员更新客户端。
 
 TokenFleet 当前只提供**经过复核的源码安装**，不要求 Apple Developer 付费账号，也没有可下载的官方 DMG。不要把上游 TokenStep 的 DMG 当成 TokenFleet 安装包。
@@ -82,10 +82,12 @@ TokenFleet 把分散在不同 AI 工具里的用量汇成一份本地日志，�
 - Claude Code：读取 `~/.claude/projects/**/*.jsonl` 里的 usage 元数据。
 - ZCode：只读 `~/.zcode/cli/db/db.sqlite` 的独立 `model_usage` 用量表，不读取会话 transcript，也不读取 ZCode Coding Plan 剩余额度；macOS 需在“设置 → 统计与采集”主动开启，Windows 在数据库存在时自动采集。
 - CC Switch（macOS）：实验支持，读取本机 `proxy_request_logs` 中成功且 token 数大于 0 的请求行。
+- 主流 Agent 实验来源（macOS）：WorkBuddy、CodeBuddy、Qoder、Kimi Code、OpenCode、Grok Build、Qwen Code、Cline、GitHub Copilot CLI／Chat、Antigravity、Droid、dsh、Pi 与 OpenClaw；只抽取本地精确 usage 元数据，具体路径、版本边界和缺失状态见支持策略文档。
+- Cursor（macOS）：个人账号从 Cursor Dashboard 主动导入 Usage CSV；TokenFleet 不读取 Cursor 登录态，也不自动扫描下载目录。
 - 额度显示：Codex 读取本机 Codex 账户限额；Claude Code 会在本机读取 Claude Code 钥匙串凭证，并请求 Anthropic usage 接口获取 5 小时 / 7 天剩余额度。
 - Windows 10/11 参赛端：读取 Codex、Claude Code 本地 JSONL 及 ZCode 独立用量 SQLite，用当前用户 DPAPI 保护设备 secret，通过计划任务自动同步，并提供预览、状态、手动同步和打开公榜命令。
 
-Windows 首版不采集 CC Switch，也尚未提供与 macOS 原生 App 等同的完整桌面历史与统计界面。Kimi Code、Gemini CLI、OpenCode 等候选只在出现真实需求并完成可靠本地日志验证后增加，首版不猜数据。
+Windows 首版不采集 CC Switch 或本轮新增的 macOS 实验 Agent，也尚未提供与 macOS 原生 App 等同的完整桌面历史与统计界面。
 
 支持策略和候选 Agent 说明见 [docs/AGENT_SUPPORT.md](docs/AGENT_SUPPORT.md)。
 
@@ -195,7 +197,7 @@ TokenStepSwift/dist/TokenFleet.app
 Developer ID 签名 + Apple 公证：
 
 ```bash
-TOKENFLEET_VERSION=0.1.0-beta.8 \
+TOKENFLEET_VERSION=0.1.0-beta.9 \
 TOKENFLEET_BUNDLE_ID="com.yourcompany.TokenFleet" \
 TOKENFLEET_TEAM_ID="ABCDE12345" \
 TOKENFLEET_UPDATE_API_URL="https://updates.example.com/tokenfleet/latest" \

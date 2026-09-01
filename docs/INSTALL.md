@@ -1,6 +1,6 @@
 # TokenFleet 社群成员安装与多设备登记
 
-状态：官方社群正式版本仍为 beta.8（tag `v0.1.0-beta.8`），当前源码安装固定提交是 `05d037b98d1be77c90687a4e3c99c9c724b2da35`。已经正常使用的成员无需更新或重装；只有希望把 ZCode 用量也计入榜单的旧成员才需要按本文原位升级，新成员固定检出该提交。Windows 安装或升级后若检测到 ZCode 用量库会自动采集；macOS 需在“设置 → 统计与采集”主动开启 ZCode / Hermes。线上成员 Web 的滚动热修不修改同步协议、昵称、设备身份或历史数据。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
+状态：当前发布版本为 beta.9（tag `v0.1.0-beta.9`），源码安装固定检出本次 GitHub Release 标注的完整 commit SHA。源码版不会自动更新；希望统计新增 Agent 的老用户需要按本文原位升级。已经开启“实验 Agent 来源”的用户升级后会自动扫描本轮新增固定目录，并补计窗口内最多 180 天历史，个人总量和排行榜上涨属于正常补计。Windows 安装或升级后若检测到 ZCode 用量库会自动采集；本轮新增 Agent 仅在 macOS 的“设置 → 统计与采集 → 实验 Agent 来源”中启用。线上成员 Web 的滚动热修不修改同步协议、昵称、设备身份或历史数据。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
 
 ## 1. 三套身份不要混在一起
 
