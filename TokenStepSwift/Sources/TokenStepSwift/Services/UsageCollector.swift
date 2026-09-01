@@ -4457,9 +4457,20 @@ enum UsageCollector {
             }
         }
 
-        let records = recordsByIdentity.values.sorted {
-            ($0.timestampEpoch ?? 0, $0.sessionID ?? "", $0.requestID ?? "") <
-                ($1.timestampEpoch ?? 0, $1.sessionID ?? "", $1.requestID ?? "")
+        let records = recordsByIdentity.values.sorted { lhs, rhs in
+            let lhsTimestamp = lhs.timestampEpoch ?? 0
+            let rhsTimestamp = rhs.timestampEpoch ?? 0
+            if lhsTimestamp != rhsTimestamp {
+                return lhsTimestamp < rhsTimestamp
+            }
+
+            let lhsSessionID = lhs.sessionID ?? ""
+            let rhsSessionID = rhs.sessionID ?? ""
+            if lhsSessionID != rhsSessionID {
+                return lhsSessionID < rhsSessionID
+            }
+
+            return (lhs.requestID ?? "") < (rhs.requestID ?? "")
         }
         let status: String
         if !records.isEmpty {
