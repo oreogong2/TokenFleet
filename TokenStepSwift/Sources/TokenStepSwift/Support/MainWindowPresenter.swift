@@ -100,5 +100,5 @@ final class MainWindowPresenter: NSObject, NSWindowDelegate {
 }
 
 private func mainWindowTitle(for section: AppSection) -> String {
-    "TokenFleet beta.8 · \(section.title)"
+    "TokenFleet \(UpdateService.currentVersion) · \(section.title)"
 }
