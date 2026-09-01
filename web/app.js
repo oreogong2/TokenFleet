@@ -248,7 +248,7 @@ function renderLogin(message = "") {
     <section class="login-panel">
       <div class="eyebrow">TOKENFLEET / COMMUNITY LEDGER</div>
       <h1>进入社群管理后台</h1>
-      <p class="login-copy"><strong>仅限管理员。</strong>成员批次邀请、一次性设备码和成员昵称不能在此使用。请使用管理员账号登录；服务端签发的会话令牌只保存在当前浏览器标签页，关闭标签页后自动清除。</p>
+      <p class="login-copy"><strong>这里是管理员入口，仅限管理员；普通成员无需在此操作。</strong>成员请前往 <a href="/install">安装页</a> 或 <a href="/rank">排行榜</a>；成员批次邀请、一次性设备码和成员昵称不能在此使用。管理员请使用管理员账号登录；服务端签发的会话令牌只保存在当前浏览器标签页，关闭标签页后自动清除。</p>
       ${message ? `<div class="inline-alert" role="alert">${escapeHTML(message)}</div>` : ""}
       <form class="login-form" data-action="login">
         <label for="org-slug">社群标识<input id="org-slug" name="org_slug" autocomplete="organization" required maxlength="64" placeholder="your-community"></label>
