@@ -309,7 +309,9 @@ jobs:
 
       - name: Run cross-platform collector and protocol tests
         working-directory: clients/windows
-        run: python -m unittest discover -s tests -v
+        run: |
+          python -m pip install --disable-pip-version-check --only-binary=:all: --requirement requirements.txt
+          python -m unittest discover -s tests -v
 
       - name: Compile the source package
         working-directory: clients/windows
@@ -323,16 +325,27 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -NoPathUpdate
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -NoPathUpdate -NoOpen
           $launcher = Join-Path $env:LOCALAPPDATA "TokenFleet\bin\tokenfleet.cmd"
           & $launcher preview --json
           if ($LASTEXITCODE -ne 0) { throw "TokenFleet preview failed" }
           & $launcher status --json
           if ($LASTEXITCODE -ne 0) { throw "TokenFleet status failed" }
-          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -NoPathUpdate
+          $actionTokenPath = Join-Path $env:LOCALAPPDATA "TokenFleet\data\local-dashboard.token"
+          if (-not (Test-Path -LiteralPath $actionTokenPath)) { throw "TokenFleet action token was not installed" }
+          $actionTokenBeforeUpgrade = [System.IO.File]::ReadAllText($actionTokenPath)
+          schtasks.exe /Create /SC DAILY /ST 23:59 /TN "TokenFleet Community Sync" /TR "cmd.exe /c exit 0" /F | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "TokenFleet upgrade scheduled-task fixture could not be created" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -NoPathUpdate -NoOpen
+          $upgradedTask = Get-ScheduledTask -TaskName "TokenFleet Community Sync" -ErrorAction Stop
+          $upgradedAction = $upgradedTask.Actions | Select-Object -First 1
+          $runtimeRoot = Join-Path $env:LOCALAPPDATA "TokenFleet\runtime\Scripts"
+          if (-not $upgradedAction.Execute.StartsWith($runtimeRoot, [System.StringComparison]::OrdinalIgnoreCase)) { throw "TokenFleet upgrade kept the old scheduled-task interpreter" }
+          if ($upgradedAction.Arguments -notlike '*TokenFleet\app\tokenfleet_cli.py*sync --quiet*') { throw "TokenFleet upgrade scheduled-task arguments are wrong" }
+          if ([System.IO.File]::ReadAllText($actionTokenPath) -ne $actionTokenBeforeUpgrade) { throw "TokenFleet upgrade rotated the local action token" }
           powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\uninstall.ps1 -Yes
           if (Test-Path (Join-Path $env:LOCALAPPDATA "TokenFleet")) { throw "TokenFleet uninstall left the install root behind" }
-          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -NoPathUpdate
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\install.ps1 -CommunityServer https://community.example -NoPathUpdate -NoOpen
           schtasks.exe /Create /SC DAILY /ST 23:59 /TN "TokenFleet Community Sync" /TR "cmd.exe /c exit 0" /F | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "TokenFleet scheduled-task fixture could not be created" }
           powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\uninstall.ps1 -Yes

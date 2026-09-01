@@ -15,14 +15,20 @@ TokenFleet 首版是本地优先、由管理员邀请接入的社群 AI Token �
 - 输入、输出、缓存读、缓存写 Token 数量；
 - 采集器与 schema 版本。
 
-macOS 正式来源为 Codex、Claude Code，CC Switch、ZCode 与设置页列出的其他 Agent
-为用户主动开启的实验来源；其中 Cursor 只接受用户主动导入的 Usage CSV。Windows
-支持 Codex、Claude Code，并在 ZCode 用量库存在时自动只读 `model_usage` 表；暂不采集
-CC Switch 或其他新增实验来源。两端均不读取 ZCode 会话 transcript、Coding Plan 凭证
-或剩余额度。客户端只读取各平台已声明的固定数据位置，不要求管理员权限，不注入其他
+macOS 正式来源为 Codex、Claude Code；CC Switch、ZCode 与设置页列出的其他 Agent
+属于实验来源。自下一版起，macOS 与 Windows 的实验 Agent 来源总开关默认开启，升级后对
+老用户也统一生效；用户可随时在 macOS 设置页或 Windows 本机页／CLI 关闭，新版本中的显式
+关闭会永久尊重。Windows 的 ZCode 在用量库存在时默认只读 `model_usage` 表，且不受
+实验总开关控制。Cursor 只接受用户主动导入的 Usage CSV；Copilot OTel 只有在用户自行开启
+file exporter 后才会产生可读取记录，统计会按实际来源标为 Copilot CLI 或 Copilot Chat。
+两端均不读取 ZCode 会话 transcript、Coding Plan
+凭证或剩余额度。客户端只读取各平台已声明的固定数据位置，不要求管理员权限，不注入其他
 进程，不抓网络流量，也不安装根证书。
 实验采集器从 session 文件或只读数据库中只提取时间、模型、usage、成本和稳定去重 ID，
 不把 prompt、回复、代码或路径写入 TokenFleet 数据文件。
+自动实验来源最多回溯 180 天；Cursor 手动导入使用客户端正常历史窗口，不受该上限影响。
+升级到默认开启版本后，新增工具的既有记录可能被补计，
+个人总量和排行榜上涨属于正常历史补计；关闭开关后不再扫描受它控制的来源。
 其中 dsh 的 `.jsonl.zstd` 仅在本机存在 `zstd` 可执行文件时解压到内存并解析 usage，
 不生成解压副本；缺少解码器时不读取、更不会用正文估算 Token。
 

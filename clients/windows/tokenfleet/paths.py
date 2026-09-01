@@ -14,6 +14,11 @@ class ClientPaths:
     community_config: Path
     community_digest: Path
     install_marker: Path
+    settings: Path
+    cursor_usage: Path
+    dashboard_token: Path
+    rank_cache: Path
+    web_root: Path
 
     @classmethod
     def default(cls) -> "ClientPaths":
@@ -36,6 +41,11 @@ class ClientPaths:
             community_config=app / "community.json",
             community_digest=app / "community.sha256",
             install_marker=root / ".installed",
+            settings=data / "settings.json",
+            cursor_usage=data / "cursor-usage.json",
+            dashboard_token=data / "local-dashboard.token",
+            rank_cache=data / "community-rank-cache.json",
+            web_root=app / "web",
         )
 
 

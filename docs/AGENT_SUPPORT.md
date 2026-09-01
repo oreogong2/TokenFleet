@@ -11,6 +11,11 @@ TokenFleet 的原则是：能从本地日志中稳定读到 token 数，才进�
 
 ## 当前实验支持
 
+下一版在 macOS 与 Windows 默认开启实验 Agent 来源总开关，升级后对老用户也统一生效；
+用户可随时关闭，新版本中的显式关闭会永久尊重。自动来源最多补计 180 天历史。Windows
+的 ZCode 默认采集且不受该开关控制。Cursor 仍只处理主动导入的 CSV，并使用客户端正常
+历史窗口；Copilot OTel 仍需用户自行开启 exporter，结果会标为 Copilot CLI 或 Copilot Chat。
+
 | Agent | 数据来源 | 当前边界 |
 | --- | --- | --- |
 | ZCode | `~/.zcode/cli/db/db.sqlite` | 只读已完成的 `model_usage` 精确 usage 行。 |
@@ -31,10 +36,11 @@ TokenFleet 的原则是：能从本地日志中稳定读到 token 数，才进�
 | Pi | `${PI_CODING_AGENT_SESSION_DIR:-${PI_CODING_AGENT_DIR:-~/.pi/agent}/sessions}/**/*.jsonl` | 按官方 session v3 合约读取 assistant message 的模型、provider、精确 usage 与实际成本；按 session ID + entry ID 去重，不保留正文。Pi 是模型路由器，实际模型名原样进入模型统计。 |
 | OpenClaw | `${OPENCLAW_HOME:-${OPENCLAW_STATE_DIR:-~/.openclaw}}/agents/*/agent/openclaw-agent.sqlite`，兼容旧版/归档 `sessions/*.jsonl*` | 读取当前 `transcript_events.event_json` 的 assistant usage，并兼容 reset、deleted 和 SQLite 导入归档；按 session ID + event ID 跨 SQLite/JSONL 去重，保留模型、cache 和实际成本，不保存正文。远程 Gateway 的数据只存在远端主机，本地客户端不会假装已采集。 |
 
-## ZCode（macOS 需主动开启；Windows 自动识别用量库）
+## ZCode（macOS 随实验总开关；Windows 自动识别且不受开关控制）
 
-macOS 的 ZCode 采集默认关闭。成员在 TokenFleet 的“设置 → 统计与采集”中主动开启
-实验 Agent 来源后，TokenFleet 只读 `~/.zcode/cli/db/db.sqlite` 的独立
+下一版 macOS 的 ZCode 随默认开启的实验 Agent 来源总开关采集，成员可在“设置 → 统计与采集”
+随时关闭；Windows 的 ZCode 默认采集且不受该开关控制。TokenFleet 只读
+`~/.zcode/cli/db/db.sqlite` 的独立
 `model_usage` 表，只接受已完成且 Token 大于 0 的模型请求，并按用量行 ID 去重。
 若非零的 `computed_total_tokens` 或 `provider_total_tokens` 与可上传四类 Token
 分项合计不一致，采集器会失败关闭该行，不会猜测 `reasoning_tokens` 是否已包含在输出中。

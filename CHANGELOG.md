@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### 实验来源默认开启与 Windows 对等
+
+- macOS 与 Windows 的实验 Agent 来源总开关改为默认开启，升级后对老用户也统一生效。用户可随时在 macOS“设置 → 统计与采集”或 Windows 本机页／`tokenfleet experimental disable` 关闭；新版本中的显式关闭会永久尊重。Windows 的 ZCode 继续默认采集且不受该开关控制。
+- 升级后会自动只读扫描已披露的新增工具固定目录，并最多补计 180 天历史；个人总量和排行榜普遍上涨属于正常补计。Cursor 仍只读取用户主动导入的 Usage CSV，且不受自动实验来源 180 天上限影响；Copilot OTel 仍需用户自行开启 file exporter，采集结果可能显示为 Copilot CLI 或 Copilot Chat。
+- 默认开启后的真实样本继续按 7 天巡检计划复核。发现口径错误会立即修复，并由相同 naturalKey 覆盖自愈；无法通过后续上报消除的旧桶会列出清单，走管理员通道清理。
+- Windows 补齐 16 个自动扫描来源、实验来源残缺桶整桶扣留、异常日志失败隔离、本机页写操作令牌与请求级 Host／Origin 防护、排行榜缓存、独占端口绑定及隔离运行时升级任务重注册。变更仍待终审和 Windows 真机裁决，尚未发布。
+
 ## 0.1.0-beta.10 - 2026-09-01
 
 ### 发布身份与观测修正

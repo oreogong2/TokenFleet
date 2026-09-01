@@ -22,7 +22,7 @@
 - [x] Codex SQLite fallback 测试通过。
 - [x] Claude Code message/response/request 去重测试通过。
 - [x] CC Switch 仅接收 2xx、proxy、token > 0，且跨来源去重测试通过。
-- [x] ZCode macOS 实验采集默认关闭；设置页可主动开启并展示真实状态，采集器只读独立 SQLite `model_usage` 表，完成行、Token 口径、显式总量不一致失败关闭和默认关闭均有回归覆盖。
+- [ ] ZCode macOS 随默认开启的实验总开关采集且可关闭；Windows 默认采集并脱离总开关。Mac 无标记的旧 false 统一迁为开启、新版本显式关闭永久保留，以及只读 SQLite `model_usage` 的完成行、Token 口径、显式总量不一致整桶扣留，需在本轮全门禁后重新勾选。
 - [x] ZCode Windows 采集只读独立 SQLite `model_usage` 表；0.16.5 字段、完成行过滤、缓存拆分、显式总量不一致、schema 不匹配失败关闭及不读取 transcript 均有回归覆盖。
 - [x] 今日目标圆环、圈数、紧凑原生菜单栏及旧 Token Island 设置迁移通过源码 typecheck、双架构构建与窗口规则检查。
 - [ ] 历史、活动墙、统计、模型、工具和成本正常。

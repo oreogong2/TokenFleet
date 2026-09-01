@@ -26,6 +26,26 @@ if ($null -ne $scheduledTask) {
 }
 
 $binRoot = Join-Path $installRoot "bin"
+$dashboardPidPath = Join-Path $installRoot "data\local-dashboard.pid"
+if (Test-Path -LiteralPath $dashboardPidPath) {
+    $dashboardPidText = [System.IO.File]::ReadAllText($dashboardPidPath).Trim()
+    $dashboardPid = 0
+    if ([int]::TryParse($dashboardPidText, [ref]$dashboardPid) -and $dashboardPid -gt 0) {
+        $dashboardProcess = Get-Process -Id $dashboardPid -ErrorAction SilentlyContinue
+        $expectedRuntime = [System.IO.Path]::GetFullPath((Join-Path $installRoot "runtime\Scripts\python.exe"))
+        if ($null -ne $dashboardProcess) {
+            try {
+                $processPath = [System.IO.Path]::GetFullPath($dashboardProcess.Path)
+                if ($processPath -ieq $expectedRuntime) {
+                    Stop-Process -Id $dashboardPid -Force -ErrorAction Stop
+                }
+            }
+            catch {
+                throw "TokenFleet local statistics service could not be stopped safely."
+            }
+        }
+    }
+}
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 $remaining = @(
     $userPath -split ';' |
@@ -33,10 +53,32 @@ $remaining = @(
 )
 [Environment]::SetEnvironmentVariable("Path", ($remaining -join ';'), "User")
 
+foreach ($shortcutPath in @(
+    (Join-Path ([Environment]::GetFolderPath("Desktop")) "TokenFleet.lnk"),
+    (Join-Path ([Environment]::GetFolderPath("Programs")) "TokenFleet.lnk")
+)) {
+    if (Test-Path -LiteralPath $shortcutPath) {
+        Remove-Item -LiteralPath $shortcutPath -Force
+    }
+}
+
 if ($FromClient) {
     Start-Sleep -Seconds 3
 }
+$deleteError = $null
+for ($attempt = 1; $attempt -le 3 -and (Test-Path -LiteralPath $installRoot); $attempt++) {
+    try {
+        Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction Stop
+        $deleteError = $null
+    }
+    catch {
+        $deleteError = $_
+        if ($attempt -lt 3) {
+            Start-Sleep -Seconds 2
+        }
+    }
+}
 if (Test-Path -LiteralPath $installRoot) {
-    Remove-Item -LiteralPath $installRoot -Recurse -Force
+    throw "TokenFleet client files could not be removed after 3 attempts: $deleteError"
 }
 Write-Output "TokenFleet Windows client removed. Server-side history is unchanged."
