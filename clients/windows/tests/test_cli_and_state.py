@@ -185,6 +185,8 @@ class CLIAndStateTests(unittest.TestCase):
         script = Path("C:/Users/example/AppData/Local/TokenFleet/app/tokenfleet_cli.py")
         python = Path("C:/Python312/python.exe")
         action = task_action(script, python)
+        self.assertTrue(action.startswith('"C:/Python312/python.exe"'))
+        self.assertNotIn("pythonw.exe", action)
         self.assertIn("sync --quiet", action)
         self.assertNotIn("connect", action)
         command = create_task_command(script)

@@ -220,9 +220,9 @@ import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 from tokenfleet.scheduler import register
-register(Path(sys.argv[2]))
+register(Path(sys.argv[2]), python_executable=Path(sys.argv[3]))
 '@
-    & $runtimePython -B -c $refreshScheduledTask $appRoot $entrypoint
+    & $runtimePython -B -c $refreshScheduledTask $appRoot $entrypoint $runtimePython
     if ($LASTEXITCODE -ne 0) {
         throw "TokenFleet scheduled sync could not be upgraded to the isolated runtime."
     }

@@ -35,6 +35,7 @@ class InstallationConfigTests(unittest.TestCase):
         self.assertIn("local-dashboard.token", installer)
         self.assertIn("$scheduledTaskWasRegistered", installer)
         self.assertIn("from tokenfleet.scheduler import register", installer)
+        self.assertIn("python_executable=Path(sys.argv[3])", installer)
         self.assertIn('elseif ($dashboardWasRunning)', installer)
         self.assertIn('-ArgumentList @($entrypoint, "_serve")', installer)
         self.assertNotIn(".URL", installer)
