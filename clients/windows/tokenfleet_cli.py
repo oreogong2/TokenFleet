@@ -10,6 +10,11 @@ import webbrowser
 from pathlib import Path
 
 from tokenfleet.client import TokenFleetClient
+from tokenfleet.collectors import (
+    experimental_scan_paths,
+    import_cursor_csv,
+    remove_cursor_import,
+)
 from tokenfleet.constants import APP_VERSION, TASK_NAME
 from tokenfleet.credential import CredentialError, CredentialStore
 from tokenfleet.installation import (
@@ -20,6 +25,8 @@ from tokenfleet.paths import ClientPaths, default_source_home
 from tokenfleet.protocol import ProtocolError
 from tokenfleet.scheduler import SchedulerError, is_registered, register, unregister
 from tokenfleet.state import StateError, StateStore
+from tokenfleet.settings import SettingsStore
+from tokenfleet.local_dashboard import dashboard_url, open_dashboard, serve_dashboard
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -47,7 +54,25 @@ def _parser() -> argparse.ArgumentParser:
     status = commands.add_parser("status", help="查看连接和自动同步状态")
     status.add_argument("--json", action="store_true", dest="as_json")
 
+    rank = commands.add_parser("rank", help="查询自己的社群名次")
+    rank.add_argument("--json", action="store_true", dest="as_json")
+
+    commands.add_parser("open", help="打开本机统计页面")
     commands.add_parser("open-rank", help="打开公开排行榜")
+
+    experimental = commands.add_parser("experimental", help="管理实验 Agent 来源总开关")
+    experimental.add_argument("action", choices=("status", "enable", "disable"))
+    experimental.add_argument("--json", action="store_true", dest="as_json")
+
+    cursor = commands.add_parser("cursor", help="管理 Cursor Usage CSV 手动导入")
+    cursor_commands = cursor.add_subparsers(dest="cursor_action", required=True)
+    cursor_import = cursor_commands.add_parser("import", help="导入 Cursor Usage CSV")
+    cursor_import.add_argument("file", type=Path)
+    cursor_import.add_argument("--json", action="store_true", dest="as_json")
+    cursor_delete = cursor_commands.add_parser("delete", help="删除 Cursor 导入归档")
+    cursor_delete.add_argument("--json", action="store_true", dest="as_json")
+
+    commands.add_parser("_serve", help=argparse.SUPPRESS)
 
     uninstall = commands.add_parser("uninstall", help="卸载本机客户端和同步凭据")
     uninstall.add_argument("--yes", action="store_true", help="确认移除本机数据")
@@ -61,6 +86,8 @@ def _client(paths: ClientPaths) -> TokenFleetClient:
     return TokenFleetClient(
         credential_store=CredentialStore(paths.credential),
         state_store=StateStore(paths.state),
+        settings_store=SettingsStore(paths.settings),
+        cursor_archive=paths.cursor_usage,
         source_home=default_source_home(),
         community_origin=config.community_server,
     )
@@ -86,15 +113,18 @@ def _preview_value(result) -> dict[str, object]:  # type: ignore[no-untyped-def]
         "source_files": result.diagnostics.source_files,
         "exact_records": result.diagnostics.exact_records,
         "skipped_records": result.diagnostics.skipped_records,
+        "experimental_sources_enabled": result.diagnostics.experimental_sources_enabled,
+        "experimental_sources": result.diagnostics.source_status,
+        "experimental_scan_paths": result.diagnostics.scan_paths,
         "zcode": result.diagnostics.zcode_status,
         "cc_switch": result.diagnostics.cc_switch_status,
-        "privacy": "daily aggregates only; no prompts, responses, code, paths, or account IDs",
+        "privacy": "configured scan roots are disclosed; only daily aggregate usage leaves this device; no prompts, responses, code, per-record paths, or account IDs",
     }
 
 
 def _print_value(value: dict[str, object], *, as_json: bool) -> None:
     if as_json:
-        print(json.dumps(value, ensure_ascii=False, sort_keys=True))
+        print(json.dumps(value, ensure_ascii=True, sort_keys=True))
         return
     for key, item in value.items():
         print(f"{key}: {item}")
@@ -142,7 +172,11 @@ def _sync(args: argparse.Namespace, paths: ClientPaths) -> int:
         "generated_at": summary.generated_at,
     }
     if not args.quiet:
+        if args.as_json:
+            value["local_page"] = dashboard_url()
         _print_value(value, as_json=args.as_json)
+        if not args.as_json:
+            print(f"本机统计：tokenfleet open（{dashboard_url()}）")
     return 0
 
 
@@ -163,6 +197,22 @@ def _status(args: argparse.Namespace, paths: ClientPaths) -> int:
             )
         public_id = credential.device_public_id
     state = StateStore(paths.state).load()
+    settings = SettingsStore(paths.settings).load()
+    rank_summary: str
+    rank_value: dict[str, object] | None = None
+    if connected:
+        try:
+            rank = _client(paths).community_rank()
+            rank_value = {
+                "rank": rank["rank"],
+                "total_entries": rank["total_entries"],
+                "metric_value": rank["metric_value"],
+            }
+            rank_summary = _rank_summary(rank)
+        except RuntimeError:
+            rank_summary = "暂时无法读取"
+    else:
+        rank_summary = "尚未连接"
     value = {
         "connected": connected,
         "server": origin,
@@ -172,10 +222,71 @@ def _status(args: argparse.Namespace, paths: ClientPaths) -> int:
         "last_sync_at": state.last_sync_at,
         "last_bucket_count": state.last_bucket_count,
         "last_uploaded_tokens": state.last_uploaded_tokens,
-        "collectors": ["Codex JSONL", "Claude Code JSONL", "ZCode SQLite"],
-        "zcode": "automatic_if_usage_database_exists",
+        "collectors": ["Codex JSONL", "Claude Code JSONL", "实验 Agent 来源（总开关）"],
+        "experimental_sources_enabled": settings.experimental_sources_enabled,
+        "community_rank": rank_value,
+        "rank_summary": rank_summary,
         "cc_switch": "unsupported_in_windows_v1",
+        "local_page": dashboard_url(),
     }
+    if args.as_json:
+        _print_value(value, as_json=True)
+    else:
+        text_value = dict(value)
+        text_value.pop("community_rank")
+        text_value.pop("rank_summary")
+        _print_value(text_value, as_json=False)
+        print(f"我的名次：{rank_summary}")
+        print(f"本机统计：tokenfleet open（{dashboard_url()}）")
+    return 0
+
+
+def _rank_summary(value: dict[str, object]) -> str:
+    rank = value.get("rank")
+    metric = value.get("metric_value")
+    total_entries = value.get("total_entries")
+    if rank is None:
+        return "当前没有公开名次"
+    return f"第 {rank} 名 / {total_entries} 人，本期 {metric or '0'} Token"
+
+
+def _rank(args: argparse.Namespace, paths: ClientPaths) -> int:
+    value = _client(paths).community_rank()
+    if args.as_json:
+        _print_value(value, as_json=True)
+    else:
+        print(_rank_summary(value))
+    return 0
+
+
+def _open(paths: ClientPaths) -> int:
+    open_dashboard(Path(__file__).resolve(), paths)
+    return 0
+
+
+def _experimental(args: argparse.Namespace, paths: ClientPaths) -> int:
+    store = SettingsStore(paths.settings)
+    if args.action == "enable":
+        settings = store.set_experimental_sources(True)
+    elif args.action == "disable":
+        settings = store.set_experimental_sources(False)
+    else:
+        settings = store.load()
+    value: dict[str, object] = {
+        "enabled": settings.experimental_sources_enabled,
+        "history_backfill_days": 180,
+        "scan_paths": experimental_scan_paths(default_source_home()),
+        "privacy": "只提取结构化 usage；不保存、展示或上传 prompt、回复或代码正文",
+    }
+    _print_value(value, as_json=args.as_json)
+    return 0
+
+
+def _cursor(args: argparse.Namespace, paths: ClientPaths) -> int:
+    if args.cursor_action == "import":
+        value: dict[str, object] = import_cursor_csv(args.file, paths.cursor_usage)
+    else:
+        value = {"removed": remove_cursor_import(paths.cursor_usage)}
     _print_value(value, as_json=args.as_json)
     return 0
 
@@ -198,7 +309,7 @@ def _uninstall(args: argparse.Namespace, paths: ClientPaths) -> int:
     if paths.install_marker.is_file():
         uninstall_script = paths.root / "app" / "uninstall.ps1"
         if uninstall_script.is_file():
-            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
             subprocess.Popen(
                 [
                     "powershell.exe",
@@ -210,8 +321,6 @@ def _uninstall(args: argparse.Namespace, paths: ClientPaths) -> int:
                     "-FromClient",
                 ],
                 stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
                 creationflags=flags,
                 close_fds=True,
             )
@@ -228,7 +337,12 @@ def main(argv: list[str] | None = None) -> int:
             "preview": _preview,
             "sync": _sync,
             "status": _status,
+            "rank": _rank,
+            "open": lambda _args, selected: _open(selected),
             "open-rank": lambda _args, selected: _open_rank(selected),
+            "experimental": _experimental,
+            "cursor": _cursor,
+            "_serve": lambda _args, selected: serve_dashboard(selected),
             "uninstall": _uninstall,
         }
         return handlers[args.command](args, paths)

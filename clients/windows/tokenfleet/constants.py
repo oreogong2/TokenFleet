@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 APP_VERSION = "0.1.0"
-COLLECTOR_VERSION = "0.2.0-windows.2"
+COLLECTOR_VERSION = "0.2.0-windows.3"
 SCHEMA_VERSION = 1
 
 ENROLLMENT_PATH = "/api/v1/devices/enroll"
 DAILY_USAGE_PATH = "/api/v1/usage/daily"
 PUBLIC_RANK_PATH = "/rank"
+COMMUNITY_RANK_PATH = "/api/v1/devices/me/community-rank"
+LOCAL_DASHBOARD_HOST = "127.0.0.1"
+LOCAL_DASHBOARD_PORT = 47831
 SIGNING_KEY_CONTEXT = b"TokenFleet-HMAC-v1:\n"
 SIGNING_KEY_DERIVATION = "sha256-tokenfleet-hmac-v1"
 

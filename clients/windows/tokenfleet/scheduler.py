@@ -14,21 +14,19 @@ class SchedulerError(RuntimeError):
 
 def task_action(script_path: Path, python_executable: Path | None = None) -> str:
     executable = python_executable or Path(sys.executable)
-    if executable.name.lower() == "python.exe":
-        pythonw = executable.with_name("pythonw.exe")
-        if pythonw.exists():
-            executable = pythonw
     return f'"{executable}" "{script_path.resolve()}" sync --quiet'
 
 
-def create_task_command(script_path: Path) -> list[str]:
+def create_task_command(
+    script_path: Path, python_executable: Path | None = None
+) -> list[str]:
     return [
         "schtasks.exe",
         "/Create",
         "/TN",
         TASK_NAME,
         "/TR",
-        task_action(script_path),
+        task_action(script_path, python_executable),
         "/SC",
         "HOURLY",
         "/MO",
@@ -39,8 +37,13 @@ def create_task_command(script_path: Path) -> list[str]:
     ]
 
 
-def register(script_path: Path) -> None:
-    _run(create_task_command(script_path), operation="create")
+def register(
+    script_path: Path, python_executable: Path | None = None
+) -> None:
+    _run(
+        create_task_command(script_path, python_executable),
+        operation="create",
+    )
 
 
 def unregister(*, ignore_missing: bool = True) -> None:

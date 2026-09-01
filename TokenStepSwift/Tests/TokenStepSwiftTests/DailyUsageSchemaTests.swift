@@ -114,6 +114,52 @@ final class DailyUsageSchemaTests: XCTestCase {
         XCTAssertFalse(settings.teamSyncEnabled)
         XCTAssertEqual(settings.teamSyncServerURL, "")
         XCTAssertFalse(settings.menuBarShowsTokenCount)
+        XCTAssertTrue(settings.showExperimentalAgentSources)
+        XCTAssertFalse(settings.experimentalAgentSourcesConfigured)
+    }
+
+    func testLegacyExperimentalSourceTrueStaysConfigured() throws {
+        let settings = try JSONDecoder().decode(
+            TokenStepSettings.self,
+            from: Data(#"{"show_experimental_agent_sources":true}"#.utf8)
+        )
+
+        XCTAssertTrue(settings.showExperimentalAgentSources)
+        XCTAssertTrue(settings.experimentalAgentSourcesConfigured)
+    }
+
+    func testLegacyExperimentalSourceFalseAdoptsNewDefaultAsUnconfigured() throws {
+        let settings = try JSONDecoder().decode(
+            TokenStepSettings.self,
+            from: Data(#"{"show_experimental_agent_sources":false}"#.utf8)
+        )
+
+        XCTAssertTrue(settings.showExperimentalAgentSources)
+        XCTAssertFalse(settings.experimentalAgentSourcesConfigured)
+    }
+
+    func testExperimentalSourceConfiguredMarkerRoundTrips() throws {
+        var settings = TokenStepSettings.defaults
+        settings.showExperimentalAgentSources = false
+        settings.experimentalAgentSourcesConfigured = true
+
+        let decoded = try JSONDecoder().decode(
+            TokenStepSettings.self,
+            from: JSONEncoder().encode(settings)
+        )
+
+        XCTAssertFalse(decoded.showExperimentalAgentSources)
+        XCTAssertTrue(decoded.experimentalAgentSourcesConfigured)
+    }
+
+    func testUnconfiguredExperimentalSourceValueFollowsCurrentDefault() throws {
+        let settings = try JSONDecoder().decode(
+            TokenStepSettings.self,
+            from: Data(#"{"show_experimental_agent_sources":false,"experimental_agent_sources_configured":false}"#.utf8)
+        )
+
+        XCTAssertTrue(settings.showExperimentalAgentSources)
+        XCTAssertFalse(settings.experimentalAgentSourcesConfigured)
     }
 
     func testMenuBarTokenCountPreferenceRoundTrips() throws {

@@ -18,9 +18,9 @@ TokenFleet 包含原生 macOS 菜单栏 App 和轻量 Windows 参赛端，用来
 
 ## 当前发布方式
 
-> **当前发布版本是 beta.10（tag `v0.1.0-beta.10`）。** 这是源码分发版本，不会自动安装到老用户电脑；希望统计新增 Agent 的成员需要按正式加入指南原位升级。已经开启“实验 Agent 来源”的用户升级后会自动扫描本轮新增固定目录，并补计窗口内最多 180 天历史，个人总量和排行榜上涨属于正常补计。
+> **当前发布版本是 beta.11（tag `v0.1.0-beta.11`）。** 这是源码分发版本，不会自动安装到老用户电脑。升级后，macOS 与 Windows 的实验 Agent 来源默认开启（包括老用户），自动扫描已披露的固定目录并最多补计 180 天历史；个人总量和排行榜上涨属于正常补计。用户可随时关闭，beta.11 及后续版本中的显式关闭会永久尊重。
 > 新成员请按[正式加入指南](https://scn2sjohx0z1.feishu.cn/docx/I6rCdR1sKoQ3l7x7TgpcRp2lnLc)
-> 安装，客户端固定检出本次 GitHub Release 标注的完整 commit SHA。Windows 检测到 ZCode 用量库后会自动采集；macOS 的新增 Agent 需在“设置 → 统计与采集”开启“实验 Agent 来源”。
+> 安装时，客户端固定检出本次 GitHub Release 标注的完整 commit SHA。Windows 检测到 ZCode 用量库后会自动采集且不受实验开关控制；实验来源可在 macOS 设置或 Windows 本机页／CLI 随时关闭。Cursor 仍需主动导入 CSV，Copilot OTel 仍需自行开启 exporter。
 > 线上成员 Web 会在发布 tag 基础上滚动部署经复核的服务端/网页热修；这些服务器热修不修改
 > 客户端固定提交、同步协议、昵称、设备身份或历史数据，也不要求成员更新客户端。
 
@@ -80,14 +80,14 @@ TokenFleet 把分散在不同 AI 工具里的用量汇成一份本地日志，�
 
 - Codex：读取本地 JSONL 用量元数据并维护逐会话增量缓存；缓存异常时自动重建，必要时回退 Codex 本地 SQLite 汇总。
 - Claude Code：读取 `~/.claude/projects/**/*.jsonl` 里的 usage 元数据。
-- ZCode：只读 `~/.zcode/cli/db/db.sqlite` 的独立 `model_usage` 用量表，不读取会话 transcript，也不读取 ZCode Coding Plan 剩余额度；macOS 需在“设置 → 统计与采集”主动开启，Windows 在数据库存在时自动采集。
+- ZCode：只读 `~/.zcode/cli/db/db.sqlite` 的独立 `model_usage` 用量表，不读取会话 transcript，也不读取 ZCode Coding Plan 剩余额度；macOS 随默认开启的实验总开关采集，Windows 在数据库存在时默认采集且不受该开关控制。
 - CC Switch（macOS）：实验支持，读取本机 `proxy_request_logs` 中成功且 token 数大于 0 的请求行。
-- 主流 Agent 实验来源（macOS）：WorkBuddy、CodeBuddy、Qoder、Kimi Code、OpenCode、Grok Build、Qwen Code、Cline、GitHub Copilot CLI／Chat、Antigravity、Droid、dsh、Pi 与 OpenClaw；只抽取本地精确 usage 元数据，具体路径、版本边界和缺失状态见支持策略文档。
-- Cursor（macOS）：个人账号从 Cursor Dashboard 主动导入 Usage CSV；TokenFleet 不读取 Cursor 登录态，也不自动扫描下载目录。
+- 主流 Agent 实验来源（macOS 与 Windows）：Hermes Agent、WorkBuddy、CodeBuddy、Qoder、Kimi Code、OpenCode、Grok Build、Qwen Code、Cline、GitHub Copilot CLI／Chat、Antigravity、Droid、dsh、Pi 与 OpenClaw；总开关默认开启且可随时关闭，只抽取本地精确 usage 元数据。Copilot OTel 仍需用户自行开启 exporter。
+- Cursor（macOS 与 Windows）：个人账号从 Cursor Dashboard 主动导入 Usage CSV；TokenFleet 不读取 Cursor 登录态，也不自动扫描下载目录。手动导入记录使用客户端正常历史窗口，不受自动实验来源的 180 天上限影响。
 - 额度显示：Codex 读取本机 Codex 账户限额；Claude Code 会在本机读取 Claude Code 钥匙串凭证，并请求 Anthropic usage 接口获取 5 小时 / 7 天剩余额度。
-- Windows 10/11 参赛端：读取 Codex、Claude Code 本地 JSONL 及 ZCode 独立用量 SQLite，用当前用户 DPAPI 保护设备 secret，通过计划任务自动同步，并提供预览、状态、手动同步和打开公榜命令。
+- Windows 10/11 参赛端：读取 Codex、Claude Code 本地 JSONL、默认采集的 ZCode 独立用量 SQLite，以及默认开启的 16 个自动实验来源；用当前用户 DPAPI 保护设备 secret，通过计划任务自动同步，并提供本机统计页、预览、状态、手动同步和打开公榜命令。
 
-Windows 首版不采集 CC Switch 或本轮新增的 macOS 实验 Agent，也尚未提供与 macOS 原生 App 等同的完整桌面历史与统计界面。
+Windows 仍不采集 CC Switch，也不提供与 macOS 原生 App 完全相同的桌面界面。
 
 支持策略和候选 Agent 说明见 [docs/AGENT_SUPPORT.md](docs/AGENT_SUPPORT.md)。
 
@@ -197,7 +197,7 @@ TokenStepSwift/dist/TokenFleet.app
 Developer ID 签名 + Apple 公证：
 
 ```bash
-TOKENFLEET_VERSION=0.1.0-beta.10 \
+TOKENFLEET_VERSION=0.1.0-beta.11 \
 TOKENFLEET_BUNDLE_ID="com.yourcompany.TokenFleet" \
 TOKENFLEET_TEAM_ID="ABCDE12345" \
 TOKENFLEET_UPDATE_API_URL="https://updates.example.com/tokenfleet/latest" \

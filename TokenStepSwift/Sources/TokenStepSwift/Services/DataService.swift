@@ -382,6 +382,7 @@ enum DataService {
             menuBarShowsTokenCount: settings.menuBarShowsTokenCount,
             showCodexQuota: settings.showCodexQuota,
             showExperimentalAgentSources: settings.showExperimentalAgentSources,
+            experimentalAgentSourcesConfigured: settings.experimentalAgentSourcesConfigured,
             language: settings.language,
             skippedUpdateVersion: settings.skippedUpdateVersion,
             teamSyncEnabled: settings.teamSyncEnabled,

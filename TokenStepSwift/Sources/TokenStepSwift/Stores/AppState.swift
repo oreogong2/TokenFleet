@@ -536,6 +536,7 @@ final class AppState: ObservableObject {
 
     func setExperimentalAgentSourcesVisible(_ visible: Bool) {
         settings.showExperimentalAgentSources = visible
+        settings.experimentalAgentSourcesConfigured = true
         saveSettingsAndReload()
         refresh()
     }

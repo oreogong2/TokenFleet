@@ -11,6 +11,7 @@ from .collectors import CollectionResult, collect_usage
 from .constants import (
     APP_VERSION,
     COLLECTOR_VERSION,
+    COMMUNITY_RANK_PATH,
     DAILY_USAGE_PATH,
     MAX_BUCKETS_PER_REQUEST,
     MAX_UPLOAD_BODY_BYTES,
@@ -19,7 +20,12 @@ from .constants import (
     SIGNING_KEY_DERIVATION,
 )
 from .credential import CredentialStore, DeviceCredential
-from .http_client import HTTPSJSONTransport, enrollment_endpoint, usage_endpoint
+from .http_client import (
+    HTTPSJSONTransport,
+    community_rank_endpoint,
+    enrollment_endpoint,
+    usage_endpoint,
+)
 from .installation import InstallationConfigError, canonical_community_origin
 from .protocol import (
     ProtocolError,
@@ -30,6 +36,7 @@ from .protocol import (
     validate_ingest_response,
 )
 from .state import StateStore
+from .settings import ClientSettings, SettingsStore
 
 
 class SyncTransport(Protocol):
@@ -37,6 +44,14 @@ class SyncTransport(Protocol):
         self,
         url: str,
         value: dict[str, Any],
+        *,
+        headers: dict[str, str] | None = None,
+        expected_status: int,
+    ) -> Any: ...
+
+    def get(
+        self,
+        url: str,
         *,
         headers: dict[str, str] | None = None,
         expected_status: int,
@@ -74,6 +89,8 @@ class TokenFleetClient:
         transport: SyncTransport | None = None,
         collector: Callable[..., CollectionResult] = collect_usage,
         sleeper: Callable[[float], None] = time.sleep,
+        settings_store: SettingsStore | None = None,
+        cursor_archive: Path | None = None,
     ) -> None:
         self.credential_store = credential_store
         self.state_store = state_store
@@ -82,6 +99,8 @@ class TokenFleetClient:
         self.transport = transport or HTTPSJSONTransport()
         self.collector = collector
         self.sleeper = sleeper
+        self.settings_store = settings_store
+        self.cursor_archive = cursor_archive
 
     def connect(self, *, enrollment_token: str) -> DeviceCredential:
         origin = self.community_origin
@@ -119,7 +138,17 @@ class TokenFleetClient:
         return credential
 
     def preview(self, *, history_days: int = 366) -> CollectionResult:
-        return self.collector(self.source_home, history_days=history_days)
+        experimental = (
+            self.settings_store.load().experimental_sources_enabled
+            if self.settings_store
+            else ClientSettings().experimental_sources_enabled
+        )
+        return self.collector(
+            self.source_home,
+            history_days=history_days,
+            include_experimental=experimental,
+            cursor_archive=self.cursor_archive,
+        )
 
     def sync(self, *, history_days: int = 366) -> SyncSummary:
         credential = self._credential_for_pinned_origin()
@@ -218,6 +247,123 @@ class TokenFleetClient:
     def rank_url(self) -> str:
         credential = self._credential_for_pinned_origin()
         return credential.server_origin + PUBLIC_RANK_PATH
+
+    def community_rank(self) -> dict[str, Any]:
+        credential = self._credential_for_pinned_origin()
+        headers = signed_headers(
+            device_id=credential.device_id,
+            device_secret=credential.device_secret,
+            body=b"",
+            method="GET",
+            path=COMMUNITY_RANK_PATH,
+        )
+        headers.pop("Content-Type", None)
+        value = self.transport.get(
+            community_rank_endpoint(credential.server_origin),
+            headers=headers,
+            expected_status=200,
+        )
+        return self._validate_community_rank(value)
+
+    @staticmethod
+    def _validate_community_rank(value: Any) -> dict[str, Any]:
+        expected = {
+            "public_id",
+            "nickname",
+            "public_profile_enabled",
+            "period",
+            "metric",
+            "rank",
+            "total_entries",
+            "metric_value",
+            "primary_tool",
+            "primary_model",
+            "totals",
+        }
+        if not isinstance(value, dict) or set(value) != expected:
+            raise ProtocolError("server returned an invalid rank response")
+        if (
+            not isinstance(value["public_id"], str)
+            or not value["public_id"]
+            or (
+                value["nickname"] is not None
+                and (
+                    not isinstance(value["nickname"], str)
+                    or not 1 <= len(value["nickname"]) <= 128
+                )
+            )
+            or type(value["public_profile_enabled"]) is not bool
+            or value["period"] != "today"
+            or value["metric"] != "tokens"
+            or type(value["total_entries"]) is not int
+            or value["total_entries"] < 0
+            or (
+                value["rank"] is not None
+                and (type(value["rank"]) is not int or value["rank"] < 1)
+            )
+            or (
+                value["metric_value"] is not None
+                and (
+                    not isinstance(value["metric_value"], str)
+                    or not value["metric_value"].isdigit()
+                )
+            )
+            or (
+                value["rank"] is not None
+                and value["rank"] > value["total_entries"]
+            )
+            or any(
+                item is not None
+                and (
+                    not isinstance(item, str)
+                    or not 1 <= len(item) <= 128
+                )
+                for item in (value["primary_tool"], value["primary_model"])
+            )
+        ):
+            raise ProtocolError("server returned an invalid rank response")
+        totals = value["totals"]
+        if totals is not None:
+            required_totals = {
+                "input_tokens",
+                "output_tokens",
+                "cache_read_tokens",
+                "cache_write_tokens",
+                "norm_tokens",
+                "total_tokens",
+                "estimated_cost_microunits",
+                "cost_currency",
+                "unpriced",
+                "mixed_currency",
+            }
+            if not isinstance(totals, dict) or set(totals) != required_totals:
+                raise ProtocolError("server returned an invalid rank response")
+            for field in (
+                "input_tokens",
+                "output_tokens",
+                "cache_read_tokens",
+                "cache_write_tokens",
+                "norm_tokens",
+                "total_tokens",
+            ):
+                if not isinstance(totals[field], str) or not totals[field].isdigit():
+                    raise ProtocolError("server returned an invalid rank response")
+            estimated_cost = totals["estimated_cost_microunits"]
+            currency = totals["cost_currency"]
+            if (
+                estimated_cost is not None
+                and (
+                    not isinstance(estimated_cost, str)
+                    or not estimated_cost.isdigit()
+                )
+            ) or (
+                currency is not None
+                and (not isinstance(currency, str) or len(currency) != 3)
+            ) or type(totals["unpriced"]) is not bool or type(
+                totals["mixed_currency"]
+            ) is not bool:
+                raise ProtocolError("server returned an invalid rank response")
+        return value
 
     def _credential_for_pinned_origin(self) -> DeviceCredential:
         credential = self.credential_store.load()

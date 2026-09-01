@@ -3,7 +3,7 @@ import XCTest
 @testable import TokenStepSwift
 
 final class UsageCollectorExperimentalAgentTests: XCTestCase {
-    func testExperimentalSourcesAreDisabledByDefault() throws {
+    func testExperimentalSourcesAreExcludedWhenSwitchIsFalse() throws {
         let zCodeDB = try makeZCodeDatabase(rowsSQL: """
         insert into model_usage (
             id, logical_request_id, session_id, query_source, provider_id, model_id, status, started_at,
@@ -23,7 +23,8 @@ final class UsageCollectorExperimentalAgentTests: XCTestCase {
 
         let snapshot = UsageCollector.collectUsageSnapshotForTests(
             zCodeDatabaseURL: zCodeDB,
-            hermesDatabaseURL: hermesDB
+            hermesDatabaseURL: hermesDB,
+            includeExperimentalAgentSources: false
         )
 
         XCTAssertEqual(snapshot.sources["ZCode"]?.status, "disabled")

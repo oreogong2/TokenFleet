@@ -1,17 +1,37 @@
 from __future__ import annotations
 
 import os
+import socket
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from tokenfleet.constants import TASK_NAME
 from tokenfleet.credential import CredentialStore, DPAPIProtector, DeviceCredential
+from tokenfleet.local_dashboard import create_dashboard_server
 from tokenfleet.scheduler import is_registered, register, unregister
 
 
 @unittest.skipUnless(os.name == "nt", "requires the real Windows runtime")
 class WindowsRuntimeTests(unittest.TestCase):
+    def test_local_dashboard_really_binds_only_ipv4_loopback(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            paths = SimpleNamespace(
+                dashboard_token=Path(temporary) / "local-dashboard.token"
+            )
+            server = create_dashboard_server(paths, port=0)
+            try:
+                self.assertEqual(server.server_address[0], "127.0.0.1")
+                self.assertEqual(
+                    server.socket.getsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE),
+                    1,
+                )
+            finally:
+                server.server_close()
+            with self.assertRaises(RuntimeError):
+                create_dashboard_server(paths, host="0.0.0.0", port=0)
+
     def test_current_user_dpapi_round_trip_and_ciphertext_storage(self) -> None:
         protector = DPAPIProtector()
         cleartext = b"tokenfleet-windows-runtime-probe"
