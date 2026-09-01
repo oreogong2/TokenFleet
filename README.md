@@ -18,7 +18,7 @@ TokenFleet 包含原生 macOS 菜单栏 App 和轻量 Windows 参赛端，用来
 
 ## 当前发布方式
 
-> **当前发布版本是 beta.9（tag `v0.1.0-beta.9`）。** 这是源码分发版本，不会自动安装到老用户电脑；希望统计新增 Agent 的成员需要按正式加入指南原位升级。已经开启“实验 Agent 来源”的用户升级后会自动扫描本轮新增固定目录，并补计窗口内最多 180 天历史，个人总量和排行榜上涨属于正常补计。
+> **当前发布版本是 beta.10（tag `v0.1.0-beta.10`）。** 这是源码分发版本，不会自动安装到老用户电脑；希望统计新增 Agent 的成员需要按正式加入指南原位升级。已经开启“实验 Agent 来源”的用户升级后会自动扫描本轮新增固定目录，并补计窗口内最多 180 天历史，个人总量和排行榜上涨属于正常补计。
 > 新成员请按[正式加入指南](https://scn2sjohx0z1.feishu.cn/docx/I6rCdR1sKoQ3l7x7TgpcRp2lnLc)
 > 安装，客户端固定检出本次 GitHub Release 标注的完整 commit SHA。Windows 检测到 ZCode 用量库后会自动采集；macOS 的新增 Agent 需在“设置 → 统计与采集”开启“实验 Agent 来源”。
 > 线上成员 Web 会在发布 tag 基础上滚动部署经复核的服务端/网页热修；这些服务器热修不修改
@@ -197,7 +197,7 @@ TokenStepSwift/dist/TokenFleet.app
 Developer ID 签名 + Apple 公证：
 
 ```bash
-TOKENFLEET_VERSION=0.1.0-beta.9 \
+TOKENFLEET_VERSION=0.1.0-beta.10 \
 TOKENFLEET_BUNDLE_ID="com.yourcompany.TokenFleet" \
 TOKENFLEET_TEAM_ID="ABCDE12345" \
 TOKENFLEET_UPDATE_API_URL="https://updates.example.com/tokenfleet/latest" \

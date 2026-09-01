@@ -265,7 +265,11 @@ private struct SettingsVersionArchitectureCard: View {
     var body: some View {
         SettingsCard(title: L("版本与架构"), symbol: "shippingbox.fill", height: 150) {
             VStack(spacing: 0) {
-                SettingsVisualRow(label: L("当前版本"), detail: L("TokenFleet beta.8"), value: UpdateService.currentVersion)
+                SettingsVisualRow(
+                    label: L("当前版本"),
+                    detail: LFormat("TokenFleet %@", UpdateService.currentVersion),
+                    value: UpdateService.currentVersion
+                )
                 SettingsVisualRow(label: L("Mac 架构"), detail: L("Apple Silicon 与 Intel"), value: L("Universal"))
                 SettingsVisualRow(label: L("Windows"), detail: L("现有成员路径保持回归"), value: L("受支持"), tint: .tokenGreenDark)
             }

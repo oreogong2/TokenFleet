@@ -27,7 +27,7 @@ final class SettingsWindowPresenter {
 
         let controller = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: controller)
-        window.title = L("TokenFleet beta.8 · 设置")
+        window.title = LFormat("TokenFleet %@ · 设置", UpdateService.currentVersion)
         window.appearance = NSAppearance(named: .aqua)
         window.identifier = NSUserInterfaceItemIdentifier("tokenfleet.settings")
         window.styleMask = [.titled, .closable, .miniaturizable]

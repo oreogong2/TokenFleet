@@ -3,7 +3,7 @@ import Foundation
 
 enum TeamSyncProtocolConfiguration {
     static let schemaVersion = 1
-    static let collectorVersion = "0.2.0"
+    static let collectorVersion = "0.2.1"
     static let enrollmentPath = "/api/v1/devices/enroll"
     static let dailyUsagePath = "/api/v1/usage/daily"
     static let communityRankPath = "/api/v1/devices/me/community-rank"

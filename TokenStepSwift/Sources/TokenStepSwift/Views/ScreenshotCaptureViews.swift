@@ -50,7 +50,9 @@ struct DashboardScreenshotView: View {
     }
 
     private var captureTitleBar: some View {
-        TokenFleetScreenshotTitleBar(title: "TokenFleet beta.8 · \(section.title)")
+        TokenFleetScreenshotTitleBar(
+            title: "TokenFleet \(UpdateService.currentVersion) · \(section.title)"
+        )
     }
 
     private var captureSidebar: some View {
@@ -154,7 +156,9 @@ struct SettingsWindowScreenshotView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TokenFleetScreenshotTitleBar(title: L("TokenFleet beta.8 · 设置"))
+            TokenFleetScreenshotTitleBar(
+                title: LFormat("TokenFleet %@ · 设置", UpdateService.currentVersion)
+            )
             SettingsView(captureMode: true, initialSection: section)
         }
         .frame(width: 980, height: 760)

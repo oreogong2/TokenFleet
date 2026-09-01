@@ -238,6 +238,8 @@ test("member entry and public navigation never expose the administrator console"
   assert.equal(/管理员|\/admin/.test(publicSource), false);
   assert.equal(communitySource.includes("管理员后台"), false);
   assert.equal(communitySource.includes('href="/admin'), false);
+  assert.match(communitySource, /随机设备 ID、平台、App／采集器版本、时区和统计完整性/);
+  assert.equal(communitySource.includes("不上传提示词、回复、代码、文件、项目路径、邮箱或设备详情"), false);
   assert.equal(html.includes("管理员后台"), false);
   assert.equal(/社群标识|邮箱|密码|验证并进入/.test(html), false);
   assert.match(html, /src="\/public-app\.js/);
