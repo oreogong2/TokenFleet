@@ -124,7 +124,7 @@ def _preview_value(result) -> dict[str, object]:  # type: ignore[no-untyped-def]
 
 def _print_value(value: dict[str, object], *, as_json: bool) -> None:
     if as_json:
-        print(json.dumps(value, ensure_ascii=False, sort_keys=True))
+        print(json.dumps(value, ensure_ascii=True, sort_keys=True))
         return
     for key, item in value.items():
         print(f"{key}: {item}")

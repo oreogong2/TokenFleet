@@ -62,7 +62,7 @@
 
 | 门禁 | 结果 |
 |---|---|
-| Windows Python unit tests | 正确命令必须先 `cd clients/windows`，再运行 `PYTHONDONTWRITEBYTECODE=1 <venv>/bin/python -m unittest discover -s tests -v`：`61 passed + 3 skipped`，共 64 项；3 项仅因当前为 macOS 而 skip（DPAPI、Task Scheduler、Windows `SO_EXCLUSIVEADDRUSE`／真实 IPv4 loopback bind） |
+| Windows Python unit tests | 正确命令必须先 `cd clients/windows`，再运行 `PYTHONDONTWRITEBYTECODE=1 <venv>/bin/python -m unittest discover -s tests -v`：安装锁定依赖后为 `62 passed + 3 skipped`，共 65 项；3 项仅因当前为 macOS 而 skip（DPAPI、Task Scheduler、Windows `SO_EXCLUSIVEADDRUSE`／真实 IPv4 loopback bind）。新增项以 cp1252 输出流验证 `status --json` 不因中文字段崩溃 |
 | 来源覆盖 | 18/18；覆盖各来源规则、cache/total、累计屏障、去重、Copilot 优先级、Qwen/Kimi 崩溃隔离、实验残缺桶整桶扣留、Grok 累计/context total 拒收、Cursor BOM/幂等/删除与历史窗口 |
 | 总开关 | Windows/Mac 默认 true；Windows 缺文件、v1 显式 false/true、v2 configured 标记均有回归；Mac 旧 true、旧 false、缺字段与新版 configured round-trip 均有门禁；关闭时 monkeypatch 证明未调 16 个自动来源的路径解析；自动来源 180 天上限有动态时间回归；ZCode/Cursor 不受关闭影响 |
 | 名次 | 没有独立“签名 GET 黄金向量”。GET 用例断言路径、第 137 名和签名字段，但期望值由同一个 `signed_headers` 重算；算法独立钉死依赖现有 POST HMAC 黄金向量（含服务端持有向量）间接覆盖。`status` 单行摘要有回归 |

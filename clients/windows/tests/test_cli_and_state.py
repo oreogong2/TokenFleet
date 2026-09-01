@@ -17,6 +17,16 @@ from tokenfleet.settings import ClientSettings, SettingsStore
 
 
 class CLIAndStateTests(unittest.TestCase):
+    def test_json_output_is_safe_for_legacy_windows_console_encoding(self) -> None:
+        raw_output = io.BytesIO()
+        encoded_output = io.TextIOWrapper(raw_output, encoding="cp1252")
+        with contextlib.redirect_stdout(encoded_output):
+            tokenfleet_cli._print_value(
+                {"collectors": ["实验 Agent 来源（总开关）"]}, as_json=True
+            )
+        encoded_output.flush()
+        self.assertIn(b"\\u5b9e\\u9a8c", raw_output.getvalue())
+
     def test_experimental_settings_default_on_and_persist_explicit_choice(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             store = SettingsStore(Path(temporary) / "settings.json")
