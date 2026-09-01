@@ -154,7 +154,7 @@ if (-not (Test-Path -LiteralPath $actionTokenPath)) {
 import secrets
 import sys
 from pathlib import Path
-Path(sys.argv[1]).write_text(secrets.token_urlsafe(32) + "\n", encoding="ascii")
+Path(sys.argv[1]).write_bytes(secrets.token_urlsafe(32).encode() + bytes((10,)))
 '@
     & $runtimePython -B -c $writeActionToken $actionTokenPath
     if ($LASTEXITCODE -ne 0) {
