@@ -47,6 +47,8 @@ def load_expected(root: Path) -> tuple[str, str]:
 
 def verify_sources(root: Path) -> tuple[str, str]:
     release, collector = load_expected(root)
+    expected_tag = f"v{release}"
+    display_release = release.split("-", 1)[1] if "-" in release else release
 
     changelog_versions = re.findall(
         r"^##\s+(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\s+-\s+\d{4}-\d{2}-\d{2}\s*$",
@@ -57,6 +59,26 @@ def verify_sources(root: Path) -> tuple[str, str]:
     changelog_version = changelog_versions[0]
     require(changelog_version == release,
             f"CHANGELOG first release {changelog_version!r} != configured release {release!r}")
+
+    release_copy = (
+        (
+            "README.md",
+            r"当前发布版本是\s+([^（\n]+)（tag `([^`]+)`）",
+        ),
+        (
+            "docs/INSTALL.md",
+            r"^状态：当前发布版本为\s+([^（\n]+)（tag `([^`]+)`）",
+        ),
+    )
+    for relative, pattern in release_copy:
+        matches = re.findall(pattern, read_text(root / relative), flags=re.MULTILINE)
+        require(len(matches) == 1,
+                f"{relative}: expected exactly one current-release marker, found {len(matches)}")
+        actual_display, actual_tag = matches[0]
+        require(actual_display.strip() == display_release,
+                f"{relative} display release {actual_display.strip()!r} != {display_release!r}")
+        require(actual_tag == expected_tag,
+                f"{relative} current tag {actual_tag!r} != {expected_tag!r}")
 
     shell_pattern = r'^VERSION="\$\{TOKENFLEET_VERSION:-(.+)\}"$'
     for relative in ("script/install_from_source.sh", "script/build_swiftui_and_run.sh"):
@@ -94,7 +116,6 @@ def verify_sources(root: Path) -> tuple[str, str]:
             "install privacy copy still overclaims that no device metadata is uploaded")
 
     if os.environ.get("GITHUB_REF_TYPE") == "tag":
-        expected_tag = f"v{release}"
         actual_tag = os.environ.get("GITHUB_REF_NAME", "")
         require(actual_tag == expected_tag,
                 f"Git tag {actual_tag!r} != configured release tag {expected_tag!r}")

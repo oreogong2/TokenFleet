@@ -157,7 +157,7 @@ struct SettingsWindowScreenshotView: View {
     var body: some View {
         VStack(spacing: 0) {
             TokenFleetScreenshotTitleBar(
-                title: LFormat("TokenFleet %@ · 设置", UpdateService.currentVersion)
+                title: "TokenFleet \(UpdateService.currentVersion) · \(L("设置"))"
             )
             SettingsView(captureMode: true, initialSection: section)
         }

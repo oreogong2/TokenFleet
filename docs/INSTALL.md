@@ -1,6 +1,6 @@
 # TokenFleet 社群成员安装与多设备登记
 
-状态：当前发布版本为 beta.9（tag `v0.1.0-beta.9`），源码安装固定检出本次 GitHub Release 标注的完整 commit SHA。源码版不会自动更新；希望统计新增 Agent 的老用户需要按本文原位升级。已经开启“实验 Agent 来源”的用户升级后会自动扫描本轮新增固定目录，并补计窗口内最多 180 天历史，个人总量和排行榜上涨属于正常补计。Windows 安装或升级后若检测到 ZCode 用量库会自动采集；本轮新增 Agent 仅在 macOS 的“设置 → 统计与采集 → 实验 Agent 来源”中启用。线上成员 Web 的滚动热修不修改同步协议、昵称、设备身份或历史数据。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
+状态：当前发布版本为 beta.10（tag `v0.1.0-beta.10`），源码安装固定检出本次 GitHub Release 标注的完整 commit SHA。源码版不会自动更新；希望统计新增 Agent 的老用户需要按本文原位升级。已经开启“实验 Agent 来源”的用户升级后会自动扫描本轮新增固定目录，并补计窗口内最多 180 天历史，个人总量和排行榜上涨属于正常补计。Windows 安装或升级后若检测到 ZCode 用量库会自动采集；本轮新增 Agent 仅在 macOS 的“设置 → 统计与采集 → 实验 Agent 来源”中启用。线上成员 Web 的滚动热修不修改同步协议、昵称、设备身份或历史数据。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
 
 ## 1. 三套身份不要混在一起
 
@@ -33,7 +33,7 @@ test "$(git rev-parse HEAD)" = "<reviewed-commit-sha>"
   --community-server https://token.ipwriter.com
 ```
 
-必须完整 clone：管理员指定的 commit 可能不在默认分支上，`git clone --depth 1` 浅克隆会导致 checkout 失败。
+必须完整 clone，以便核验管理员公布的固定提交并保留安装、升级和回滚所需的完整历史；不要使用可能缺少目标提交的 `git clone --depth 1` 浅克隆。
 
 脚本只接受公开的固定社群 origin，不接受或打印一次性码。它会：
 

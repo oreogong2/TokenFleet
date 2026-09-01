@@ -267,7 +267,7 @@ private struct SettingsVersionArchitectureCard: View {
             VStack(spacing: 0) {
                 SettingsVisualRow(
                     label: L("当前版本"),
-                    detail: LFormat("TokenFleet %@", UpdateService.currentVersion),
+                    detail: "TokenFleet \(UpdateService.currentVersion)",
                     value: UpdateService.currentVersion
                 )
                 SettingsVisualRow(label: L("Mac 架构"), detail: L("Apple Silicon 与 Intel"), value: L("Universal"))
