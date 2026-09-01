@@ -16,7 +16,7 @@ TokenFleet 首版是本地优先、由管理员邀请接入的社群 AI Token �
 - 采集器与 schema 版本。
 
 macOS 正式来源为 Codex、Claude Code；CC Switch、ZCode 与设置页列出的其他 Agent
-属于实验来源。自下一版起，macOS 与 Windows 的实验 Agent 来源总开关默认开启，升级后对
+属于实验来源。自 beta.11 起，macOS 与 Windows 的实验 Agent 来源总开关默认开启，升级后对
 老用户也统一生效；用户可随时在 macOS 设置页或 Windows 本机页／CLI 关闭，新版本中的显式
 关闭会永久尊重。Windows 的 ZCode 在用量库存在时默认只读 `model_usage` 表，且不受
 实验总开关控制。Cursor 只接受用户主动导入的 Usage CSV；Copilot OTel 只有在用户自行开启

@@ -1,8 +1,8 @@
 # TokenFleet 实验来源默认开启公告草稿
 
-状态：草稿，未发送；Claude 已有条件通过，待本轮小批次修复快速确认后再确定版本号与发布日期。
+状态：beta.11 已审公告，待 GitHub prerelease 发布后发送。
 
-下一版 TokenFleet 会在 macOS 与 Windows 默认开启实验 Agent 来源。升级后对老用户也统一开启，并自动只读扫描已披露的新增工具固定目录，最多补计 180 天历史；个人总量和排行榜普遍上涨属于正常历史补计，不是重复统计。
+TokenFleet beta.11 会在 macOS 与 Windows 默认开启实验 Agent 来源。升级后对老用户也统一开启，并自动只读扫描已披露的新增工具固定目录，最多补计 180 天历史；个人总量和排行榜普遍上涨属于正常历史补计，不是重复统计。
 
 你可以随时在 macOS“设置 → 统计与采集”或 Windows 本机统计页／`tokenfleet experimental disable` 关闭；新版本中的显式关闭会永久尊重。Windows 的 ZCode 继续在检测到用量库时默认采集，不受实验总开关控制。
 

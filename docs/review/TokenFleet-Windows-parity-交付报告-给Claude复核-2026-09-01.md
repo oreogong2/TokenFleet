@@ -5,8 +5,8 @@
 - 真源：`https://github.com/oreogong2/TokenFleet.git`
 - 基线：PR #15 head `5a65d7cebdb23737df54392d393aca3ed01645e0`
 - 隔离分支：`codex/windows-parity`
-- 当前状态：Claude 终审已有条件通过，所列小批次收尾与全门禁已完成；工作区未提交，等待增量快速确认后形成 commit。Windows 动态安装链路仍以 CI／真机裁决为准。
-- 发布边界：未改 tag、未发版、未 commit、未发送公告或群消息。已更新 Unreleased CHANGELOG、仓库披露、公告草稿和飞书加入指南（revision 86，明确标注下一版发布后才生效）。公开发布身份仍为 `0.1.0-beta.10` / collector `0.2.1`；Windows collector 独立号为 `0.2.0-windows.3`。
+- 当前状态：Claude 终审与增量确认均已通过；审定实现固定在功能提交 `374008f`，进入 beta.11 发布流程。Windows 动态安装链路仍以本次 PR CI／首批真机裁决为准。
+- 发布边界：发布身份更新为 `0.1.0-beta.11` / collector `0.2.1`；Windows collector 独立号为 `0.2.0-windows.3`。最终合并提交、tag、CI 和 GitHub prerelease 证据以发布页为准，飞书加入指南在发布后同步固定提交。
 
 ## 2. 完成范围
 
@@ -56,7 +56,7 @@
 - **本机页安全**：Host 防 DNS rebinding；Origin + action header 防浏览器跨站写；安装随机 token 防同机普通进程直接伪造写；challenge-HMAC 防抢占端口的进程骗取 fragment token。读接口仍只在回环提供聚合数据，`/health` 的可指纹化按 P2 保留。
 - **Mac 改动边界**：仅改实验总开关的默认值、显式配置标记、归一化传递和对应测试，没有改 Mac 采集器冻结口径。
 - **默认开启后的巡检**：按原计划跑 7 天；口径错误立即修复并由相同 naturalKey 覆盖自愈。修复后不再发送旧桶、无法自愈的残留要列清单走管理员通道清理。
-- **文档边界**：CHANGELOG 使用 Unreleased 区块；README、安装、隐私、支持策略、产品规格、公告草稿和飞书指南均区分当前 beta.10 与终审后的下一版，没有修改 tag／固定 SHA 或冒充已发布。
+- **文档边界**：CHANGELOG、README、安装、隐私、支持策略、产品规格与公告已统一为 beta.11 口径；飞书加入指南在发布完成后同步 tag 与固定 SHA。
 
 ## 5. 验证证据
 
@@ -73,7 +73,7 @@
 | Mac 变更门禁 | `TOKENFLEET_SWIFT_SDK=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk bash script/verify_tokenstep_swift.sh`：全量 type-check、App 链接、logic harness 与采集/迁移 fixture 通过；本机 CommandLineTools 无 XCTest runtime，因此 XCTest 源码仅 type-check，CI 仍负责真实 XCTest |
 | 安装器 | 静态验证隔离 runtime、self-healing launcher、桌面/开始菜单 `.lnk`、action token ACL、升级任务重注册、`-NoOpen` 恢复、卸载重试；动态 PowerShell 留给 Windows CI／真机 |
 | 语法/静态 | Python `compileall`、`node --check clients/windows/web/app.js`、`git diff --check` 全通过 |
-| 发布身份 | `script/verify_release_identity.py` 通过；未触发发布变更 |
+| 发布身份 | `script/verify_release_identity.py` 通过；release `0.1.0-beta.11`、collector `0.2.1`、默认安装／构建版本一致 |
 | 范围审计 | `server/` 零变更；`TokenStepSwift/` 只含默认值/迁移标记及测试；无 React/Vite/Node runtime；无账号/schema/自更新/单来源开关/原生壳 |
 
 CI Windows job 已改为安装锁定 `requirements.txt` 后执行整套测试，因此上述 3 项真 Windows 用例会在 PR CI 中实际执行；安装/升级/卸载链路也使用 `-NoOpen` 避免 CI 弹浏览器。当前 macOS 主机没有 PowerShell，所以 PowerShell 动态执行与 `.lnk` 真机落盘必须由 Windows CI/真机给最终证据。
@@ -86,4 +86,4 @@ CI Windows job 已改为安装锁定 `requirements.txt` 后执行整套测试，
 4. Cursor 从自动实验来源 180 天过滤中拆出，181 天前的手动导入记录在 366 天调用窗口内仍入账。
 5. 本机页、README、CHANGELOG、PRIVACY、INSTALL、Agent 支持策略、公告草稿和飞书指南已补齐 `Copilot Chat` 与新迁移口径。
 
-等待 Claude 对上述增量 diff 与门禁结果快速确认后再形成 commit；当前仍未 commit、未发版、未改 tag／固定安装 SHA，也未发送公告或群消息。
+Claude 已逐项核验上述增量并放行，功能提交 `374008f` 已形成；beta.11 可按发布门禁进入 PR、CI、合并、tag 与 prerelease 流程。Windows PowerShell 动态路径和 3 个专属用例以该 PR CI 与首批真机反馈为最终证据。
