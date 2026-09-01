@@ -696,6 +696,34 @@ func tokenToolColor(_ tool: String) -> Color {
         return Color(red: 0.50, green: 0.28, blue: 0.92)
     case "ZCode":
         return Color(red: 0.20, green: 0.52, blue: 0.92)
+    case "WorkBuddy":
+        return Color(red: 0.94, green: 0.63, blue: 0.16)
+    case "CodeBuddy":
+        return Color(red: 0.18, green: 0.56, blue: 0.94)
+    case "Qoder":
+        return Color(red: 0.48, green: 0.35, blue: 0.90)
+    case "Kimi":
+        return Color(red: 0.18, green: 0.68, blue: 0.58)
+    case "OpenCode":
+        return Color(red: 0.16, green: 0.61, blue: 0.78)
+    case "Grok":
+        return Color(red: 0.14, green: 0.16, blue: 0.20)
+    case "Qwen Code":
+        return Color(red: 0.43, green: 0.32, blue: 0.88)
+    case "Cline":
+        return Color(red: 0.93, green: 0.32, blue: 0.38)
+    case "Copilot CLI", "Copilot Chat":
+        return Color(red: 0.20, green: 0.48, blue: 0.78)
+    case "Antigravity":
+        return Color(red: 0.16, green: 0.66, blue: 0.54)
+    case "Droid":
+        return Color(red: 0.92, green: 0.40, blue: 0.28)
+    case "dsh":
+        return Color(red: 0.12, green: 0.57, blue: 0.70)
+    case "Pi":
+        return Color(red: 0.88, green: 0.23, blue: 0.56)
+    case "OpenClaw":
+        return Color(red: 0.95, green: 0.34, blue: 0.20)
     case "Codex via CC Switch", "Claude Code via CC Switch", "Gemini via CC Switch":
         return Color(red: 0.10, green: 0.64, blue: 0.72)
     default:
@@ -704,7 +732,7 @@ func tokenToolColor(_ tool: String) -> Color {
 }
 
 func orderedToolEntries(_ tools: [String: Int]) -> [(name: String, tokens: Int)] {
-    let preferred = ["Codex", "Claude Code", "ZCode", "Hermes", "Hermes Agent", "Codex via CC Switch", "Claude Code via CC Switch"]
+    let preferred = ["Codex", "Claude Code", "Cursor", "Copilot Chat", "Copilot CLI", "Cline", "OpenCode", "OpenClaw", "CodeBuddy", "Qoder", "Antigravity", "Droid", "dsh", "Pi", "Grok", "Qwen Code", "WorkBuddy", "Kimi", "ZCode", "Hermes", "Hermes Agent", "Codex via CC Switch", "Claude Code via CC Switch"]
     var entries: [(name: String, tokens: Int)] = preferred.compactMap { name in
         guard let value = tools[name], value > 0 else { return nil }
         return (name, value)

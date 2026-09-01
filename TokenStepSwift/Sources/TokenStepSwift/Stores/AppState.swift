@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppState: ObservableObject {
@@ -30,6 +31,8 @@ final class AppState: ObservableObject {
     @Published private(set) var isRefreshingCommunityLeaderboard = false
     @Published private(set) var communityLeaderboardError: String?
     @Published private(set) var isOpeningCommunityLeaderboard = false
+    @Published private(set) var cursorImportStatus: String?
+    @Published private(set) var cursorImportedUsageRecordCount: Int? = nil
     @Published var lastError: String?
 
     private var timer: Timer?
@@ -286,6 +289,7 @@ final class AppState: ObservableObject {
         settings = loadedSettings
         snapshot = (try? DataService.loadSnapshot()) ?? .empty
         teamSyncState = FileTeamSyncStateStore().load()
+        cursorImportedUsageRecordCount = CursorUsageImportStore.recordCount()
         showsUsageRecalibrationNotice = DataService.hasPendingUsageRecalibrationNotice(for: snapshot)
         showsPricingReestimationNotice = DataService.hasPendingPricingReestimationNotice(for: snapshot)
         if !loadedSettings.showCodexQuota {
@@ -534,6 +538,50 @@ final class AppState: ObservableObject {
         settings.showExperimentalAgentSources = visible
         saveSettingsAndReload()
         refresh()
+    }
+
+    func chooseAndImportCursorUsageCSV() {
+        let panel = NSOpenPanel()
+        panel.title = L("导入 Cursor Usage CSV")
+        panel.prompt = L("导入")
+        panel.message = L("只会保存时间、模型、Token 和费用字段，不保存原始 CSV。")
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            let summary = try CursorUsageImportStore.importCSV(from: url)
+            cursorImportStatus = LFormat(
+                "本次新增 %d 条，Cursor 共 %d 条",
+                summary.addedRecords,
+                summary.totalRecords
+            )
+            cursorImportedUsageRecordCount = summary.totalRecords
+            refresh(forceCollection: true)
+        } catch {
+            cursorImportStatus = error.localizedDescription
+        }
+    }
+
+    func removeCursorImportedUsage() {
+        let alert = NSAlert()
+        alert.messageText = L("删除 Cursor 导入数据？")
+        alert.informativeText = L("只删除 TokenFleet 保存的 Cursor usage 字段，不影响 Cursor 本身。")
+        alert.addButton(withTitle: L("删除"))
+        alert.addButton(withTitle: L("取消"))
+        alert.alertStyle = .warning
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        do {
+            try CursorUsageImportStore.removeImport()
+            cursorImportStatus = L("Cursor 导入数据已删除")
+            cursorImportedUsageRecordCount = nil
+            refresh(forceCollection: true)
+        } catch {
+            cursorImportStatus = error.localizedDescription
+        }
     }
 
     func enrollTeamSync(enrollmentToken: String) {

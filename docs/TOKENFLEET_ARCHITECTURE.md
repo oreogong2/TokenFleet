@@ -4,7 +4,7 @@
 
 ```text
 ┌──────────────────────── macOS ────────────────────────┐
-│ Codex / Claude Code / CC Switch 本地日志              │
+│ Codex / Claude Code / 可选实验 Agent 本地 usage       │
 │                   │                                   │
 │          TokenStep collector                          │
 │          ├─ 本地 usage.json / 本地 UI                 │

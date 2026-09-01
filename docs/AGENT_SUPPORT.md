@@ -9,14 +9,35 @@ TokenFleet 的原则是：能从本地日志中稳定读到 token 数，才进�
 | Codex | 已支持 | `~/.codex/sessions` / `~/.codex/archived_sessions`，必要时回退 SQLite | 读取本地 token_count 事件，只统计数量；可选读取 5h / 7d 额度。 |
 | Claude Code | 已支持 | `~/.claude/projects` | 读取 assistant message 的 usage 字段，按 `message.id` 去重，避免 thinking / text / tool_use 多行重复累计；可选通过 Claude Code 本机钥匙串凭证读取 usage 额度。 |
 
+## 当前实验支持
+
+| Agent | 数据来源 | 当前边界 |
+| --- | --- | --- |
+| ZCode | `~/.zcode/cli/db/db.sqlite` | 只读已完成的 `model_usage` 精确 usage 行。 |
+| Hermes Agent | `~/.hermes/state.db` | 只读 session 级 token、请求数与成本字段。 |
+| WorkBuddy | `~/.workbuddy/projects`、`~/Library/Application Support/WorkBuddyExtension` | 只解析 JSONL 中的 `usage` / `rawUsage`，不读取正文。 |
+| CodeBuddy | `~/.codebuddy/projects`、`~/.codebuddy/sessions` | 按官方 transcript 约定读取 assistant `usage` / `rawUsage`，按会话和响应 ID 去重；已通过协议 fixture，仍待多台真实机器校准。 |
+| Qoder | `~/.qoder/projects/**/transcript/*.jsonl` | 只统计 assistant message 的逐请求 usage，跳过 user 行和 session 汇总；已通过协议 fixture，仍待多台真实机器校准。 |
+| Kimi Code | `~/.kimi-code/sessions/**/wire.jsonl` | 只解析 `step.end` usage；兼容 Anthropic 风格、OpenAI cache details 和新版 camelCase 三种结构。 |
+| OpenCode | `~/.local/share/opencode/opencode*.db` | 兼容 v1 `message`、v2 `session_message` 和两表并存结构；SQL 只抽取模型、时间与精确 token 字段，不向应用层返回正文。 |
+| Grok Build | `~/.grok/sessions/**/updates.jsonl` | 只统计 `turn_completed.usage` 的逐轮精确 token；支持多模型拆分、cache、reasoning 和完整的服务器成本，不采用 context window 估算。 |
+| Qwen Code | `${QWEN_RUNTIME_DIR:-${QWEN_HOME:-~/.qwen}}/usage/token-usage-YYYY-MM.jsonl` | 读取官方自 v0.19 起写入的逐请求精确 usage；按记录 ID 去重，保留模型、会话和 subagent 来源，不使用曾出现重复问题的 session 汇总作主数据源。 |
+| Cursor | 用户从 Cursor Dashboard 主动导入的 Usage CSV | 按新旧表头解析逐请求精确 token 与实际费用，重复导入自动去重；TokenFleet 只持久化时间、模型、token 和费用字段，不保留原始 CSV、账号或会话正文。个人账号没有公开稳定的逐请求 API，因此不读取 Cursor 登录态；团队管理员 API Key 后续作为独立入口。 |
+| Cline | `~/.cline/data/sessions/**/*.messages.json`；兼容旧版 VS Code `globalStorage/**/tasks/*/ui_messages.json` | 新版按官方 messages v1 合约读取 assistant 终态的模型、精确 token 与成本；旧版合并 `api_req_started` / `api_req_finished`，并兼容 deleted/subagent usage。迁移后同 ID 新旧任务只计新版，且不读取消息正文。新版 `inputTokens` 已包含缓存，不重复加 cache。 |
+| GitHub Copilot CLI / Chat | `${COPILOT_HOME:-~/.copilot}/session-store.db`；`COPILOT_OTEL_FILE_EXPORTER_PATH`；兼容 `~/.copilot/otel` | 当前 CLI 优先读取 `assistant_usage_events` 逐请求记录；旧版 CLI 与 Copilot Chat 读取 OpenTelemetry file exporter 中的 `chat` span，忽略 `invoke_agent` 根 span。同 session 且位于 store 覆盖窗口的 CLI OTel 会被压制；OTel 缺 conversation/session ID 时，只在 store 已覆盖的同一天压制 trace-ID fallback，较早历史与 Chat 仍保留。 |
+| Antigravity | `~/.gemini/antigravity*/brain/**/.system_generated/logs/transcript.jsonl` | 只读取 assistant / response / result / completed 记录的逐次 usage 或 usageMetadata；不累计 statusline 的 current_usage。支持 input、output、cache、thinking 和 total，已覆盖隐藏日志目录，仍待真实版本样本校准。 |
+| Droid | `~/.factory/projects/**/session.jsonl` | 按 Factory SDK 的 result `tokenUsage` 统计逐轮精确 token；主动跳过累计 `TokenUsageUpdate`，避免重复。已通过协议 fixture，仍待真实版本样本校准。 |
+| dsh | `${DSH_HOME:-~/.dsh}/sessions/**/session.jsonl.zstd`；兼容未压缩 `session.jsonl` | 按 DeepSeek Harness session 协议统计 `assistant/chunk usage`，没有 usage chunk 时才回退 message usage。压缩日志需要本机可执行的 `zstd`；全部不可读时显示 `missing_decoder`，明文可计但另有压缩-only 会话时显示 `partial_missing_decoder`，不会把缺失部分静默伪装成完整统计。 |
+| Pi | `${PI_CODING_AGENT_SESSION_DIR:-${PI_CODING_AGENT_DIR:-~/.pi/agent}/sessions}/**/*.jsonl` | 按官方 session v3 合约读取 assistant message 的模型、provider、精确 usage 与实际成本；按 session ID + entry ID 去重，不保留正文。Pi 是模型路由器，实际模型名原样进入模型统计。 |
+| OpenClaw | `${OPENCLAW_HOME:-${OPENCLAW_STATE_DIR:-~/.openclaw}}/agents/*/agent/openclaw-agent.sqlite`，兼容旧版/归档 `sessions/*.jsonl*` | 读取当前 `transcript_events.event_json` 的 assistant usage，并兼容 reset、deleted 和 SQLite 导入归档；按 session ID + event ID 跨 SQLite/JSONL 去重，保留模型、cache 和实际成本，不保存正文。远程 Gateway 的数据只存在远端主机，本地客户端不会假装已采集。 |
+
 ## ZCode（macOS 需主动开启；Windows 自动识别用量库）
 
 macOS 的 ZCode 采集默认关闭。成员在 TokenFleet 的“设置 → 统计与采集”中主动开启
-“启用 ZCode / Hermes”后，TokenFleet 只读
-`~/.zcode/cli/db/db.sqlite` 的独立 `model_usage` 表，只接受已完成且 Token 大于 0
-的模型请求，并按用量行 ID 去重。若非零的 `computed_total_tokens` 或
-`provider_total_tokens` 与可上传四类 Token 分项合计不一致，采集器会失败关闭该行，
-不会猜测 `reasoning_tokens` 是否已包含在输出中。
+实验 Agent 来源后，TokenFleet 只读 `~/.zcode/cli/db/db.sqlite` 的独立
+`model_usage` 表，只接受已完成且 Token 大于 0 的模型请求，并按用量行 ID 去重。
+若非零的 `computed_total_tokens` 或 `provider_total_tokens` 与可上传四类 Token
+分项合计不一致，采集器会失败关闭该行，不会猜测 `reasoning_tokens` 是否已包含在输出中。
 
 这项实验采集不读取 `transcript.jsonl`、对话正文、工具参数、代码、项目路径或账号凭据，
 也不读取 ZCode Coding Plan 的远程剩余额度。若设置页显示“结构待适配”，说明当前
@@ -80,25 +101,21 @@ TokenFleet 不主动接管代理：
 
 - Codex 额度可以从 ChatGPT 使用量接口中识别 5h / 7d 两类窗口。
 - Claude Code 额度可参考 Anthropic OAuth usage 接口，但需要用户本机有可用 OAuth 信息。
-- Roo / Kilo / Cline 这类 VS Code 扩展通常会把任务记录写到 `globalStorage` 下的 `ui_messages.json`。
+- Roo / Kilo / 旧版 Cline 这类 VS Code 扩展通常会把任务记录写到 `globalStorage` 下的 `ui_messages.json`。
 
 TokenFleet 采用：
 
 - Codex 额度窗口按 duration 明确区分 5 小时和 7 天。
 - Claude Code 额度在设置打开后，尝试读取本机 Keychain 里的 `Claude Code-credentials`，并调用 Anthropic OAuth usage 接口。
-- VS Code 扩展类 Agent 先列为候选支持，等有真实本机样本后再接入。
+- Cline 以官方 messages v1 合约和官方 legacy 实现为依据接入；其他 VS Code 扩展仍需真实样本或稳定合约。
 
 ## 候选支持
 
 | Agent | 可行性 | 下一步 |
 | --- | --- | --- |
 | Roo Code | 较高 | 需要真实 `ui_messages.json` 样本确认字段。 |
-| Cline | 较高 | 需要真实任务目录样本确认模型和 usage 字段。 |
 | Kilo Code | 较高 | 可按 `api_req_started` 事件读取 token，但需要本机样本验证。 |
-| CodeBuddy | 中 | 本机看到 VS Code secret buffer 和产品缓存，但不是明文 usage；需要官方 usage 文件或可验证字段。 |
-| Cursor / Windsurf / Trae | 中 | 需要确认是否本地暴露 token usage，不应只按聊天字数估算。 |
-| Hermes Agent | 待确认 | 本机日志存在 `tokens=~` 估算和压缩/错误记录，暂不进入正式总量。需要真实 API usage 或统一事件。 |
-| WorkBuddy | 暂不支持 | 本机项目日志把 usage 与对话／工具内容放在同类文件，TokenFleet 不打开；需要产品侧提供独立 usage-only 数据源。 |
+| Windsurf / Trae | 中 | 暂不进入首批，等目标用户出现明确需求后再评估。 |
 
 ## 接入规则
 
@@ -107,3 +124,15 @@ TokenFleet 采用：
 3. 不用“字数估算 token”作为默认统计口径。
 4. 新 Agent 默认先进入实验区，至少用 2-3 台真实机器样本验证后再进入正式统计。
 5. UI 上只展示有数据的 Agent，避免空状态造成误解。
+
+官方格式依据：
+
+- Pi session format：<https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/session-format.md>
+- OpenClaw session storage：<https://github.com/openclaw/openclaw/blob/main/docs/reference/session-management-compaction.md>
+- CodeBuddy hooks 与目录：<https://cloud.tencent.com/document/product/1831/137030>
+- Qoder hooks transcript：<https://docs.qoder.com/extensions/hooks>
+- Qoder SDK usage：<https://docs.qoder.com/cli/sdk/cost-usage>
+- Copilot CLI OpenTelemetry：<https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference>
+- Antigravity headless usage：<https://www.antigravity.google/docs/cli/headless/>
+- Droid SDK `tokenUsage`：<https://docs.factory.ai/sdk/typescript>
+- dsh session format：<https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/session.md>

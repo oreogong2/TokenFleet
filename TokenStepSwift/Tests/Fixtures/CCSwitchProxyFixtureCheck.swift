@@ -365,7 +365,7 @@ struct CCSwitchProxyFixtureCheck {
         )
         try assertEqual(disabled.sources["ZCode"]?.status, "disabled", "zcode disabled status")
         try assertEqual(disabled.sources["Hermes Agent"]?.status, "disabled", "hermes disabled status")
-        try assertEqual(disabled.sources["WorkBuddy"]?.status, "unsupported_privacy_boundary", "workbuddy privacy status")
+        try assertEqual(disabled.sources["WorkBuddy"]?.status, "disabled", "workbuddy disabled status")
         try assertEqual(disabled.totals.tokens, 0, "experimental disabled total")
         try assertEqual(disabled.agentWork.count, 0, "experimental disabled agent work")
 
@@ -379,19 +379,19 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(snapshot.sources["ZCode"]?.records, 1, "zcode source records")
         try assertEqual(snapshot.sources["Hermes Agent"]?.status, "ok", "hermes source status")
         try assertEqual(snapshot.sources["Hermes Agent"]?.records, 1, "hermes source records")
-        try assertEqual(snapshot.sources["WorkBuddy"]?.status, "unsupported_privacy_boundary", "workbuddy privacy status")
-        try assertEqual(snapshot.sources["WorkBuddy"]?.records, 0, "workbuddy records")
-        try assertEqual(snapshot.totals.tokens, 72, "experimental total tokens")
+        try assertEqual(snapshot.sources["WorkBuddy"]?.status, "ok", "workbuddy source status")
+        try assertEqual(snapshot.sources["WorkBuddy"]?.records, 1, "workbuddy records")
+        try assertEqual(snapshot.totals.tokens, 192, "experimental total tokens")
         try assertEqual(snapshot.daily.first?.tools["ZCode"], 40, "zcode tool tokens")
         try assertEqual(snapshot.daily.first?.tools["Hermes Agent"], 32, "hermes tool tokens")
-        try assertEqual(snapshot.daily.first?.tools["WorkBuddy"], nil, "workbuddy must not enter totals")
+        try assertEqual(snapshot.daily.first?.tools["WorkBuddy"], 120, "workbuddy tool tokens")
         try assertEqual(snapshot.totals.cost, 0.42, "hermes actual cost")
 
         let work = try unwrap(snapshot.agentWork.first, "experimental agent work")
-        try assertEqual(work.totalTokens, 72, "experimental agent work tokens")
-        try assertEqual(work.modelRequestCount, 3, "experimental model requests")
-        try assertEqual(work.toolCallCount, 10, "experimental tool calls")
-        try assertEqual(work.sources.count, 2, "experimental source count")
+        try assertEqual(work.totalTokens, 192, "experimental agent work tokens")
+        try assertEqual(work.modelRequestCount, 4, "experimental model requests")
+        try assertEqual(work.toolCallCount, 11, "experimental tool calls")
+        try assertEqual(work.sources.count, 3, "experimental source count")
         try assertEqual(work.hourlyBuckets.count, 24, "agent work always exposes 24 hourly buckets")
         try assertEqual(
             work.hourlyBuckets.map(\.totalTokens).reduce(0, +) + work.unbucketedTokens,
@@ -400,7 +400,7 @@ struct CCSwitchProxyFixtureCheck {
         )
         try assertEqual(work.unbucketedTokens, 0, "timestamped agent rows are fully bucketed")
         try assertEqual(work.cacheCoverageComplete, true, "experimental cache coverage is complete")
-        try assertApprox(work.cacheHitRate, 7.0 / 47.0, "daily cache hit uses canonical input denominator")
+        try assertApprox(work.cacheHitRate, 87.0 / 147.0, "daily cache hit uses canonical input denominator")
     }
 
     private static func runLegacyAgentWorkDecodeCheck() throws {

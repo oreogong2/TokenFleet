@@ -18,6 +18,7 @@ enum AppPaths {
     static let collectionCheckpointJSON = appSupportRoot.appendingPathComponent("cache/collection-checkpoint.json")
     static let codexIncrementalCacheSQLite = appSupportRoot.appendingPathComponent("cache/codex-incremental.sqlite3")
     static let claudeQuotaCacheJSON = appSupportRoot.appendingPathComponent("cache/claude-quota-cache.json")
+    static let cursorUsageImportJSON = appSupportRoot.appendingPathComponent("imports/cursor-usage.json")
     static let settingsJSON = appSupportRoot.appendingPathComponent("config/settings.json")
     static let teamSyncStateJSON = appSupportRoot.appendingPathComponent("config/team-sync-state.json")
     static let autostartDefaultMarker = appSupportRoot.appendingPathComponent("config/autostart-default-applied")

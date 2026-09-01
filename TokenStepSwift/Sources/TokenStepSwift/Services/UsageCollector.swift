@@ -46,6 +46,21 @@ enum UsageCollector {
         zCodeDatabaseURL: URL? = nil,
         hermesDatabaseURL: URL? = nil,
         workBuddyRootURLs: [URL]? = nil,
+        codeBuddyRootURLs: [URL]? = nil,
+        qoderRootURL: URL? = nil,
+        kimiCodeRootURL: URL? = nil,
+        openCodeRootURL: URL? = nil,
+        grokBuildRootURL: URL? = nil,
+        qwenCodeRootURL: URL? = nil,
+        cursorUsageImportURL: URL? = nil,
+        clineRootURLs: [URL]? = nil,
+        copilotDatabaseURL: URL? = nil,
+        copilotOTelURLs: [URL]? = nil,
+        antigravityRootURLs: [URL]? = nil,
+        droidRootURL: URL? = nil,
+        dshRootURL: URL? = nil,
+        piSessionsRootURL: URL? = nil,
+        openClawRootURLs: [URL]? = nil,
         forceFullValidation: Bool = false
     ) -> UsageSnapshot {
         let cacheLoad = loadCache()
@@ -72,17 +87,55 @@ enum UsageCollector {
         let hermes = includeExperimentalAgentSources
             ? collectHermesUsage(databaseURL: hermesDatabaseURL)
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        // WorkBuddy project logs can colocate usage with message and tool
-        // content. beta.8 deliberately does not open those paths until a
-        // stable usage-only contract exists.
-        let workBuddy = CollectorResult(
-            records: [],
-            source: SourceInfo(
-                status: "unsupported_privacy_boundary",
-                files: nil,
-                records: 0
-            )
-        )
+        let workBuddy = includeExperimentalAgentSources
+            ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs, modifiedSince: sourceCutoff)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let codeBuddy = includeExperimentalAgentSources
+            ? collectCodeBuddyUsage(rootURLs: codeBuddyRootURLs, modifiedSince: sourceCutoff)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let qoder = includeExperimentalAgentSources
+            ? collectQoderUsage(rootURL: qoderRootURL, modifiedSince: sourceCutoff)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let kimi = includeExperimentalAgentSources
+            ? collectKimiCodeUsage(rootURL: kimiCodeRootURL, modifiedSince: sourceCutoff)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let openCode = includeExperimentalAgentSources
+            ? collectOpenCodeUsage(rootURL: openCodeRootURL)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let grok = includeExperimentalAgentSources
+            ? collectGrokBuildUsage(rootURL: grokBuildRootURL, modifiedSince: sourceCutoff)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let qwen = includeExperimentalAgentSources
+            ? collectQwenCodeUsage(rootURL: qwenCodeRootURL, modifiedSince: sourceCutoff)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let cursor = includeExperimentalAgentSources
+            ? collectCursorUsage(importURL: cursorUsageImportURL)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let cline = includeExperimentalAgentSources
+            ? collectClineUsage(rootURLs: clineRootURLs, modifiedSince: sourceCutoff)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let copilot = includeExperimentalAgentSources
+            ? collectCopilotCLIUsage(databaseURL: copilotDatabaseURL)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        var copilotOTel = includeExperimentalAgentSources
+            ? collectCopilotOTelUsage(urls: copilotOTelURLs, modifiedSince: sourceCutoff)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        preferCopilotSessionStore(sessionStore: copilot, otel: &copilotOTel)
+        let antigravity = includeExperimentalAgentSources
+            ? collectAntigravityUsage(rootURLs: antigravityRootURLs, modifiedSince: sourceCutoff)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let droid = includeExperimentalAgentSources
+            ? collectDroidUsage(rootURL: droidRootURL, modifiedSince: sourceCutoff)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let dsh = includeExperimentalAgentSources
+            ? collectDSHUsage(rootURL: dshRootURL, modifiedSince: sourceCutoff)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let pi = includeExperimentalAgentSources
+            ? collectPiUsage(sessionsRootURL: piSessionsRootURL, modifiedSince: sourceCutoff)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let openClaw = includeExperimentalAgentSources
+            ? collectOpenClawUsage(rootURLs: openClawRootURLs, modifiedSince: sourceCutoff)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
         if codexOutcome.usedIncrementalStore {
             cache.files = cache.files.filter { $0.value.tool != "Codex" && livePaths.contains($0.key) }
         } else {
@@ -99,7 +152,7 @@ enum UsageCollector {
             ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
         }
         let records = recordsInHistoryWindow(
-            deduped.records + zCode.records + hermes.records + workBuddy.records,
+            deduped.records + zCode.records + hermes.records + workBuddy.records + codeBuddy.records + qoder.records + kimi.records + openCode.records + grok.records + qwen.records + cursor.records + cline.records + copilot.records + copilotOTel.records + antigravity.records + droid.records + dsh.records + pi.records + openClaw.records,
             historyDays: historyDays,
             now: Date()
         )
@@ -111,7 +164,22 @@ enum UsageCollector {
                 ccSwitchSourceName: ccSwitch.source,
                 "ZCode": zCode.source,
                 "Hermes Agent": hermes.source,
-                "WorkBuddy": workBuddy.source
+                "WorkBuddy": workBuddy.source,
+                "CodeBuddy": codeBuddy.source,
+                "Qoder": qoder.source,
+                "Kimi": kimi.source,
+                "OpenCode": openCode.source,
+                "Grok": grok.source,
+                "Qwen Code": qwen.source,
+                "Cursor": cursor.source,
+                "Cline": cline.source,
+                "Copilot CLI": copilot.source,
+                "Copilot OTel": copilotOTel.source,
+                "Antigravity": antigravity.source,
+                "Droid": droid.source,
+                "dsh": dsh.source,
+                "Pi": pi.source,
+                "OpenClaw": openClaw.source
             ]
         )
     }
@@ -138,10 +206,55 @@ enum UsageCollector {
         urls.append(contentsOf: existingDatabaseFiles(databases))
 
         if includeExperimentalAgentSources {
+            let dshRoot = dshDefaultSessionsRoot(homeURL: homeURL)
             urls.append(contentsOf: existingDatabaseFiles([
                 homeURL.appendingPathComponent(".zcode/cli/db/db.sqlite"),
-                homeURL.appendingPathComponent(".hermes/state.db")
+                homeURL.appendingPathComponent(".hermes/state.db"),
+                copilotCLIDefaultDatabase(homeURL: homeURL)
             ]))
+            urls.append(contentsOf: openCodeDatabaseURLs(
+                rootURL: homeURL.appendingPathComponent(".local/share/opencode", isDirectory: true)
+            ).flatMap { existingDatabaseFiles([$0]) })
+            urls.append(contentsOf: [
+                homeURL.appendingPathComponent(".workbuddy/projects", isDirectory: true),
+                homeURL.appendingPathComponent("Library/Application Support/WorkBuddyExtension", isDirectory: true),
+                homeURL.appendingPathComponent(".codebuddy/projects", isDirectory: true),
+                homeURL.appendingPathComponent(".codebuddy/sessions", isDirectory: true),
+                homeURL.appendingPathComponent(".qoder/projects", isDirectory: true),
+                homeURL.appendingPathComponent(".kimi-code/sessions", isDirectory: true),
+                grokBuildDefaultRoot(homeURL: homeURL).appendingPathComponent("sessions", isDirectory: true),
+                qwenCodeDefaultRoot(homeURL: homeURL).appendingPathComponent("usage", isDirectory: true)
+            ].flatMap { jsonlFiles(under: $0, modifiedSince: cutoff) })
+            urls.append(contentsOf: [
+                homeURL.appendingPathComponent(".gemini/antigravity/brain", isDirectory: true),
+                homeURL.appendingPathComponent(".gemini/antigravity-cli/brain", isDirectory: true),
+                homeURL.appendingPathComponent(".gemini/antigravity-ide/brain", isDirectory: true),
+                homeURL.appendingPathComponent(".factory/projects", isDirectory: true),
+                dshRoot
+            ].flatMap { usageLogFiles(at: $0, modifiedSince: cutoff) })
+            urls.append(contentsOf: copilotOTelDefaultURLs(homeURL: homeURL)
+                .flatMap { usageLogFiles(at: $0, modifiedSince: cutoff) })
+            urls.append(contentsOf: compressedDSHFiles(
+                under: dshRoot,
+                modifiedSince: cutoff
+            ))
+            if FileManager.default.fileExists(atPath: AppPaths.cursorUsageImportJSON.path) {
+                urls.append(AppPaths.cursorUsageImportJSON)
+            }
+            urls.append(contentsOf: clineUsageFiles(
+                roots: clineDefaultRoots(homeURL: homeURL),
+                modifiedSince: cutoff
+            ))
+            urls.append(contentsOf: jsonlFiles(
+                under: piDefaultSessionsRoot(homeURL: homeURL),
+                modifiedSince: cutoff
+            ))
+            let openClawRoots = openClawDefaultRoots(homeURL: homeURL)
+            urls.append(contentsOf: openClawDatabaseFiles(roots: openClawRoots))
+            urls.append(contentsOf: openClawTranscriptFiles(
+                roots: openClawRoots,
+                modifiedSince: cutoff
+            ))
         }
 
         let files = Dictionary(grouping: urls, by: \.path)
@@ -397,6 +510,23 @@ enum UsageCollector {
         zCodeDatabaseURL: URL? = nil,
         hermesDatabaseURL: URL? = nil,
         workBuddyRootURLs: [URL]? = nil,
+        codeBuddyRootURLs: [URL]? = nil,
+        qoderRootURL: URL? = nil,
+        kimiCodeRootURL: URL? = nil,
+        openCodeRootURL: URL? = nil,
+        grokBuildRootURL: URL? = nil,
+        qwenCodeRootURL: URL? = nil,
+        cursorUsageImportURL: URL? = nil,
+        clineRootURLs: [URL]? = nil,
+        copilotDatabaseURL: URL? = nil,
+        copilotOTelURLs: [URL]? = nil,
+        antigravityRootURLs: [URL]? = nil,
+        droidRootURL: URL? = nil,
+        dshRootURL: URL? = nil,
+        dshZstdExecutableURL: URL? = nil,
+        dshDiscoverZstdDecoder: Bool = true,
+        piSessionsRootURL: URL? = nil,
+        openClawRootURLs: [URL]? = nil,
         includeExperimentalAgentSources: Bool = false,
         historyDays: Int? = nil,
         now: Date = Date()
@@ -423,20 +553,77 @@ enum UsageCollector {
         let hermes = includeExperimentalAgentSources
             ? hermesDatabaseURL.map { collectHermesUsage(databaseURL: $0) } ?? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let workBuddy = CollectorResult(
-            records: [],
-            source: SourceInfo(
-                status: "unsupported_privacy_boundary",
-                files: nil,
-                records: 0
-            )
-        )
+        let workBuddy = includeExperimentalAgentSources
+            ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs ?? [], modifiedSince: nil)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let codeBuddy = includeExperimentalAgentSources
+            ? collectCodeBuddyUsage(rootURLs: codeBuddyRootURLs ?? [], modifiedSince: nil)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let qoder = includeExperimentalAgentSources
+            ? qoderRootURL.map { collectQoderUsage(rootURL: $0, modifiedSince: nil) }
+                ?? CollectorResult(records: [], source: SourceInfo(status: "missing", files: 0, records: 0))
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let kimi = includeExperimentalAgentSources
+            ? kimiCodeRootURL.map { collectKimiCodeUsage(rootURL: $0, modifiedSince: nil) }
+                ?? CollectorResult(records: [], source: SourceInfo(status: "missing", files: 0, records: 0))
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let openCode = includeExperimentalAgentSources
+            ? openCodeRootURL.map { collectOpenCodeUsage(rootURL: $0) }
+                ?? CollectorResult(records: [], source: SourceInfo(status: "missing", files: 0, records: 0))
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let grok = includeExperimentalAgentSources
+            ? grokBuildRootURL.map { collectGrokBuildUsage(rootURL: $0, modifiedSince: nil) }
+                ?? CollectorResult(records: [], source: SourceInfo(status: "missing", files: 0, records: 0))
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let qwen = includeExperimentalAgentSources
+            ? qwenCodeRootURL.map { collectQwenCodeUsage(rootURL: $0, modifiedSince: nil) }
+                ?? CollectorResult(records: [], source: SourceInfo(status: "missing", files: 0, records: 0))
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let cursor = includeExperimentalAgentSources
+            ? collectCursorUsage(importURL: cursorUsageImportURL)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let cline = includeExperimentalAgentSources
+            ? collectClineUsage(rootURLs: clineRootURLs ?? [], modifiedSince: nil)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let copilot = includeExperimentalAgentSources
+            ? copilotDatabaseURL.map { collectCopilotCLIUsage(databaseURL: $0) }
+                ?? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        var copilotOTel = includeExperimentalAgentSources
+            ? collectCopilotOTelUsage(urls: copilotOTelURLs ?? [], modifiedSince: nil)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        preferCopilotSessionStore(sessionStore: copilot, otel: &copilotOTel)
+        let antigravity = includeExperimentalAgentSources
+            ? collectAntigravityUsage(rootURLs: antigravityRootURLs ?? [], modifiedSince: nil)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let droid = includeExperimentalAgentSources
+            ? droidRootURL.map { collectDroidUsage(rootURL: $0, modifiedSince: nil) }
+                ?? CollectorResult(records: [], source: SourceInfo(status: "missing", files: 0, records: 0))
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let dsh = includeExperimentalAgentSources
+            ? dshRootURL.map {
+                collectDSHUsage(
+                    rootURL: $0,
+                    modifiedSince: nil,
+                    zstdExecutableURLOverride: dshZstdExecutableURL,
+                    discoverZstdDecoder: dshDiscoverZstdDecoder
+                )
+            }
+                ?? CollectorResult(records: [], source: SourceInfo(status: "missing", files: 0, records: 0))
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let pi = includeExperimentalAgentSources
+            ? piSessionsRootURL.map { collectPiUsage(sessionsRootURL: $0, modifiedSince: nil) }
+                ?? CollectorResult(records: [], source: SourceInfo(status: "missing", files: 0, records: 0))
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let openClaw = includeExperimentalAgentSources
+            ? collectOpenClawUsage(rootURLs: openClawRootURLs ?? [], modifiedSince: nil)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
         let deduped = deduplicateCrossSource(
             nativeRecords: codex.records + claude.records,
             proxyRecords: ccSwitch.records
         )
         ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
-        let allRecords = deduped.records + zCode.records + hermes.records + workBuddy.records
+        let allRecords = deduped.records + zCode.records + hermes.records + workBuddy.records + codeBuddy.records + qoder.records + kimi.records + openCode.records + grok.records + qwen.records + cursor.records + cline.records + copilot.records + copilotOTel.records + antigravity.records + droid.records + dsh.records + pi.records + openClaw.records
         let records = historyDays.map {
             recordsInHistoryWindow(allRecords, historyDays: $0, now: now)
         } ?? allRecords
@@ -448,7 +635,22 @@ enum UsageCollector {
                 ccSwitchSourceName: ccSwitch.source,
                 "ZCode": zCode.source,
                 "Hermes Agent": hermes.source,
-                "WorkBuddy": workBuddy.source
+                "WorkBuddy": workBuddy.source,
+                "CodeBuddy": codeBuddy.source,
+                "Qoder": qoder.source,
+                "Kimi": kimi.source,
+                "OpenCode": openCode.source,
+                "Grok": grok.source,
+                "Qwen Code": qwen.source,
+                "Cursor": cursor.source,
+                "Cline": cline.source,
+                "Copilot CLI": copilot.source,
+                "Copilot OTel": copilotOTel.source,
+                "Antigravity": antigravity.source,
+                "Droid": droid.source,
+                "dsh": dsh.source,
+                "Pi": pi.source,
+                "OpenClaw": openClaw.source
             ]
         )
     }
@@ -1887,20 +2089,21 @@ enum UsageCollector {
             "started_at",
             "model_id",
             "input_tokens",
-            "output_tokens",
-            "reasoning_tokens",
-            "cache_creation_input_tokens",
-            "cache_read_input_tokens",
-            "computed_total_tokens",
-            "tool_call_count"
+            "output_tokens"
         ]
         guard requiredColumns.isSubset(of: availableColumns) else {
             return CollectorResult(records: [], source: SourceInfo(status: "schema_mismatch", files: 1, records: 0))
         }
 
-        let providerTotalExpression = availableColumns.contains("provider_total_tokens")
-            ? "coalesce(provider_total_tokens, 0)"
-            : "0"
+        let optionalInteger: (String) -> String = { column in
+            availableColumns.contains(column) ? "coalesce(\(column), 0)" : "0"
+        }
+        let reasoningExpression = optionalInteger("reasoning_tokens")
+        let cacheCreationExpression = optionalInteger("cache_creation_input_tokens")
+        let cacheReadExpression = optionalInteger("cache_read_input_tokens")
+        let computedTotalExpression = optionalInteger("computed_total_tokens")
+        let providerTotalExpression = optionalInteger("provider_total_tokens")
+        let toolCallExpression = optionalInteger("tool_call_count")
         let query = """
         select
             id,
@@ -1909,23 +2112,23 @@ enum UsageCollector {
             coalesce(nullif(model_id, ''), 'unknown') as display_model,
             coalesce(input_tokens, 0) as input_tokens,
             coalesce(output_tokens, 0) as output_tokens,
-            coalesce(reasoning_tokens, 0) as reasoning_tokens,
-            coalesce(cache_creation_input_tokens, 0) as cache_creation_input_tokens,
-            coalesce(cache_read_input_tokens, 0) as cache_read_input_tokens,
-            coalesce(computed_total_tokens, 0) as computed_total_tokens,
+            \(reasoningExpression) as reasoning_tokens,
+            \(cacheCreationExpression) as cache_creation_input_tokens,
+            \(cacheReadExpression) as cache_read_input_tokens,
+            \(computedTotalExpression) as computed_total_tokens,
             \(providerTotalExpression) as provider_total_tokens,
-            coalesce(tool_call_count, 0) as tool_call_count
+            \(toolCallExpression) as tool_call_count
         from model_usage
         where status = 'completed'
             and (
-                coalesce(computed_total_tokens, 0) > 0
+                \(computedTotalExpression) > 0
                 or \(providerTotalExpression) > 0
                 or (
                     coalesce(input_tokens, 0)
                     + coalesce(output_tokens, 0)
-                    + coalesce(reasoning_tokens, 0)
-                    + coalesce(cache_creation_input_tokens, 0)
-                    + coalesce(cache_read_input_tokens, 0)
+                    + \(reasoningExpression)
+                    + \(cacheCreationExpression)
+                    + \(cacheReadExpression)
                 ) > 0
             )
         order by started_at, id
@@ -1998,47 +2201,55 @@ enum UsageCollector {
         let availableColumns = Set(columns.compactMap { $0["name"] as? String })
         let requiredColumns: Set<String> = [
             "id",
-            "source",
-            "model",
             "started_at",
             "input_tokens",
-            "output_tokens",
-            "cache_read_tokens",
-            "cache_write_tokens",
-            "reasoning_tokens",
-            "tool_call_count",
-            "api_call_count",
-            "actual_cost_usd",
-            "estimated_cost_usd",
-            "cost_status"
+            "output_tokens"
         ]
         guard requiredColumns.isSubset(of: availableColumns) else {
             return CollectorResult(records: [], source: SourceInfo(status: "schema_mismatch", files: 1, records: 0))
         }
 
+        let optionalInteger: (String) -> String = { column in
+            availableColumns.contains(column) ? "coalesce(\(column), 0)" : "0"
+        }
+        let optionalText: (String, String) -> String = { column, fallback in
+            availableColumns.contains(column)
+                ? "coalesce(nullif(\(column), ''), '\(fallback)')"
+                : "'\(fallback)'"
+        }
+        let sourceExpression = optionalText("source", "unknown")
+        let modelExpression = optionalText("model", "unknown")
+        let cacheReadExpression = optionalInteger("cache_read_tokens")
+        let cacheWriteExpression = optionalInteger("cache_write_tokens")
+        let reasoningExpression = optionalInteger("reasoning_tokens")
+        let toolCallExpression = optionalInteger("tool_call_count")
+        let apiCallExpression = optionalInteger("api_call_count")
+        let actualCostExpression = optionalInteger("actual_cost_usd")
+        let estimatedCostExpression = optionalInteger("estimated_cost_usd")
+        let costStatusExpression = optionalText("cost_status", "")
         let query = """
         select
             id,
-            source,
-            model,
+            \(sourceExpression) as source,
+            \(modelExpression) as model,
             started_at,
             coalesce(input_tokens, 0) as input_tokens,
             coalesce(output_tokens, 0) as output_tokens,
-            coalesce(cache_read_tokens, 0) as cache_read_tokens,
-            coalesce(cache_write_tokens, 0) as cache_write_tokens,
-            coalesce(reasoning_tokens, 0) as reasoning_tokens,
-            coalesce(tool_call_count, 0) as tool_call_count,
-            coalesce(api_call_count, 0) as api_call_count,
-            coalesce(actual_cost_usd, 0) as actual_cost_usd,
-            coalesce(estimated_cost_usd, 0) as estimated_cost_usd,
-            coalesce(cost_status, '') as cost_status
+            \(cacheReadExpression) as cache_read_tokens,
+            \(cacheWriteExpression) as cache_write_tokens,
+            \(reasoningExpression) as reasoning_tokens,
+            \(toolCallExpression) as tool_call_count,
+            \(apiCallExpression) as api_call_count,
+            \(actualCostExpression) as actual_cost_usd,
+            \(estimatedCostExpression) as estimated_cost_usd,
+            \(costStatusExpression) as cost_status
         from sessions
         where (
             coalesce(input_tokens, 0)
             + coalesce(output_tokens, 0)
-            + coalesce(cache_read_tokens, 0)
-            + coalesce(cache_write_tokens, 0)
-            + coalesce(reasoning_tokens, 0)
+            + \(cacheReadExpression)
+            + \(cacheWriteExpression)
+            + \(reasoningExpression)
         ) > 0
         order by started_at, id
         """
@@ -2082,7 +2293,7 @@ enum UsageCollector {
                 requestID: nonEmptyString(row["id"] as? String),
                 sessionID: nonEmptyString(row["id"] as? String),
                 dataSource: nonEmptyString(row["source"] as? String),
-                modelRequestCount: requestCount,
+                    modelRequestCount: max(1, requestCount),
                 toolCallCount: integerValue(row["tool_call_count"] as Any)
             )
         }
@@ -2091,6 +2302,2426 @@ enum UsageCollector {
             records: records,
             source: SourceInfo(status: records.isEmpty ? "missing_valid_rows" : "ok", files: 1, records: records.count)
         )
+    }
+
+    private static func collectWorkBuddyUsage(
+        rootURLs: [URL]? = nil,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let roots = rootURLs ?? [
+            home.appendingPathComponent(".workbuddy/projects", isDirectory: true),
+            home.appendingPathComponent("Library/Application Support/WorkBuddyExtension", isDirectory: true)
+        ]
+        let discoveredRoots = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let files = discoveredRoots.flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
+        var records: [UsageRecord] = []
+        var seenRequests = Set<String>()
+
+        for file in files {
+            var lineNumber = 0
+            try? forEachLine(in: file, matchingAny: ["\"usage\"", "\"rawUsage\""]) { line in
+                lineNumber += 1
+                guard let data = line.data(using: .utf8),
+                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let timestamp = object["timestamp"],
+                      let day = dayString(fromEpoch: timestamp),
+                      let usage = workBuddyUsage(from: object),
+                      usage.totalTokens > 0
+                else {
+                    return
+                }
+
+                let providerData = object["providerData"] as? [String: Any]
+                let recordType = object["type"] as? String
+                let sessionID = nonEmptyString(object["sessionId"] as? String)
+                    ?? nonEmptyString(file.deletingPathExtension().lastPathComponent)
+                let requestID = [
+                    providerData?["messageId"] as? String,
+                    providerData?["conversationRequestId"] as? String,
+                    object["uuid"] as? String,
+                    object["id"] as? String
+                ].compactMap(nonEmptyString).first
+                let fallbackIdentity = "\(file.path):\(lineNumber)"
+                let identity = requestID.map { "\(sessionID ?? "unknown")|\($0)" }
+                    ?? fallbackIdentity
+                guard seenRequests.insert(identity).inserted else { return }
+                records.append(UsageRecord(
+                    date: day,
+                    timestamp: isoString(fromEpoch: timestamp),
+                    tool: "WorkBuddy",
+                    model: modelKey(
+                        providerData?["requestModelId"] as? String
+                            ?? providerData?["requestModelName"] as? String
+                            ?? providerData?["model"] as? String
+                            ?? object["model"] as? String
+                    ),
+                    usage: usage,
+                    source: .workbuddy,
+                    requestID: requestID,
+                    sessionID: sessionID,
+                    sourcePath: file.path,
+                    lineNumber: lineNumber,
+                    modelRequestCount: 1,
+                    toolCallCount: recordType == "function_call" ? 1 : 0
+                ))
+            }
+        }
+
+        let status: String
+        if discoveredRoots.isEmpty {
+            status = "missing"
+        } else if files.isEmpty {
+            status = "discovered_no_usage"
+        } else if records.isEmpty {
+            status = "missing_valid_rows"
+        } else {
+            status = "ok"
+        }
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: status,
+                files: files.count,
+                records: records.count
+            )
+        )
+    }
+
+    private static func workBuddyUsage(
+        from object: [String: Any],
+        inputIncludesCachedTokens: Bool = true
+    ) -> TokenUsageCounts? {
+        let message = object["message"] as? [String: Any]
+        let providerData = object["providerData"] as? [String: Any]
+        let usage = object["usage"] as? [String: Any]
+            ?? message?["usage"] as? [String: Any]
+            ?? providerData?["rawUsage"] as? [String: Any]
+            ?? providerData?["usage"] as? [String: Any]
+        guard let usage else { return nil }
+
+        let rawInput = firstIntegerValue(
+            in: usage,
+            keys: ["input_tokens", "inputTokens", "prompt_tokens"]
+        )
+        let output = firstIntegerValue(
+            in: usage,
+            keys: ["output_tokens", "outputTokens", "completion_tokens"]
+        )
+        let promptDetails = usage["prompt_tokens_details"] as? [String: Any]
+        let completionDetails = usage["completion_tokens_details"] as? [String: Any]
+        let cacheRead = [
+            integerValue(usage["cache_read_input_tokens"] as Any),
+            integerValue(usage["cached_tokens"] as Any),
+            integerValue(usage["prompt_cache_hit_tokens"] as Any),
+            integerValue(promptDetails?["cached_tokens"] as Any)
+        ].map { max(0, $0) }.max() ?? 0
+        let cacheCreation = firstIntegerValue(
+            in: usage,
+            keys: ["cache_creation_input_tokens", "cacheCreationInputTokens", "prompt_cache_write_tokens"]
+        )
+        let reasoning = [
+            integerValue(usage["reasoning_tokens"] as Any),
+            integerValue(usage["completion_thinking_tokens"] as Any),
+            integerValue(completionDetails?["reasoning_tokens"] as Any)
+        ].map { max(0, $0) }.max() ?? 0
+        let explicitTotal = firstIntegerValue(
+            in: usage,
+            keys: ["total_tokens", "totalTokens"]
+        )
+        let resolvedInputIncludesCachedTokens: Bool
+        if explicitTotal > 0, explicitTotal == rawInput + output {
+            resolvedInputIncludesCachedTokens = true
+        } else if explicitTotal > 0,
+                  explicitTotal == rawInput + cacheCreation + cacheRead + output {
+            resolvedInputIncludesCachedTokens = false
+        } else {
+            resolvedInputIncludesCachedTokens = inputIncludesCachedTokens
+        }
+        return canonicalUsageCounts(
+            rawInputTokens: rawInput,
+            outputTokens: output,
+            cacheCreationInputTokens: cacheCreation,
+            cacheReadInputTokens: cacheRead,
+            reasoningOutputTokens: reasoning,
+            inputIncludesCachedTokens: resolvedInputIncludesCachedTokens,
+            explicitTotalTokens: explicitTotal,
+            explicitTotalIsAuthoritative: true
+        )
+    }
+
+    private static func collectCodeBuddyUsage(
+        rootURLs: [URL]? = nil,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return collectClaudeShapedAgentUsage(
+            tool: "CodeBuddy",
+            source: .codebuddy,
+            roots: rootURLs ?? [
+                home.appendingPathComponent(".codebuddy/projects", isDirectory: true),
+                home.appendingPathComponent(".codebuddy/sessions", isDirectory: true)
+            ],
+            modifiedSince: cutoffDate,
+            assistantOnly: true,
+            inputIncludesCachedTokens: false
+        )
+    }
+
+    private static func collectQoderUsage(
+        rootURL: URL? = nil,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let root = rootURL ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".qoder/projects", isDirectory: true)
+        return collectClaudeShapedAgentUsage(
+            tool: "Qoder",
+            source: .qoder,
+            roots: [root],
+            modifiedSince: cutoffDate,
+            assistantOnly: true,
+            inputIncludesCachedTokens: false
+        )
+    }
+
+    private static func collectClaudeShapedAgentUsage(
+        tool: String,
+        source: UsageRecordSource,
+        roots: [URL],
+        modifiedSince cutoffDate: Date?,
+        assistantOnly: Bool,
+        inputIncludesCachedTokens: Bool
+    ) -> CollectorResult {
+        let discoveredRoots = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let files = discoveredRoots.flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+
+        for file in files {
+            var lineNumber = 0
+            try? forEachLine(in: file, matchingAny: ["\"usage\"", "\"rawUsage\""]) { line in
+                lineNumber += 1
+                guard let object = jsonObject(line) else { return }
+                let message = object["message"] as? [String: Any]
+                let role = nonEmptyString(message?["role"] as? String)
+                    ?? nonEmptyString(object["role"] as? String)
+                let type = nonEmptyString(object["type"] as? String)
+                if assistantOnly,
+                   role != "assistant",
+                   type != "assistant",
+                   type != "assistant_message" {
+                    return
+                }
+                guard let temporal = usageTemporalInfo(from: object),
+                      let usage = workBuddyUsage(
+                        from: object,
+                        inputIncludesCachedTokens: inputIncludesCachedTokens
+                      ),
+                      usage.totalTokens > 0
+                else { return }
+
+                let providerData = object["providerData"] as? [String: Any]
+                let sessionID = firstNonEmptyString([
+                    object["sessionId"], object["session_id"], message?["sessionId"]
+                ]) ?? file.deletingPathExtension().lastPathComponent
+                let requestID = firstNonEmptyString([
+                    object["requestId"], object["request_id"], object["uuid"], object["id"],
+                    message?["id"], providerData?["messageId"], providerData?["conversationRequestId"]
+                ])
+                let identity = requestID.map { "\(sessionID)|\($0)" }
+                    ?? "\(file.path):\(lineNumber)"
+                guard seen.insert(identity).inserted else { return }
+
+                records.append(UsageRecord(
+                    date: temporal.day,
+                    timestamp: temporal.iso,
+                    timestampEpoch: temporal.epoch,
+                    tool: tool,
+                    model: modelKey(firstNonEmptyString([
+                        message?["model"], object["model"], object["modelId"],
+                        providerData?["model"], providerData?["requestModelId"],
+                        providerData?["requestModelName"]
+                    ])),
+                    usage: usage,
+                    source: source,
+                    requestID: requestID,
+                    sessionID: sessionID,
+                    responseID: nonEmptyString(message?["id"] as? String),
+                    sourcePath: file.path,
+                    lineNumber: lineNumber,
+                    dataSource: "local_transcript",
+                    modelRequestCount: 1,
+                    toolCallCount: type == "function_call" ? 1 : 0
+                ))
+            }
+        }
+
+        let status: String
+        if discoveredRoots.isEmpty { status = "missing" }
+        else if files.isEmpty { status = "discovered_no_usage" }
+        else if records.isEmpty { status = "missing_valid_rows" }
+        else { status = "ok" }
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: status,
+                files: files.count,
+                records: records.count,
+                strategy: "transcript_assistant_usage"
+            )
+        )
+    }
+
+    private static func collectKimiCodeUsage(
+        rootURL: URL? = nil,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let root = rootURL ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".kimi-code", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: root.path) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing", files: 0, records: 0)
+            )
+        }
+
+        let sessions = root.appendingPathComponent("sessions", isDirectory: true)
+        let files = jsonlFiles(under: sessions, modifiedSince: cutoffDate)
+            .filter { $0.lastPathComponent == "wire.jsonl" }
+        let fallbackModel = kimiCodeDefaultModel(rootURL: root)
+        var records: [UsageRecord] = []
+        var seenEvents = Set<String>()
+
+        for file in files {
+            var fileModel = fallbackModel
+            var matchedLineNumber = 0
+            try? forEachLine(
+                in: file,
+                matchingAny: ["\"config.update\"", "\"step.end\""]
+            ) { line in
+                matchedLineNumber += 1
+                guard let data = line.data(using: .utf8),
+                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else {
+                    return
+                }
+
+                if object["type"] as? String == "config.update" {
+                    if let alias = kimiCodeModelAlias(object["modelAlias"] as? String) {
+                        fileModel = alias
+                    }
+                    return
+                }
+
+                let event: [String: Any]
+                if object["type"] as? String == "context.append_loop_event",
+                   let nested = object["event"] as? [String: Any] {
+                    event = nested
+                } else {
+                    event = object
+                }
+                guard event["type"] as? String == "step.end",
+                      let usageObject = event["usage"] as? [String: Any],
+                      let usage = kimiCodeUsage(from: usageObject),
+                      usage.totalTokens > 0,
+                      let timestampValue = object["time"] ?? event["time"],
+                      let day = dayString(fromEpoch: timestampValue)
+                else {
+                    return
+                }
+
+                let eventID = nonEmptyString(event["uuid"] as? String)
+                let identity = eventID.map { "id:\($0)" }
+                    ?? "line:\(file.path):\(matchedLineNumber)"
+                guard seenEvents.insert(identity).inserted else { return }
+
+                let model = kimiCodeModelAlias(
+                    event["model"] as? String ?? object["model"] as? String
+                ) ?? fileModel
+                let sessionID = file
+                    .deletingLastPathComponent()
+                    .deletingLastPathComponent()
+                    .deletingLastPathComponent()
+                    .lastPathComponent
+                records.append(UsageRecord(
+                    date: day,
+                    timestamp: isoString(fromEpoch: timestampValue),
+                    timestampEpoch: epochSeconds(timestampValue),
+                    tool: "Kimi",
+                    model: modelKey(model),
+                    usage: usage,
+                    source: .kimi,
+                    requestID: eventID,
+                    sessionID: nonEmptyString(sessionID),
+                    sourcePath: file.path,
+                    lineNumber: matchedLineNumber,
+                    modelRequestCount: 1
+                ))
+            }
+        }
+
+        let status: String
+        if files.isEmpty {
+            status = "discovered_no_usage"
+        } else if records.isEmpty {
+            status = "missing_valid_rows"
+        } else {
+            status = "ok"
+        }
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(status: status, files: files.count, records: records.count)
+        )
+    }
+
+    private static func kimiCodeDefaultModel(rootURL: URL) -> String {
+        let fallback = "kimi-for-coding"
+        let configURL = rootURL.appendingPathComponent("config.toml")
+        guard let contents = try? String(contentsOf: configURL, encoding: .utf8) else {
+            return fallback
+        }
+        for line in contents.split(whereSeparator: \Character.isNewline) {
+            let parts = line.split(separator: "=", maxSplits: 1).map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard parts.count == 2, parts[0] == "default_model" else { continue }
+            let value = parts[1].trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            return kimiCodeModelAlias(value) ?? fallback
+        }
+        return fallback
+    }
+
+    private static func kimiCodeModelAlias(_ value: String?) -> String? {
+        guard let value = nonEmptyString(value) else { return nil }
+        return nonEmptyString(value.split(separator: "/").last.map(String.init))
+    }
+
+    private static func kimiCodeUsage(from usage: [String: Any]) -> TokenUsageCounts? {
+        if usage.keys.contains("inputOther") {
+            return canonicalUsageCounts(
+                rawInputTokens: integerValue(usage["inputOther"] as Any),
+                outputTokens: integerValue(usage["output"] as Any),
+                cacheCreationInputTokens: integerValue(usage["inputCacheCreation"] as Any),
+                cacheReadInputTokens: integerValue(usage["inputCacheRead"] as Any),
+                inputIncludesCachedTokens: false
+            )
+        }
+
+        let rawInput = max(0, integerValue(usage["input_tokens"] as Any))
+        let directCacheRead = usage.keys.contains("cache_read_input_tokens")
+        let details = usage["input_tokens_details"] as? [String: Any]
+        let cacheRead = directCacheRead
+            ? max(0, integerValue(usage["cache_read_input_tokens"] as Any))
+            : max(0, integerValue(details?["cached_tokens"] as Any))
+        let freshInput = directCacheRead ? rawInput : max(0, rawInput - cacheRead)
+        return canonicalUsageCounts(
+            rawInputTokens: freshInput,
+            outputTokens: integerValue(usage["output_tokens"] as Any),
+            cacheCreationInputTokens: integerValue(usage["cache_creation_input_tokens"] as Any),
+            cacheReadInputTokens: cacheRead,
+            inputIncludesCachedTokens: false
+        )
+    }
+
+    private static func collectCursorUsage(importURL: URL? = nil) -> CollectorResult {
+        let url = importURL ?? AppPaths.cursorUsageImportJSON
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing_import", files: 0, records: 0)
+            )
+        }
+        guard let data = try? Data(contentsOf: url) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "unreadable_import", files: 1, records: 0)
+            )
+        }
+        guard let archive = try? JSONDecoder().decode(CollectedCursorUsageArchive.self, from: data),
+              archive.schemaVersion == 1
+        else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "schema_mismatch", files: 1, records: 0)
+            )
+        }
+
+        var seen = Set<String>()
+        let records = archive.records.compactMap { item -> UsageRecord? in
+            guard seen.insert(item.deduplicationKey).inserted,
+                  let parsedDate = CursorUsageTimestamp.date(from: item.timestamp)
+            else {
+                return nil
+            }
+            let usage = canonicalUsageCounts(
+                rawInputTokens: item.inputTokens,
+                outputTokens: item.outputTokens,
+                cacheCreationInputTokens: item.cacheWriteTokens,
+                cacheReadInputTokens: item.cacheReadTokens,
+                inputIncludesCachedTokens: false
+            )
+            guard usage.totalTokens > 0 else { return nil }
+
+            let digest = SHA256.hash(data: Data(item.deduplicationKey.utf8))
+                .map { String(format: "%02x", $0) }
+                .joined()
+            return UsageRecord(
+                date: dayFormatter.string(from: parsedDate),
+                timestamp: item.timestamp,
+                timestampEpoch: parsedDate.timeIntervalSince1970,
+                tool: "Cursor",
+                model: modelKey(item.model),
+                usage: usage,
+                costUSD: max(0, item.costUSD),
+                source: .cursor,
+                requestID: "cursor-csv:\(digest)",
+                sourcePath: url.path,
+                dataSource: "cursor_usage_csv",
+                modelRequestCount: 1
+            )
+        }
+
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: records.isEmpty ? "missing_valid_rows" : "ok",
+                files: 1,
+                records: records.count,
+                rawRecords: archive.records.count,
+                dedupedRecords: records.count,
+                strategy: "cursor_usage_csv_v1"
+            )
+        )
+    }
+
+    private static func collectClineUsage(
+        rootURLs: [URL]? = nil,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let roots = rootURLs ?? clineDefaultRoots()
+        let files = clineUsageFiles(roots: roots, modifiedSince: cutoffDate)
+        guard !files.isEmpty else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing", files: 0, records: 0)
+            )
+        }
+
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+        var currentSessionIDs = Set<String>()
+        var currentArchives: [(URL, ClineMessagesArchive)] = []
+        var rawRecords = 0
+
+        for file in files where file.lastPathComponent.hasSuffix(".messages.json") {
+            guard let data = try? Data(contentsOf: file),
+                  let archive = try? JSONDecoder().decode(ClineMessagesArchive.self, from: data),
+                  archive.version == 1,
+                  !archive.sessionID.isEmpty
+            else {
+                continue
+            }
+            currentSessionIDs.insert(archive.sessionID)
+            currentArchives.append((file, archive))
+        }
+
+        for (file, archive) in currentArchives {
+            for message in archive.messages {
+                guard message.role == "assistant",
+                      let metrics = message.metrics,
+                      let input = metrics.inputTokens,
+                      let output = metrics.outputTokens,
+                      let cacheRead = metrics.cacheReadTokens,
+                      let cacheWrite = metrics.cacheWriteTokens,
+                      let timestampMilliseconds = message.timestampMilliseconds,
+                      let model = nonEmptyString(message.modelInfo?.id)
+                else {
+                    continue
+                }
+                rawRecords += 1
+                let dedupKey = "current:\(archive.sessionID):\(message.id)"
+                guard seen.insert(dedupKey).inserted else { continue }
+
+                let timestamp = timestampMilliseconds > 10_000_000_000
+                    ? timestampMilliseconds / 1_000
+                    : timestampMilliseconds
+                let date = Date(timeIntervalSince1970: timestamp)
+                let usage = canonicalUsageCounts(
+                    rawInputTokens: input,
+                    outputTokens: output,
+                    cacheCreationInputTokens: cacheWrite,
+                    cacheReadInputTokens: cacheRead,
+                    inputIncludesCachedTokens: true
+                )
+                guard usage.totalTokens > 0 else { continue }
+                records.append(UsageRecord(
+                    date: dayFormatter.string(from: date),
+                    timestamp: isoFormatterWithFractional.string(from: date),
+                    timestampEpoch: timestamp,
+                    tool: "Cline",
+                    model: modelKey(model),
+                    usage: usage,
+                    costUSD: metrics.cost.map { max(0, $0) },
+                    source: .cline,
+                    requestID: dedupKey,
+                    sessionID: archive.sessionID,
+                    sourcePath: file.path,
+                    dataSource: "cline_messages_v1",
+                    modelRequestCount: 1
+                ))
+            }
+        }
+
+        for file in files where file.lastPathComponent == "ui_messages.json" {
+            let taskID = file.deletingLastPathComponent().lastPathComponent
+            guard !currentSessionIDs.contains(taskID),
+                  let data = try? Data(contentsOf: file),
+                  let messages = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+            else {
+                continue
+            }
+
+            func appendLegacyUsage(
+                payload: [String: Any],
+                message: [String: Any],
+                say: String
+            ) {
+                let timestampValue = message["ts"]
+                guard let timestampValue,
+                      let day = dayString(fromEpoch: timestampValue)
+                else {
+                    return
+                }
+                let input = integerValue(payload["tokensIn"] as Any)
+                let output = integerValue(payload["tokensOut"] as Any)
+                let cacheRead = integerValue(payload["cacheReads"] as Any)
+                let cacheWrite = integerValue(payload["cacheWrites"] as Any)
+                let usage = canonicalUsageCounts(
+                    rawInputTokens: input,
+                    outputTokens: output,
+                    cacheCreationInputTokens: cacheWrite,
+                    cacheReadInputTokens: cacheRead,
+                    inputIncludesCachedTokens: false
+                )
+                guard usage.totalTokens > 0 else { return }
+                rawRecords += 1
+                let timestampText = String(describing: timestampValue)
+                let dedupKey = "legacy:\(taskID):\(timestampText):\(say)"
+                guard seen.insert(dedupKey).inserted else { return }
+
+                let costValue = payload["cost"] ?? payload["totalCost"]
+                let cost = costValue.map { max(0, doubleValue($0)) }
+                let model = [
+                    payload["model"] as? String,
+                    payload["modelId"] as? String
+                ].compactMap(nonEmptyString).first ?? "unknown"
+                records.append(UsageRecord(
+                    date: day,
+                    timestamp: isoString(fromEpoch: timestampValue),
+                    timestampEpoch: epochSeconds(timestampValue),
+                    tool: "Cline",
+                    model: modelKey(model),
+                    usage: usage,
+                    costUSD: cost,
+                    source: .cline,
+                    requestID: dedupKey,
+                    sessionID: taskID,
+                    sourcePath: file.path,
+                    dataSource: "cline_ui_messages",
+                    modelRequestCount: 1
+                ))
+            }
+
+            for (index, message) in messages.enumerated() {
+                guard message["type"] as? String == "say",
+                      let say = nonEmptyString(message["say"] as? String),
+                      ["api_req_started", "deleted_api_reqs", "subagent_usage", "api_req_deleted"].contains(say),
+                      let text = message["text"] as? String,
+                      let payloadData = text.data(using: .utf8),
+                      var payload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any]
+                else {
+                    continue
+                }
+
+                if say == "api_req_started" {
+                    var cursor = index + 1
+                    while cursor < messages.count {
+                        let candidate = messages[cursor]
+                        if candidate["type"] as? String == "say",
+                           candidate["say"] as? String == "api_req_started" {
+                            break
+                        }
+                        if candidate["type"] as? String == "say",
+                           candidate["say"] as? String == "api_req_finished",
+                           let finishText = candidate["text"] as? String,
+                           let finishData = finishText.data(using: .utf8),
+                           let finish = try? JSONSerialization.jsonObject(with: finishData) as? [String: Any] {
+                            payload.merge(finish) { _, latest in latest }
+                            break
+                        }
+                        cursor += 1
+                    }
+                }
+                appendLegacyUsage(payload: payload, message: message, say: say)
+            }
+        }
+
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: records.isEmpty ? "missing_valid_rows" : "ok",
+                files: files.count,
+                records: records.count,
+                rawRecords: rawRecords,
+                dedupedRecords: records.count,
+                strategy: "cline_exact_usage_v1_and_legacy"
+            )
+        )
+    }
+
+    private static func clineDefaultRoots(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [URL] {
+        let environment = ProcessInfo.processInfo.environment
+        let dataRoot: URL
+        if let raw = nonEmptyString(environment["CLINE_DATA_DIR"]) {
+            dataRoot = URL(fileURLWithPath: (raw as NSString).expandingTildeInPath, isDirectory: true)
+        } else if let raw = nonEmptyString(environment["CLINE_DIR"]) {
+            dataRoot = URL(fileURLWithPath: (raw as NSString).expandingTildeInPath, isDirectory: true)
+                .appendingPathComponent("data", isDirectory: true)
+        } else {
+            dataRoot = homeURL.appendingPathComponent(".cline/data", isDirectory: true)
+        }
+
+        let applicationSupport = homeURL.appendingPathComponent("Library/Application Support", isDirectory: true)
+        let ideNames = ["Code", "Code - Insiders", "Cursor", "CodeBuddy", "Windsurf", "VSCodium", "Trae", "Trae CN"]
+        let extensionIDs = ["saoudrizwan.claude-dev", "cline.cline"]
+        var roots = [dataRoot]
+        for ideName in ideNames {
+            for extensionID in extensionIDs {
+                roots.append(
+                    applicationSupport
+                        .appendingPathComponent(ideName, isDirectory: true)
+                        .appendingPathComponent("User/globalStorage", isDirectory: true)
+                        .appendingPathComponent(extensionID, isDirectory: true)
+                )
+            }
+        }
+        return roots
+    }
+
+    private static func clineUsageFiles(
+        roots: [URL],
+        modifiedSince cutoffDate: Date?
+    ) -> [URL] {
+        var files: [URL] = []
+        for root in roots {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory) else { continue }
+            if !isDirectory.boolValue {
+                if root.lastPathComponent == "ui_messages.json" || root.lastPathComponent.hasSuffix(".messages.json") {
+                    files.append(root)
+                }
+                continue
+            }
+            guard let enumerator = FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ) else {
+                continue
+            }
+            for case let url as URL in enumerator {
+                let name = url.lastPathComponent
+                guard name == "ui_messages.json" || name.hasSuffix(".messages.json"),
+                      let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey]),
+                      values.isRegularFile == true
+                else {
+                    continue
+                }
+                if let cutoffDate,
+                   let modifiedAt = values.contentModificationDate,
+                   modifiedAt < cutoffDate {
+                    continue
+                }
+                files.append(url)
+            }
+        }
+        return Dictionary(grouping: files, by: \.path)
+            .compactMap { _, duplicates in duplicates.first }
+            .sorted { $0.path < $1.path }
+    }
+
+    private static func copilotCLIDefaultDatabase(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> URL {
+        if let raw = nonEmptyString(ProcessInfo.processInfo.environment["COPILOT_HOME"]) {
+            return URL(fileURLWithPath: (raw as NSString).expandingTildeInPath, isDirectory: true)
+                .appendingPathComponent("session-store.db")
+        }
+        return homeURL.appendingPathComponent(".copilot/session-store.db")
+    }
+
+    private static func collectCopilotCLIUsage(databaseURL: URL? = nil) -> CollectorResult {
+        let database = databaseURL ?? copilotCLIDefaultDatabase()
+        guard FileManager.default.fileExists(atPath: database.path) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing_db", files: 0, records: 0)
+            )
+        }
+        guard FileManager.default.isReadableFile(atPath: database.path) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "unreadable_db", files: 1, records: 0)
+            )
+        }
+        guard let columns = sqliteJSONRows(
+            database: database,
+            query: "pragma table_info(assistant_usage_events)"
+        ) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "schema_unreadable", files: 1, records: 0)
+            )
+        }
+        guard !columns.isEmpty else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing_table", files: 1, records: 0)
+            )
+        }
+
+        let availableColumns = Set(columns.compactMap { $0["name"] as? String })
+        let requiredColumns: Set<String> = [
+            "id",
+            "session_id",
+            "model",
+            "input_tokens",
+            "output_tokens",
+            "created_at"
+        ]
+        guard requiredColumns.isSubset(of: availableColumns) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "schema_mismatch", files: 1, records: 0)
+            )
+        }
+
+        let optionalInteger: (String) -> String = { column in
+            availableColumns.contains(column) ? "coalesce(\(column), 0)" : "0"
+        }
+        let tokenDetailsExpression = availableColumns.contains("token_details_json")
+            ? "token_details_json"
+            : "null"
+        let query = """
+        select
+            id,
+            session_id,
+            coalesce(nullif(model, ''), 'unknown') as model,
+            coalesce(input_tokens, 0) as input_tokens,
+            coalesce(output_tokens, 0) as output_tokens,
+            \(optionalInteger("cache_read_tokens")) as cache_read_tokens,
+            \(optionalInteger("cache_write_tokens")) as cache_write_tokens,
+            \(optionalInteger("reasoning_tokens")) as reasoning_tokens,
+            \(tokenDetailsExpression) as token_details_json,
+            created_at
+        from assistant_usage_events
+        where coalesce(input_tokens, 0) + coalesce(output_tokens, 0) > 0
+        order by id
+        """
+        guard let rows = sqliteJSONRows(database: database, query: query) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "query_failed", files: 1, records: 0)
+            )
+        }
+
+        var seen = Set<String>()
+        let records = rows.compactMap { row -> UsageRecord? in
+            guard let rowID = nonEmptyString(String(describing: row["id"] ?? "")),
+                  seen.insert(rowID).inserted,
+                  let createdAt = nonEmptyString(row["created_at"] as? String),
+                  let date = parseISO(createdAt)
+            else {
+                return nil
+            }
+
+            let rawInput = max(0, integerValue(row["input_tokens"] as Any))
+            let rawOutput = max(0, integerValue(row["output_tokens"] as Any))
+            let declaredCacheRead = max(0, integerValue(row["cache_read_tokens"] as Any))
+            let declaredCacheWrite = max(0, integerValue(row["cache_write_tokens"] as Any))
+            let details = copilotStoreTokenDetails(row["token_details_json"] as? String)
+            let detailsAreConsistent = details.map {
+                $0.input + $0.cacheRead + $0.cacheWrite == rawInput
+                    && $0.output == rawOutput
+            } ?? false
+            let cacheRead = detailsAreConsistent ? details?.cacheRead ?? 0 : min(declaredCacheRead, rawInput)
+            let cacheWrite = detailsAreConsistent
+                ? details?.cacheWrite ?? 0
+                : min(declaredCacheWrite, max(0, rawInput - cacheRead))
+            let usage = canonicalUsageCounts(
+                rawInputTokens: rawInput,
+                outputTokens: rawOutput,
+                cacheCreationInputTokens: cacheWrite,
+                cacheReadInputTokens: cacheRead,
+                reasoningOutputTokens: min(
+                    max(0, integerValue(row["reasoning_tokens"] as Any)),
+                    rawOutput
+                ),
+                inputIncludesCachedTokens: true
+            )
+            guard usage.totalTokens > 0 else { return nil }
+
+            return UsageRecord(
+                date: dayFormatter.string(from: date),
+                timestamp: isoFormatterWithFractional.string(from: date),
+                timestampEpoch: date.timeIntervalSince1970,
+                tool: "Copilot CLI",
+                model: modelKey(row["model"] as? String),
+                usage: usage,
+                source: .copilot,
+                requestID: "copilot-store:\(rowID)",
+                sessionID: nonEmptyString(row["session_id"] as? String),
+                sourcePath: database.path,
+                dataSource: "copilot_session_store",
+                modelRequestCount: 1
+            )
+        }
+
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: records.isEmpty ? "missing_valid_rows" : "ok",
+                files: 1,
+                records: records.count,
+                rawRecords: rows.count,
+                dedupedRecords: records.count,
+                strategy: "copilot_session_store_per_request"
+            )
+        )
+    }
+
+    private static func copilotStoreTokenDetails(
+        _ raw: String?
+    ) -> (input: Int, cacheRead: Int, cacheWrite: Int, output: Int)? {
+        guard let raw = nonEmptyString(raw),
+              let data = raw.data(using: .utf8),
+              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+        else {
+            return nil
+        }
+        var result = (input: 0, cacheRead: 0, cacheWrite: 0, output: 0)
+        var recognized = 0
+        for row in rows {
+            let count = max(0, integerValue(row["tokenCount"] as Any))
+            switch row["tokenType"] as? String {
+            case "input":
+                result.input += count
+                recognized += 1
+            case "cache_read":
+                result.cacheRead += count
+                recognized += 1
+            case "cache_write":
+                result.cacheWrite += count
+                recognized += 1
+            case "output":
+                result.output += count
+                recognized += 1
+            default:
+                break
+            }
+        }
+        return recognized > 0 ? result : nil
+    }
+
+    private static func copilotOTelDefaultURLs(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [URL] {
+        var urls: [URL] = []
+        if let configured = nonEmptyString(
+            ProcessInfo.processInfo.environment["COPILOT_OTEL_FILE_EXPORTER_PATH"]
+        ) {
+            urls.append(URL(fileURLWithPath: (configured as NSString).expandingTildeInPath))
+        }
+        urls.append(homeURL.appendingPathComponent(".copilot/otel", isDirectory: true))
+        urls.append(homeURL.appendingPathComponent(
+            "Library/Application Support/GitHub Copilot/otel",
+            isDirectory: true
+        ))
+        return Dictionary(grouping: urls, by: \.standardizedFileURL.path)
+            .compactMap { _, duplicates in duplicates.first }
+    }
+
+    private static func preferCopilotSessionStore(
+        sessionStore: CollectorResult,
+        otel: inout CollectorResult
+    ) {
+        guard !sessionStore.records.isEmpty else { return }
+
+        let recordsBySession = Dictionary(grouping: sessionStore.records.compactMap { record -> UsageRecord? in
+            guard nonEmptyString(record.sessionID) != nil,
+                  record.timestampEpoch != nil
+            else { return nil }
+            return record
+        }) { $0.sessionID ?? "" }
+        let coveredWindows = recordsBySession.reduce(into: [String: ClosedRange<TimeInterval>]()) {
+            result, entry in
+            let epochs = entry.value.compactMap(\.timestampEpoch)
+            guard let first = epochs.min(), let last = epochs.max() else { return }
+            result[entry.key] = first ... last
+        }
+        let coveredDates = Set(sessionStore.records.map(\.date))
+
+        let rawCount = otel.records.count
+        otel.records.removeAll { record in
+            guard record.tool == "Copilot CLI" else { return false }
+            if let sessionID = nonEmptyString(record.sessionID),
+               let eventTime = record.timestampEpoch,
+               let coveredWindow = coveredWindows[sessionID],
+               coveredWindow.contains(eventTime) {
+                return true
+            }
+            // Some Copilot OTel versions omit conversation/session IDs and
+            // leave only the trace ID. On dates covered by the authoritative
+            // session store, suppress that unmatchable CLI fallback to avoid
+            // counting the same local request twice. Older dates remain intact.
+            return record.dataSource == "copilot_otel_chat_span_trace_session_fallback"
+                && coveredDates.contains(record.date)
+        }
+        let removed = rawCount - otel.records.count
+        guard removed > 0 else { return }
+        otel.source.rawRecords = max(otel.source.rawRecords ?? rawCount, rawCount)
+        otel.source.records = otel.records.count
+        otel.source.dedupedRecords = otel.records.count
+        otel.source.skippedRecords = (otel.source.skippedRecords ?? 0) + removed
+        otel.source.strategy = "otel_chat_spans_cli_session_window_or_trace_fallback_day_overlap"
+        if otel.records.isEmpty {
+            otel.source.status = "deduped_by_session_store"
+        }
+    }
+
+    private static func collectCopilotOTelUsage(
+        urls: [URL]? = nil,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let roots = urls ?? copilotOTelDefaultURLs()
+        let discovered = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let files = discovered.flatMap { usageLogFiles(at: $0, modifiedSince: cutoffDate) }
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+
+        for file in files {
+            var lineNumber = 0
+            try? forEachLine(in: file, matchingAny: ["gen_ai.usage", "gen_ai\\\"", "attributes"]) { line in
+                lineNumber += 1
+                guard let object = jsonObject(line) else { return }
+                for envelope in otelSpanEnvelopes(in: object) {
+                    let span = envelope.span
+                    let attributes = envelope.attributes
+                    let operation = firstNonEmptyString([
+                        attributes["gen_ai.operation.name"], span["name"], span["spanName"]
+                    ])?.lowercased()
+                    guard operation == "chat" || operation?.hasSuffix(" chat") == true else { continue }
+
+                    let input = firstIntegerValue(in: attributes, keys: ["gen_ai.usage.input_tokens"])
+                    let output = firstIntegerValue(in: attributes, keys: ["gen_ai.usage.output_tokens"])
+                    let cacheRead = firstIntegerValue(in: attributes, keys: [
+                        "gen_ai.usage.cache_read.input_tokens",
+                        "gen_ai.usage.cache_read_input_tokens"
+                    ])
+                    let cacheCreation = firstIntegerValue(in: attributes, keys: [
+                        "gen_ai.usage.cache_creation.input_tokens",
+                        "gen_ai.usage.cache_creation_input_tokens"
+                    ])
+                    let reasoning = firstIntegerValue(in: attributes, keys: [
+                        "gen_ai.usage.reasoning.output_tokens",
+                        "gen_ai.usage.reasoning_tokens"
+                    ])
+                    let usage = canonicalUsageCounts(
+                        rawInputTokens: input,
+                        outputTokens: output,
+                        cacheCreationInputTokens: cacheCreation,
+                        cacheReadInputTokens: cacheRead,
+                        reasoningOutputTokens: reasoning,
+                        inputIncludesCachedTokens: true
+                    )
+                    guard usage.totalTokens > 0,
+                          let temporal = otelTemporalInfo(from: span) ?? usageTemporalInfo(from: object)
+                    else { continue }
+
+                    let traceID = firstNonEmptyString([span["traceId"], span["trace_id"]])
+                    let spanID = firstNonEmptyString([span["spanId"], span["span_id"]])
+                    let identity = [traceID, spanID].compactMap { $0 }.joined(separator: "|")
+                    let dedupeKey = identity.isEmpty ? "\(file.path):\(lineNumber):\(records.count)" : identity
+                    guard seen.insert(dedupeKey).inserted else { continue }
+
+                    let service = firstNonEmptyString([
+                        attributes["service.name"], attributes["gen_ai.system"], attributes["gen_ai.provider.name"]
+                    ])?.lowercased() ?? ""
+                    let tool = service.contains("chat") || service.contains("vscode")
+                        ? "Copilot Chat"
+                        : "Copilot CLI"
+                    let explicitSessionID = firstNonEmptyString([
+                        attributes["gen_ai.conversation.id"], attributes["session.id"]
+                    ])
+                    records.append(UsageRecord(
+                        date: temporal.day,
+                        timestamp: temporal.iso,
+                        timestampEpoch: temporal.epoch,
+                        tool: tool,
+                        model: modelKey(firstNonEmptyString([
+                            attributes["gen_ai.response.model"], attributes["gen_ai.request.model"]
+                        ])),
+                        usage: usage,
+                        costUSD: doubleValue(attributes["github.copilot.cost"] as Any) > 0
+                            ? doubleValue(attributes["github.copilot.cost"] as Any)
+                            : nil,
+                        source: .copilotOTel,
+                        requestID: firstNonEmptyString([
+                            attributes["gen_ai.request.id"], attributes["gen_ai.response.id"], spanID
+                        ]),
+                        sessionID: explicitSessionID ?? traceID,
+                        responseID: firstNonEmptyString([attributes["gen_ai.response.id"]]),
+                        sourcePath: file.path,
+                        lineNumber: lineNumber,
+                        dataSource: explicitSessionID == nil
+                            ? "copilot_otel_chat_span_trace_session_fallback"
+                            : "copilot_otel_chat_span"
+                    ))
+                }
+            }
+        }
+
+        let status: String
+        if discovered.isEmpty { status = "missing" }
+        else if files.isEmpty { status = "discovered_no_usage" }
+        else if records.isEmpty { status = "missing_valid_rows" }
+        else { status = "ok" }
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: status,
+                files: files.count,
+                records: records.count,
+                strategy: "otel_chat_spans_only"
+            )
+        )
+    }
+
+    private static func collectAntigravityUsage(
+        rootURLs: [URL]? = nil,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let roots = rootURLs ?? [
+            home.appendingPathComponent(".gemini/antigravity/brain", isDirectory: true),
+            home.appendingPathComponent(".gemini/antigravity-cli/brain", isDirectory: true),
+            home.appendingPathComponent(".gemini/antigravity-ide/brain", isDirectory: true)
+        ]
+        return collectResultUsageJSONL(
+            tool: "Antigravity",
+            source: .antigravity,
+            roots: roots,
+            modifiedSince: cutoffDate,
+            acceptedNames: ["transcript.jsonl"],
+            usageKeys: ["usage", "usageMetadata"],
+            requireResultLikeRecord: true,
+            inputIncludesCachedTokens: true
+        )
+    }
+
+    private static func collectDroidUsage(
+        rootURL: URL? = nil,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let root = rootURL ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".factory/projects", isDirectory: true)
+        return collectResultUsageJSONL(
+            tool: "Droid",
+            source: .droid,
+            roots: [root],
+            modifiedSince: cutoffDate,
+            acceptedNames: ["session.jsonl"],
+            usageKeys: ["tokenUsage"],
+            requireResultLikeRecord: true,
+            inputIncludesCachedTokens: false
+        )
+    }
+
+    private static func collectResultUsageJSONL(
+        tool: String,
+        source: UsageRecordSource,
+        roots: [URL],
+        modifiedSince cutoffDate: Date?,
+        acceptedNames: Set<String>,
+        usageKeys: [String],
+        requireResultLikeRecord: Bool,
+        inputIncludesCachedTokens: Bool
+    ) -> CollectorResult {
+        let discovered = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let files = discovered.flatMap { usageLogFiles(at: $0, modifiedSince: cutoffDate) }
+            .filter { acceptedNames.isEmpty || acceptedNames.contains($0.lastPathComponent) }
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+
+        for file in files {
+            var lineNumber = 0
+            try? forEachLine(in: file, matchingAny: usageKeys.map { "\"\($0)\"" }) { line in
+                lineNumber += 1
+                guard let object = jsonObject(line) else { return }
+                let type = firstNonEmptyString([object["type"], object["event"]])?.lowercased() ?? ""
+                if requireResultLikeRecord,
+                   !type.contains("result"),
+                   !type.contains("complete"),
+                   !type.contains("assistant_message"),
+                   !type.contains("response"),
+                   type != "assistant" {
+                    return
+                }
+                guard let usageObject = firstNestedDictionary(in: object, keys: usageKeys),
+                      let usage = portableUsage(
+                        from: usageObject,
+                        inputIncludesCachedTokens: inputIncludesCachedTokens
+                      ),
+                      usage.totalTokens > 0,
+                      let temporal = usageTemporalInfo(from: object)
+                else { return }
+
+                let result = object["result"] as? [String: Any]
+                let requestID = firstNonEmptyString([
+                    object["requestId"], object["request_id"], object["id"], object["uuid"],
+                    result?["id"]
+                ])
+                let sessionID = firstNonEmptyString([
+                    object["sessionId"], object["session_id"], result?["sessionId"]
+                ]) ?? file.deletingPathExtension().lastPathComponent
+                let identity = requestID.map { "\(sessionID)|\($0)" }
+                    ?? "\(file.path):\(lineNumber)"
+                guard seen.insert(identity).inserted else { return }
+                records.append(UsageRecord(
+                    date: temporal.day,
+                    timestamp: temporal.iso,
+                    timestampEpoch: temporal.epoch,
+                    tool: tool,
+                    model: modelKey(firstNonEmptyString([
+                        object["model"], object["modelId"], result?["model"], usageObject["model"]
+                    ])),
+                    usage: usage,
+                    source: source,
+                    requestID: requestID,
+                    sessionID: sessionID,
+                    sourcePath: file.path,
+                    lineNumber: lineNumber,
+                    dataSource: "local_transcript_result"
+                ))
+            }
+        }
+
+        let status: String
+        if discovered.isEmpty { status = "missing" }
+        else if files.isEmpty { status = "discovered_no_usage" }
+        else if records.isEmpty { status = "missing_valid_rows" }
+        else { status = "ok" }
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(status: status, files: files.count, records: records.count, strategy: "exact_result_usage")
+        )
+    }
+
+    private static func collectDSHUsage(
+        rootURL: URL? = nil,
+        modifiedSince cutoffDate: Date?,
+        zstdExecutableURLOverride: URL? = nil,
+        discoverZstdDecoder: Bool = true
+    ) -> CollectorResult {
+        let root = rootURL ?? dshDefaultSessionsRoot()
+        guard FileManager.default.fileExists(atPath: root.path) else {
+            return CollectorResult(records: [], source: SourceInfo(status: "missing", files: 0, records: 0))
+        }
+        let decoder = zstdExecutableURLOverride ?? (discoverZstdDecoder ? zstdExecutableURL() : nil)
+        let compressedFiles = compressedDSHFiles(under: root, modifiedSince: cutoffDate)
+        let allPlaintextFiles = usageLogFiles(at: root, modifiedSince: cutoffDate)
+        let plaintextPaths = Set(allPlaintextFiles.map { $0.standardizedFileURL.path })
+        let compressedPlaintextPaths = Set(compressedFiles.map {
+            $0.deletingPathExtension().standardizedFileURL.path
+        })
+        let plaintextFiles = allPlaintextFiles.filter { file in
+            decoder == nil || !compressedPlaintextPaths.contains(file.standardizedFileURL.path)
+        }
+        // A decodable .jsonl.zstd is authoritative over its same-name .jsonl.
+        // When no decoder exists, retain the plaintext copy as a safe fallback.
+        let files = compressedFiles + plaintextFiles
+        var records: [UsageRecord] = []
+        var seenEvents = Set<String>()
+        var skippedCompressedFiles = 0
+        var uncoveredCompressedFilesWithoutDecoder = 0
+
+        func appendRecord(_ record: UsageRecord) {
+            let fallback = "\(record.sourcePath ?? "unknown"):\(record.lineNumber ?? 0)"
+            let identity = "\(record.sessionID ?? "unknown")|\(record.requestID ?? fallback)"
+            guard seenEvents.insert(identity).inserted else { return }
+            records.append(record)
+        }
+
+        for file in files {
+            let data: Data?
+            if file.pathExtension == "zstd" {
+                guard let decoder else {
+                    skippedCompressedFiles += 1
+                    if !plaintextPaths.contains(file.deletingPathExtension().standardizedFileURL.path) {
+                        uncoveredCompressedFilesWithoutDecoder += 1
+                    }
+                    continue
+                }
+                data = decodeZstdFile(file, executableURL: decoder)
+                if data == nil {
+                    skippedCompressedFiles += 1
+                }
+            } else {
+                data = try? Data(contentsOf: file, options: .mappedIfSafe)
+            }
+            guard let data, let text = String(data: data, encoding: .utf8) else { continue }
+            var provider = ""
+            var model = "unknown"
+            var currentStep = ""
+            var stepHasUsageChunk = false
+            var pendingMessageRecord: UsageRecord?
+            var pendingChunkRecord: UsageRecord?
+            for (offset, line) in text.split(whereSeparator: \.isNewline).enumerated() {
+                guard let object = jsonObject(String(line)) else { continue }
+                let type = nonEmptyString(object["type"] as? String) ?? ""
+                let payload = object["data"] as? [String: Any] ?? object
+                if type == "request/header" {
+                    let header = payload["header"] as? [String: Any] ?? payload
+                    let config = header["config"] as? [String: Any] ?? header
+                    provider = nonEmptyString(config["provider"] as? String) ?? provider
+                    model = modelKey(nonEmptyString(config["model"] as? String) ?? model)
+                    continue
+                }
+                if type == "step/start" {
+                    if let completed = pendingChunkRecord ?? pendingMessageRecord { appendRecord(completed) }
+                    pendingMessageRecord = nil
+                    pendingChunkRecord = nil
+                    currentStep = firstNonEmptyString([payload["id"], payload["stepId"], object["seq"]])
+                        ?? "step-\(offset + 1)"
+                    stepHasUsageChunk = false
+                    continue
+                }
+                if type == "step/end" {
+                    if let completed = pendingChunkRecord ?? pendingMessageRecord { appendRecord(completed) }
+                    pendingMessageRecord = nil
+                    pendingChunkRecord = nil
+                    stepHasUsageChunk = false
+                    continue
+                }
+
+                var usageObject: [String: Any]?
+                var isChunk = false
+                if type == "assistant/chunk" {
+                    let chunk = payload["chunk"] as? [String: Any] ?? payload
+                    if (chunk["type"] as? String) == "usage" {
+                        usageObject = chunk["usage"] as? [String: Any] ?? chunk
+                        isChunk = true
+                    }
+                } else if type == "assistant/message", !stepHasUsageChunk {
+                    usageObject = payload["usage"] as? [String: Any]
+                }
+                guard let usageObject,
+                      let usage = portableUsage(from: usageObject, inputIncludesCachedTokens: false),
+                      usage.totalTokens > 0,
+                      let temporal = usageTemporalInfo(from: object)
+                else { continue }
+                let eventID = firstNonEmptyString([object["seq"], payload["id"]])
+                    ?? "\(currentStep):\(offset + 1)"
+                let record = UsageRecord(
+                    date: temporal.day,
+                    timestamp: temporal.iso,
+                    timestampEpoch: temporal.epoch,
+                    tool: "dsh",
+                    model: model,
+                    usage: usage,
+                    source: .dsh,
+                    requestID: eventID,
+                    sessionID: file.deletingLastPathComponent().lastPathComponent,
+                    sourcePath: file.path,
+                    lineNumber: offset + 1,
+                    dataSource: provider.isEmpty ? "dsh_session" : "dsh_session:\(provider)"
+                )
+                if isChunk {
+                    stepHasUsageChunk = true
+                    pendingMessageRecord = nil
+                    pendingChunkRecord = record
+                } else {
+                    pendingMessageRecord = record
+                }
+            }
+            if let completed = pendingChunkRecord ?? pendingMessageRecord { appendRecord(completed) }
+        }
+
+        let status: String
+        if uncoveredCompressedFilesWithoutDecoder > 0, records.isEmpty { status = "missing_decoder" }
+        else if uncoveredCompressedFilesWithoutDecoder > 0 { status = "partial_missing_decoder" }
+        else if files.isEmpty { status = "discovered_no_usage" }
+        else if records.isEmpty { status = "missing_valid_rows" }
+        else { status = "ok" }
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: status,
+                files: files.count,
+                records: records.count,
+                skippedRecords: skippedCompressedFiles,
+                strategy: "dsh_exact_usage_events_compressed_preferred_session_seq_dedupe"
+            )
+        )
+    }
+
+    private static func dshDefaultSessionsRoot(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> URL {
+        if let configured = nonEmptyString(ProcessInfo.processInfo.environment["DSH_HOME"]) {
+            return URL(fileURLWithPath: (configured as NSString).expandingTildeInPath, isDirectory: true)
+                .appendingPathComponent("sessions", isDirectory: true)
+        }
+        return homeURL.appendingPathComponent(".dsh/sessions", isDirectory: true)
+    }
+
+    private static func piDefaultSessionsRoot(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> URL {
+        let environment = ProcessInfo.processInfo.environment
+        if let raw = nonEmptyString(environment["PI_CODING_AGENT_SESSION_DIR"]) {
+            return URL(fileURLWithPath: (raw as NSString).expandingTildeInPath, isDirectory: true)
+        }
+        if let raw = nonEmptyString(environment["PI_CODING_AGENT_DIR"]) {
+            return URL(fileURLWithPath: (raw as NSString).expandingTildeInPath, isDirectory: true)
+                .appendingPathComponent("sessions", isDirectory: true)
+        }
+        return homeURL.appendingPathComponent(".pi/agent/sessions", isDirectory: true)
+    }
+
+    private static func collectPiUsage(
+        sessionsRootURL: URL? = nil,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let root = sessionsRootURL ?? piDefaultSessionsRoot()
+        let rootExists = FileManager.default.fileExists(atPath: root.path)
+        let files = jsonlFiles(under: root, modifiedSince: cutoffDate)
+        var seen = Set<String>()
+        var rawRecords = 0
+        let records = collectPiLikeJSONLUsage(
+            files: files,
+            tool: "Pi",
+            source: .pi,
+            dataSource: "pi_session_jsonl",
+            seen: &seen,
+            rawRecords: &rawRecords
+        )
+        let status: String
+        if !rootExists {
+            status = "missing"
+        } else if files.isEmpty {
+            status = "discovered_no_usage"
+        } else if records.isEmpty {
+            status = "missing_valid_rows"
+        } else {
+            status = "ok"
+        }
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: status,
+                files: files.count,
+                records: records.count,
+                rawRecords: rawRecords,
+                dedupedRecords: records.count,
+                strategy: "pi_session_usage"
+            )
+        )
+    }
+
+    private static func openClawDefaultRoots(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [URL] {
+        let environment = ProcessInfo.processInfo.environment
+        if let raw = nonEmptyString(environment["OPENCLAW_HOME"]) {
+            return [URL(fileURLWithPath: (raw as NSString).expandingTildeInPath, isDirectory: true)]
+        }
+        if let raw = nonEmptyString(environment["OPENCLAW_STATE_DIR"]) {
+            return [URL(fileURLWithPath: (raw as NSString).expandingTildeInPath, isDirectory: true)]
+        }
+        return [homeURL.appendingPathComponent(".openclaw", isDirectory: true)]
+    }
+
+    private static func openClawDatabaseFiles(roots: [URL]) -> [URL] {
+        collectNamedFiles(roots: roots) { url in
+            url.lastPathComponent == "openclaw-agent.sqlite"
+        }
+    }
+
+    private static func openClawTranscriptFiles(
+        roots: [URL],
+        modifiedSince cutoffDate: Date?
+    ) -> [URL] {
+        collectNamedFiles(roots: roots, modifiedSince: cutoffDate) { url in
+            let name = url.lastPathComponent
+            let isTranscript = name.hasSuffix(".jsonl")
+                || name.contains(".jsonl.reset.")
+                || name.contains(".jsonl.deleted.")
+            guard isTranscript else { return false }
+            return url.path.contains("/sessions/")
+                || url.path.contains("/session-sqlite-import-archive/")
+        }
+    }
+
+    private static func collectNamedFiles(
+        roots: [URL],
+        modifiedSince cutoffDate: Date? = nil,
+        matching predicate: (URL) -> Bool
+    ) -> [URL] {
+        var files: [URL] = []
+        for root in roots {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory) else { continue }
+            if !isDirectory.boolValue {
+                if predicate(root) { files.append(root) }
+                continue
+            }
+            guard let enumerator = FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ) else {
+                continue
+            }
+            for case let url as URL in enumerator {
+                guard predicate(url),
+                      let values = try? url.resourceValues(
+                        forKeys: [.isRegularFileKey, .contentModificationDateKey]
+                      ),
+                      values.isRegularFile == true
+                else {
+                    continue
+                }
+                if let cutoffDate,
+                   let modifiedAt = values.contentModificationDate,
+                   modifiedAt < cutoffDate {
+                    continue
+                }
+                files.append(url)
+            }
+        }
+        return Dictionary(grouping: files, by: \.path)
+            .compactMap { _, duplicates in duplicates.first }
+            .sorted { $0.path < $1.path }
+    }
+
+    private static func collectOpenClawUsage(
+        rootURLs: [URL]? = nil,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let roots = rootURLs ?? openClawDefaultRoots()
+        let discoveredRoots = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let databases = openClawDatabaseFiles(roots: roots)
+        let transcriptFiles = openClawTranscriptFiles(roots: roots, modifiedSince: cutoffDate)
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+        var rawRecords = 0
+        var readableDatabases = 0
+
+        for database in databases {
+            guard let columns = sqliteJSONRows(
+                database: database,
+                query: "pragma table_info(transcript_events)"
+            ),
+            Set(columns.compactMap { $0["name"] as? String })
+                .isSuperset(of: ["session_id", "seq", "event_json", "created_at"])
+            else {
+                continue
+            }
+            let cutoffClause = cutoffDate.map {
+                " where created_at >= \(Int($0.timeIntervalSince1970 * 1_000))"
+            } ?? ""
+            guard let rows = sqliteJSONRows(
+                database: database,
+                query: "select session_id, seq, event_json, created_at from transcript_events\(cutoffClause) order by session_id, seq"
+            ) else {
+                continue
+            }
+            readableDatabases += 1
+            for row in rows {
+                guard let raw = row["event_json"] as? String,
+                      let data = raw.data(using: .utf8),
+                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else {
+                    continue
+                }
+                let sessionID = nonEmptyString(row["session_id"] as? String) ?? "unknown"
+                let sequence = integerValue(row["seq"] as Any)
+                if let result = piLikeUsageRecord(
+                    object: object,
+                    tool: "OpenClaw",
+                    source: .openclaw,
+                    dataSource: "openclaw_transcript_sqlite",
+                    sourcePath: database.path,
+                    lineNumber: sequence,
+                    sessionID: sessionID,
+                    fallbackEntryID: "sqlite:\(sessionID):\(sequence)"
+                ) {
+                    rawRecords += 1
+                    guard seen.insert(result.identity).inserted else { continue }
+                    records.append(result.record)
+                }
+            }
+        }
+
+        records.append(contentsOf: collectPiLikeJSONLUsage(
+            files: transcriptFiles,
+            tool: "OpenClaw",
+            source: .openclaw,
+            dataSource: "openclaw_transcript_jsonl",
+            seen: &seen,
+            rawRecords: &rawRecords
+        ))
+
+        let status: String
+        if discoveredRoots.isEmpty {
+            status = "missing"
+        } else if databases.isEmpty && transcriptFiles.isEmpty {
+            status = "discovered_no_usage"
+        } else if !databases.isEmpty && readableDatabases == 0 && transcriptFiles.isEmpty {
+            status = "schema_mismatch"
+        } else if records.isEmpty {
+            status = "missing_valid_rows"
+        } else {
+            status = "ok"
+        }
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: status,
+                files: databases.count + transcriptFiles.count,
+                records: records.count,
+                rawRecords: rawRecords,
+                dedupedRecords: records.count,
+                strategy: "openclaw_sqlite_and_legacy_transcripts"
+            )
+        )
+    }
+
+    private static func collectPiLikeJSONLUsage(
+        files: [URL],
+        tool: String,
+        source: UsageRecordSource,
+        dataSource: String,
+        seen: inout Set<String>,
+        rawRecords: inout Int
+    ) -> [UsageRecord] {
+        var records: [UsageRecord] = []
+        for file in files {
+            var sessionID = file.lastPathComponent.components(separatedBy: ".jsonl").first
+                ?? file.deletingPathExtension().lastPathComponent
+            var matchedLineNumber = 0
+            try? forEachLine(
+                in: file,
+                matchingAny: ["\"type\":\"session\"", "\"type\": \"session\"", "\"usage\""]
+            ) { line in
+                matchedLineNumber += 1
+                guard let data = line.data(using: .utf8),
+                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else {
+                    return
+                }
+                if object["type"] as? String == "session",
+                   let headerID = nonEmptyString(object["id"] as? String) {
+                    sessionID = headerID
+                    return
+                }
+                guard let result = piLikeUsageRecord(
+                    object: object,
+                    tool: tool,
+                    source: source,
+                    dataSource: dataSource,
+                    sourcePath: file.path,
+                    lineNumber: matchedLineNumber,
+                    sessionID: sessionID,
+                    fallbackEntryID: "file:\(file.path):\(matchedLineNumber)"
+                ) else {
+                    return
+                }
+                rawRecords += 1
+                guard seen.insert(result.identity).inserted else { return }
+                records.append(result.record)
+            }
+        }
+        return records
+    }
+
+    private static func piLikeUsageRecord(
+        object: [String: Any],
+        tool: String,
+        source: UsageRecordSource,
+        dataSource: String,
+        sourcePath: String,
+        lineNumber: Int,
+        sessionID: String,
+        fallbackEntryID: String
+    ) -> (identity: String, record: UsageRecord)? {
+        guard object["type"] as? String == "message",
+              let message = object["message"] as? [String: Any],
+              message["role"] as? String == "assistant",
+              let rawUsage = message["usage"] as? [String: Any]
+        else {
+            return nil
+        }
+        let input = max(0, integerValue(rawUsage["input"] as Any))
+        let output = max(0, integerValue(rawUsage["output"] as Any))
+        let cacheRead = max(0, integerValue(rawUsage["cacheRead"] as Any))
+        let cacheWrite = max(0, integerValue(rawUsage["cacheWrite"] as Any))
+        let reasoning = max(0, integerValue(rawUsage["reasoningTokens"] as Any))
+        let explicitTotal = max(0, integerValue(rawUsage["totalTokens"] as Any))
+        let baseTotal = input + output + cacheRead + cacheWrite
+        let reasoningIsAdditional = reasoning > 0 && (explicitTotal == 0 || explicitTotal >= baseTotal + reasoning)
+        let normalizedOutput = output + (reasoningIsAdditional ? reasoning : 0)
+        let usage = canonicalUsageCounts(
+            rawInputTokens: input,
+            outputTokens: normalizedOutput,
+            cacheCreationInputTokens: cacheWrite,
+            cacheReadInputTokens: cacheRead,
+            reasoningOutputTokens: min(reasoning, normalizedOutput),
+            inputIncludesCachedTokens: false,
+            explicitTotalTokens: explicitTotal,
+            explicitTotalIsAuthoritative: explicitTotal > 0
+        )
+        guard usage.totalTokens > 0 else { return nil }
+
+        let timestampEpoch: Double?
+        if let direct = epochSeconds(message["timestamp"]) {
+            timestampEpoch = direct
+        } else if let raw = object["timestamp"] as? String,
+                  let date = parseISO(raw) {
+            timestampEpoch = date.timeIntervalSince1970
+        } else {
+            timestampEpoch = epochSeconds(object["timestamp"])
+        }
+        guard let timestampEpoch else { return nil }
+        let date = Date(timeIntervalSince1970: timestampEpoch)
+        let entryID = nonEmptyString(object["id"] as? String) ?? fallbackEntryID
+        let identity = "\(sessionID):\(entryID)"
+        let costObject = rawUsage["cost"] as? [String: Any]
+        let cost = costObject?.keys.contains("total") == true
+            ? max(0, doubleValue(costObject?["total"] as Any))
+            : nil
+        let content = message["content"] as? [[String: Any]] ?? []
+        let toolCalls = content.filter { $0["type"] as? String == "toolCall" }.count
+        return (
+            identity,
+            UsageRecord(
+                date: dayFormatter.string(from: date),
+                timestamp: isoFormatterWithFractional.string(from: date),
+                timestampEpoch: timestampEpoch,
+                tool: tool,
+                model: modelKey(message["model"] as? String),
+                usage: usage,
+                costUSD: cost,
+                source: source,
+                requestID: entryID,
+                sessionID: nonEmptyString(sessionID),
+                sourcePath: sourcePath,
+                lineNumber: lineNumber,
+                dataSource: dataSource,
+                modelRequestCount: 1,
+                toolCallCount: toolCalls
+            )
+        )
+    }
+
+    private static func collectQwenCodeUsage(
+        rootURL: URL? = nil,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let root = rootURL ?? qwenCodeDefaultRoot()
+        guard FileManager.default.fileExists(atPath: root.path) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing", files: 0, records: 0)
+            )
+        }
+
+        let files = jsonlFiles(
+            under: root.appendingPathComponent("usage", isDirectory: true),
+            modifiedSince: cutoffDate
+        ).filter {
+            $0.lastPathComponent.hasPrefix("token-usage-")
+        }
+        var records: [UsageRecord] = []
+        var seenIDs = Set<String>()
+
+        for file in files {
+            var matchedLineNumber = 0
+            try? forEachLine(in: file, matchingAny: ["\"schemaVersion\"", "\"inputTokens\""]) { line in
+                matchedLineNumber += 1
+                guard let data = line.data(using: .utf8),
+                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      integerValue(object["schemaVersion"] as Any) == 1,
+                      let id = nonEmptyString(object["id"] as? String),
+                      seenIDs.insert(id).inserted,
+                      let timestamp = nonEmptyString(object["timestamp"] as? String)
+                else {
+                    return
+                }
+
+                let parsedDate = parseISO(timestamp)
+                let day = parsedDate.map(dayFormatter.string(from:))
+                    ?? nonEmptyString(object["localDate"] as? String)
+                guard let day else { return }
+
+                let input = integerValue(object["inputTokens"] as Any)
+                let output = integerValue(object["outputTokens"] as Any)
+                let cached = integerValue(object["cachedTokens"] as Any)
+                let thoughts = integerValue(object["thoughtsTokens"] as Any)
+                let total = integerValue(object["totalTokens"] as Any)
+                let usage = canonicalUsageCounts(
+                    rawInputTokens: input,
+                    outputTokens: output + thoughts,
+                    cacheReadInputTokens: cached,
+                    reasoningOutputTokens: thoughts,
+                    inputIncludesCachedTokens: true,
+                    explicitTotalTokens: total,
+                    explicitTotalIsAuthoritative: true
+                )
+                guard usage.totalTokens > 0 else { return }
+
+                records.append(UsageRecord(
+                    date: day,
+                    timestamp: timestamp,
+                    timestampEpoch: parsedDate?.timeIntervalSince1970,
+                    tool: "Qwen Code",
+                    model: modelKey(object["model"] as? String),
+                    usage: usage,
+                    source: .qwen,
+                    requestID: id,
+                    sessionID: nonEmptyString(object["sessionId"] as? String),
+                    sourcePath: file.path,
+                    lineNumber: matchedLineNumber,
+                    dataSource: nonEmptyString(object["source"] as? String),
+                    modelRequestCount: 1
+                ))
+            }
+        }
+
+        let status: String
+        if files.isEmpty {
+            status = "discovered_no_usage"
+        } else if records.isEmpty {
+            status = "missing_valid_rows"
+        } else {
+            status = "ok"
+        }
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(status: status, files: files.count, records: records.count)
+        )
+    }
+
+    private static func qwenCodeDefaultRoot(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> URL {
+        let environment = ProcessInfo.processInfo.environment
+        for key in ["QWEN_RUNTIME_DIR", "QWEN_HOME"] {
+            guard let raw = nonEmptyString(environment[key]) else { continue }
+            let expanded = (raw as NSString).expandingTildeInPath
+            return URL(fileURLWithPath: expanded, isDirectory: true)
+        }
+        return homeURL.appendingPathComponent(".qwen", isDirectory: true)
+    }
+
+    private static func collectGrokBuildUsage(
+        rootURL: URL? = nil,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let root = rootURL ?? grokBuildDefaultRoot()
+        guard FileManager.default.fileExists(atPath: root.path) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing", files: 0, records: 0)
+            )
+        }
+
+        let files = jsonlFiles(
+            under: root.appendingPathComponent("sessions", isDirectory: true),
+            modifiedSince: cutoffDate
+        ).filter { $0.lastPathComponent == "updates.jsonl" }
+        var records: [UsageRecord] = []
+        var seenEvents = Set<String>()
+
+        for file in files {
+            let sessionID = nonEmptyString(file.deletingLastPathComponent().lastPathComponent)
+            let fallbackModel = grokBuildFallbackModel(for: file)
+            var matchedLineNumber = 0
+            try? forEachLine(in: file, matchingAny: ["\"turn_completed\"", "\"usage\""]) { line in
+                matchedLineNumber += 1
+                guard let data = line.data(using: .utf8),
+                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let params = object["params"] as? [String: Any],
+                      let update = params["update"] as? [String: Any],
+                      update["sessionUpdate"] as? String == "turn_completed",
+                      let topLevelUsage = update["usage"] as? [String: Any]
+                else {
+                    return
+                }
+
+                let metadata = params["_meta"] as? [String: Any]
+                    ?? object["_meta"] as? [String: Any]
+                let timestampValue = metadata?["agentTimestampMs"]
+                    ?? metadata?["timestampMs"]
+                    ?? object["timestamp_ms"]
+                    ?? object["timestamp"]
+                    ?? object["time"]
+                guard let timestampValue,
+                      let day = dayString(fromEpoch: timestampValue)
+                else {
+                    return
+                }
+
+                let baseEventID = nonEmptyString(metadata?["eventId"] as? String)
+                    ?? nonEmptyString(object["eventId"] as? String)
+                    ?? nonEmptyString(object["id"] as? String)
+                    ?? nonEmptyString(update["prompt_id"] as? String)
+                    ?? "line-\(matchedLineNumber)"
+                let modelUsage = topLevelUsage["modelUsage"] as? [String: Any]
+                let candidates: [(String, [String: Any])]
+                if let modelUsage, !modelUsage.isEmpty {
+                    candidates = modelUsage.compactMap { model, value in
+                        (value as? [String: Any]).map { (model, $0) }
+                    }.sorted { $0.0 < $1.0 }
+                } else {
+                    candidates = [(fallbackModel, topLevelUsage)]
+                }
+
+                for (rawModel, usageObject) in candidates {
+                    guard let usage = grokBuildUsage(from: usageObject),
+                          usage.counts.totalTokens > 0
+                    else {
+                        continue
+                    }
+                    let model = grokBuildModel(rawModel)
+                    let identity = "\(sessionID ?? "unknown")|\(baseEventID)|\(model)"
+                    guard seenEvents.insert(identity).inserted else { continue }
+                    records.append(UsageRecord(
+                        date: day,
+                        timestamp: isoString(fromEpoch: timestampValue),
+                        timestampEpoch: epochSeconds(timestampValue),
+                        tool: "Grok",
+                        model: model,
+                        usage: usage.counts,
+                        costUSD: usage.costUSD,
+                        source: .grok,
+                        requestID: baseEventID,
+                        sessionID: sessionID,
+                        sourcePath: file.path,
+                        lineNumber: matchedLineNumber,
+                        modelRequestCount: max(1, usage.modelCalls)
+                    ))
+                }
+            }
+        }
+
+        let status: String
+        if files.isEmpty {
+            status = "discovered_no_usage"
+        } else if records.isEmpty {
+            status = "missing_valid_rows"
+        } else {
+            status = "ok"
+        }
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(status: status, files: files.count, records: records.count)
+        )
+    }
+
+    private static func grokBuildFallbackModel(for updatesURL: URL) -> String {
+        let signalsURL = updatesURL.deletingLastPathComponent().appendingPathComponent("signals.json")
+        guard let data = try? Data(contentsOf: signalsURL),
+              let signals = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return "grok-build"
+        }
+        if let primary = nonEmptyString(signals["primaryModelId"] as? String) {
+            return primary
+        }
+        if let models = signals["modelsUsed"] as? [String],
+           let first = models.compactMap(nonEmptyString).first {
+            return first
+        }
+        return nonEmptyString(signals["model"] as? String) ?? "grok-build"
+    }
+
+    private static func grokBuildDefaultRoot(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> URL {
+        let environment = ProcessInfo.processInfo.environment
+        for key in ["TOKENTRACKER_GROK_HOME", "GROK_HOME"] {
+            guard let raw = nonEmptyString(environment[key]) else { continue }
+            return URL(
+                fileURLWithPath: (raw as NSString).expandingTildeInPath,
+                isDirectory: true
+            )
+        }
+        return homeURL.appendingPathComponent(".grok", isDirectory: true)
+    }
+
+    private static func grokBuildModel(_ value: String) -> String {
+        let model = modelKey(value)
+        let lower = model.lowercased()
+        if lower.contains("build-free") || lower.hasSuffix("-free") || lower.contains("free-tier") {
+            return "grok-build-free"
+        }
+        if lower == "grok-4.5-build" || lower == "grok-4-5-build" {
+            return "grok-4.5-build"
+        }
+        return model
+    }
+
+    private static func grokBuildUsage(
+        from usage: [String: Any]
+    ) -> (counts: TokenUsageCounts, costUSD: Double?, modelCalls: Int)? {
+        let camelCaseInput = usage.keys.contains("inputTokens")
+        let rawInput = firstIntegerValue(in: usage, keys: ["inputTokens", "input_tokens"])
+        let cacheRead = firstIntegerValue(
+            in: usage,
+            keys: ["cachedReadTokens", "cacheReadInputTokens", "cache_read_input_tokens", "cached_input_tokens"]
+        )
+        let cacheCreation = firstIntegerValue(
+            in: usage,
+            keys: ["cacheCreationTokens", "cachedWriteTokens", "cacheWriteInputTokens", "cache_creation_input_tokens"]
+        )
+        let rawOutput = firstIntegerValue(in: usage, keys: ["outputTokens", "output_tokens"])
+        let reasoning = firstIntegerValue(
+            in: usage,
+            keys: ["reasoningTokens", "reasoning_output_tokens"]
+        )
+        let freshInput = camelCaseInput
+            ? max(0, rawInput - cacheRead - cacheCreation)
+            : rawInput
+        let reportedTotal = firstIntegerValue(in: usage, keys: ["totalTokens", "total_tokens"])
+        let counts = canonicalUsageCounts(
+            rawInputTokens: freshInput,
+            outputTokens: rawOutput,
+            cacheCreationInputTokens: cacheCreation,
+            cacheReadInputTokens: cacheRead,
+            reasoningOutputTokens: min(rawOutput, reasoning),
+            inputIncludesCachedTokens: false,
+            explicitTotalTokens: reportedTotal,
+            explicitTotalIsAuthoritative: true
+        )
+        guard counts.totalTokens > 0 else { return nil }
+
+        let partial = (usage["costIsPartial"] as? Bool)
+            ?? (usage["cost_is_partial"] as? Bool)
+            ?? false
+        let incomplete = (usage["usageIsIncomplete"] as? Bool)
+            ?? (usage["usage_is_incomplete"] as? Bool)
+            ?? false
+        let costUSD: Double?
+        if partial || incomplete {
+            costUSD = nil
+        } else if let ticksValue = [
+            usage["costUsdTicks"],
+            usage["totalCostUsdTicks"],
+            usage["cost_usd_ticks"],
+            usage["total_cost_usd_ticks"]
+        ].compactMap({ $0 }).first {
+            costUSD = max(0, doubleValue(ticksValue) / 10_000_000_000)
+        } else if let usdValue = [
+            usage["costUsd"],
+            usage["totalCostUsd"],
+            usage["cost_usd"],
+            usage["total_cost_usd"]
+        ].compactMap({ $0 }).first {
+            costUSD = max(0, doubleValue(usdValue))
+        } else {
+            costUSD = nil
+        }
+        let modelCalls = firstIntegerValue(in: usage, keys: ["modelCalls", "model_calls"])
+        return (counts, costUSD, modelCalls)
+    }
+
+    private static func collectOpenCodeUsage(rootURL: URL? = nil) -> CollectorResult {
+        let root = rootURL ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local/share/opencode", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: root.path) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing", files: 0, records: 0)
+            )
+        }
+
+        let databases = openCodeDatabaseURLs(rootURL: root)
+        guard !databases.isEmpty else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing_db", files: 0, records: 0)
+            )
+        }
+
+        var recordsByIdentity: [String: UsageRecord] = [:]
+        var validLayouts = 0
+        var failedQueries = 0
+
+        for database in databases {
+            for table in ["message", "session_message"] {
+                guard let columns = sqliteJSONRows(
+                    database: database,
+                    query: "pragma table_info('\(table)')"
+                ) else {
+                    failedQueries += 1
+                    continue
+                }
+                let availableColumns = Set(columns.compactMap { $0["name"] as? String })
+                guard availableColumns.contains("data"),
+                      availableColumns.contains("id"),
+                      availableColumns.contains("session_id")
+                else {
+                    continue
+                }
+                validLayouts += 1
+
+                let timeUpdatedExpression = availableColumns.contains("time_updated")
+                    ? "time_updated"
+                    : "null"
+                let assistantPredicate = table == "session_message" && availableColumns.contains("type")
+                    ? "type = 'assistant'"
+                    : "json_extract(data, '$.role') = 'assistant'"
+                let query = openCodeUsageQuery(
+                    table: table,
+                    timeUpdatedExpression: timeUpdatedExpression,
+                    assistantPredicate: assistantPredicate
+                )
+                guard let rows = sqliteJSONRows(database: database, query: query) else {
+                    failedQueries += 1
+                    continue
+                }
+
+                for row in rows {
+                    guard let timestampValue = row["event_time"],
+                          let day = dayString(fromEpoch: timestampValue)
+                    else {
+                        continue
+                    }
+
+                    let reasoning = max(0, integerValue(row["reasoning_tokens"] as Any))
+                    let usage = canonicalUsageCounts(
+                        rawInputTokens: integerValue(row["input_tokens"] as Any),
+                        outputTokens: integerValue(row["output_tokens"] as Any) + reasoning,
+                        cacheCreationInputTokens: integerValue(row["cache_write_tokens"] as Any),
+                        cacheReadInputTokens: integerValue(row["cache_read_tokens"] as Any),
+                        reasoningOutputTokens: reasoning,
+                        inputIncludesCachedTokens: false
+                    )
+                    guard usage.totalTokens > 0 else { continue }
+
+                    let messageID = nonEmptyString(row["message_id"] as? String)
+                    let sessionID = nonEmptyString(row["session_id"] as? String)
+                    let rowID = integerValue(row["row_id"] as Any)
+                    let identity = [sessionID, messageID].compactMap { $0 }.joined(separator: "|")
+                    let fallbackIdentity = "\(database.path)|\(table)|\(rowID)"
+                    let record = UsageRecord(
+                        date: day,
+                        timestamp: isoString(fromEpoch: timestampValue),
+                        timestampEpoch: epochSeconds(timestampValue),
+                        tool: "OpenCode",
+                        model: modelKey(row["display_model"] as? String),
+                        usage: usage,
+                        source: .opencode,
+                        requestID: messageID,
+                        sessionID: sessionID,
+                        sourcePath: database.path,
+                        dataSource: table,
+                        modelRequestCount: 1
+                    )
+                    let key = identity.isEmpty ? fallbackIdentity : identity
+                    if let existing = recordsByIdentity[key] {
+                        let existingTime = existing.timestampEpoch ?? 0
+                        let candidateTime = record.timestampEpoch ?? 0
+                        if candidateTime > existingTime ||
+                            (candidateTime == existingTime && record.usage.totalTokens > existing.usage.totalTokens) {
+                            recordsByIdentity[key] = record
+                        }
+                    } else {
+                        recordsByIdentity[key] = record
+                    }
+                }
+            }
+        }
+
+        let records = recordsByIdentity.values.sorted {
+            ($0.timestampEpoch ?? 0, $0.sessionID ?? "", $0.requestID ?? "") <
+                ($1.timestampEpoch ?? 0, $1.sessionID ?? "", $1.requestID ?? "")
+        }
+        let status: String
+        if !records.isEmpty {
+            status = "ok"
+        } else if validLayouts == 0 {
+            status = failedQueries > 0 ? "schema_unreadable" : "schema_mismatch"
+        } else if failedQueries >= validLayouts {
+            status = "query_failed"
+        } else {
+            status = "missing_valid_rows"
+        }
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(status: status, files: databases.count, records: records.count)
+        )
+    }
+
+    private static func openCodeDatabaseURLs(rootURL: URL) -> [URL] {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: rootURL.path, isDirectory: &isDirectory) else {
+            return []
+        }
+        if !isDirectory.boolValue {
+            return [rootURL]
+        }
+        guard let children = try? FileManager.default.contentsOfDirectory(
+            at: rootURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+        let extensions: Set<String> = ["db", "sqlite", "sqlite3"]
+        return children.filter { url in
+            let name = url.deletingPathExtension().lastPathComponent.lowercased()
+            return name.hasPrefix("opencode") && extensions.contains(url.pathExtension.lowercased())
+        }.sorted { $0.path < $1.path }
+    }
+
+    private static func openCodeUsageQuery(
+        table: String,
+        timeUpdatedExpression: String,
+        assistantPredicate: String
+    ) -> String {
+        """
+        select
+            rowid as row_id,
+            id as message_id,
+            session_id,
+            coalesce(
+                json_extract(data, '$.time.completed'),
+                json_extract(data, '$.time.created'),
+                \(timeUpdatedExpression)
+            ) as event_time,
+            coalesce(
+                json_extract(data, '$.modelID'),
+                case when json_type(data, '$.model') = 'text' then json_extract(data, '$.model') end,
+                json_extract(data, '$.model.id'),
+                json_extract(data, '$.modelId'),
+                'unknown'
+            ) as display_model,
+            coalesce(json_extract(data, '$.tokens.input'), 0) as input_tokens,
+            coalesce(json_extract(data, '$.tokens.output'), 0) as output_tokens,
+            coalesce(json_extract(data, '$.tokens.reasoning'), 0) as reasoning_tokens,
+            coalesce(json_extract(data, '$.tokens.cache.read'), 0) as cache_read_tokens,
+            coalesce(json_extract(data, '$.tokens.cache.write'), 0) as cache_write_tokens
+        from \(table)
+        where json_valid(data) = 1
+            and \(assistantPredicate)
+            and (
+                coalesce(json_extract(data, '$.tokens.input'), 0)
+                + coalesce(json_extract(data, '$.tokens.output'), 0)
+                + coalesce(json_extract(data, '$.tokens.reasoning'), 0)
+                + coalesce(json_extract(data, '$.tokens.cache.read'), 0)
+                + coalesce(json_extract(data, '$.tokens.cache.write'), 0)
+            ) > 0
+        order by event_time, rowid
+        """
+    }
+
+    private static func firstIntegerValue(in object: [String: Any], keys: [String]) -> Int {
+        for key in keys where object.keys.contains(key) {
+            return max(0, integerValue(object[key] as Any))
+        }
+        return 0
+    }
+
+    private static func firstNonEmptyString(_ values: [Any?]) -> String? {
+        for value in values {
+            if let string = value as? String, let result = nonEmptyString(string) {
+                return result
+            }
+            if let number = value as? NSNumber {
+                return number.stringValue
+            }
+        }
+        return nil
+    }
+
+    private static func portableUsage(
+        from raw: [String: Any],
+        inputIncludesCachedTokens: Bool
+    ) -> TokenUsageCounts? {
+        let rawInput = firstIntegerValue(in: raw, keys: [
+            "input_tokens", "inputTokens", "prompt_tokens", "promptTokens", "promptTokenCount", "input"
+        ])
+        let rawOutput = firstIntegerValue(in: raw, keys: [
+            "output_tokens", "outputTokens", "completion_tokens", "completionTokens", "candidatesTokenCount", "output"
+        ])
+        let cacheRead = firstIntegerValue(in: raw, keys: [
+            "cache_read_input_tokens", "cacheReadInputTokens", "cacheReadTokens",
+            "cache_read_tokens", "cached_input_tokens", "cachedContentTokenCount", "prompt_cache_hit_tokens"
+        ])
+        let cacheCreation = firstIntegerValue(in: raw, keys: [
+            "cache_creation_input_tokens", "cacheCreationInputTokens", "cacheCreationTokens",
+            "cache_creation_tokens", "cache_write_input_tokens", "cacheWriteTokens",
+            "cache_write_tokens", "prompt_cache_write_tokens"
+        ])
+        let reasoning = firstIntegerValue(in: raw, keys: [
+            "reasoning_output_tokens", "reasoningTokens", "reasoning_tokens",
+            "thinkingTokens", "thinking_tokens", "thoughtsTokenCount"
+        ])
+        let explicitTotal = firstIntegerValue(in: raw, keys: [
+            "total_tokens", "totalTokens", "totalTokenCount", "total"
+        ])
+        // Gemini reports candidate tokens and thinking tokens separately while
+        // totalTokenCount includes both. TokenFleet's output bucket is the
+        // inclusive completion total, with reasoning retained as a subset.
+        let output = raw.keys.contains("thoughtsTokenCount")
+            ? rawOutput + reasoning
+            : rawOutput
+        let usage = canonicalUsageCounts(
+            rawInputTokens: rawInput,
+            outputTokens: output,
+            cacheCreationInputTokens: cacheCreation,
+            cacheReadInputTokens: cacheRead,
+            reasoningOutputTokens: reasoning,
+            inputIncludesCachedTokens: inputIncludesCachedTokens,
+            explicitTotalTokens: explicitTotal,
+            explicitTotalIsAuthoritative: explicitTotal > 0
+        )
+        return usage.totalTokens > 0 ? usage : nil
+    }
+
+    private static func firstNestedDictionary(
+        in object: [String: Any],
+        keys: [String]
+    ) -> [String: Any]? {
+        for key in keys {
+            if let value = object[key] as? [String: Any] { return value }
+        }
+        for value in object.values {
+            if let dictionary = value as? [String: Any],
+               let found = firstNestedDictionary(in: dictionary, keys: keys) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    private static func usageTemporalInfo(
+        from object: [String: Any]
+    ) -> (day: String, iso: String?, epoch: TimeInterval?)? {
+        let candidates: [Any?] = [
+            object["timestamp"], object["created_at"], object["createdAt"],
+            object["time"], object["event_time"], object["date"]
+        ]
+        for candidate in candidates {
+            if let string = candidate as? String,
+               let date = parseISO(string) {
+                return (
+                    dayFormatter.string(from: date),
+                    isoFormatterWithFractional.string(from: date),
+                    date.timeIntervalSince1970
+                )
+            }
+            if let epoch = epochSeconds(candidate) {
+                let date = Date(timeIntervalSince1970: epoch)
+                return (
+                    dayFormatter.string(from: date),
+                    isoFormatterWithFractional.string(from: date),
+                    epoch
+                )
+            }
+        }
+        for key in ["message", "result", "data"] {
+            if let nested = object[key] as? [String: Any],
+               let result = usageTemporalInfo(from: nested) {
+                return result
+            }
+        }
+        return nil
+    }
+
+    private static func otelTemporalInfo(
+        from span: [String: Any]
+    ) -> (day: String, iso: String?, epoch: TimeInterval?)? {
+        for key in ["startTimeUnixNano", "start_time_unix_nano"] {
+            if let raw = firstNonEmptyString([span[key]]), let nanos = Double(raw) {
+                let epoch = nanos / 1_000_000_000
+                let date = Date(timeIntervalSince1970: epoch)
+                return (dayFormatter.string(from: date), isoFormatterWithFractional.string(from: date), epoch)
+            }
+        }
+        for key in ["startTime", "start_time", "timestamp", "time"] {
+            if let pair = span[key] as? [Any], let seconds = pair.first {
+                let epoch = doubleValue(seconds)
+                    + (pair.count > 1 ? doubleValue(pair[1]) / 1_000_000_000 : 0)
+                if epoch > 0 {
+                    let date = Date(timeIntervalSince1970: epoch)
+                    return (dayFormatter.string(from: date), isoFormatterWithFractional.string(from: date), epoch)
+                }
+            }
+        }
+        return usageTemporalInfo(from: span)
+    }
+
+    private static func otelSpanEnvelopes(
+        in object: [String: Any],
+        inheritedAttributes: [String: Any] = [:]
+    ) -> [(span: [String: Any], attributes: [String: Any])] {
+        var inherited = inheritedAttributes
+        if let resource = object["resource"] as? [String: Any] {
+            inherited.merge(otelAttributes(resource["attributes"]), uniquingKeysWith: { _, child in child })
+        }
+        var results: [(span: [String: Any], attributes: [String: Any])] = []
+        if object["name"] != nil || object["spanName"] != nil {
+            var attributes = inherited
+            attributes.merge(otelAttributes(object["attributes"]), uniquingKeysWith: { _, child in child })
+            results.append((object, attributes))
+        }
+        for (key, value) in object where key != "attributes" && key != "resource" {
+            if let nested = value as? [String: Any] {
+                results.append(contentsOf: otelSpanEnvelopes(in: nested, inheritedAttributes: inherited))
+            } else if let array = value as? [Any] {
+                for case let nested as [String: Any] in array {
+                    results.append(contentsOf: otelSpanEnvelopes(in: nested, inheritedAttributes: inherited))
+                }
+            }
+        }
+        return results
+    }
+
+    private static func otelAttributes(_ value: Any?) -> [String: Any] {
+        if let dictionary = value as? [String: Any] {
+            return dictionary.mapValues(otelScalar)
+        }
+        guard let rows = value as? [[String: Any]] else { return [:] }
+        var result: [String: Any] = [:]
+        for row in rows {
+            guard let key = nonEmptyString(row["key"] as? String) else { continue }
+            result[key] = otelScalar(row["value"])
+        }
+        return result
+    }
+
+    private static func otelScalar(_ value: Any?) -> Any {
+        guard let dictionary = value as? [String: Any] else { return value ?? NSNull() }
+        for key in ["stringValue", "intValue", "doubleValue", "boolValue", "string_value", "int_value"] {
+            if let scalar = dictionary[key] { return scalar }
+        }
+        return value ?? NSNull()
     }
 
     private static func deduplicateCrossSource(
@@ -2125,6 +4756,9 @@ enum UsageCollector {
             matchedNativeIndices: &matchedNativeIndices
         )
 
+        // Similar timing/model/token vectors alone are not proof of identity:
+        // concurrent requests can legitimately look the same. Keep those rows and
+        // expose the possible overlap count instead of silently deleting usage.
         let possibleOverlapRecords = deduplicableProxyIndices.filter { proxyIndex in
             guard !matchedProxyIndices.contains(proxyIndex) else { return false }
             return nativeRecords.indices.contains { nativeIndex in
@@ -2360,7 +4994,12 @@ enum UsageCollector {
         var tools = [String: UsageAccumulator]()
         var models = [ModelKey: UsageAccumulator]()
 
-        for record in records {
+        for originalRecord in records {
+            var record = originalRecord
+            // Normalize again at the aggregation boundary so records decoded
+            // from an older CollectorCache cannot bypass current natural-key
+            // safety rules.
+            record.model = modelKey(record.model)
             let resolvedCost = resolveCost(for: record)
             daily[record.date, default: DailyAccumulator(date: record.date)]
                 .add(record: record, resolvedCost: resolvedCost)
@@ -2453,7 +5092,7 @@ enum UsageCollector {
 
     private static func isAgentWorkRecord(_ record: UsageRecord) -> Bool {
         switch record.source {
-        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes:
+        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes, .workbuddy, .codebuddy, .qoder, .kimi, .opencode, .grok, .qwen, .cursor, .cline, .copilot, .copilotOTel, .antigravity, .droid, .dsh, .pi, .openclaw:
             return true
         case .unknown:
             return false
@@ -2485,6 +5124,89 @@ enum UsageCollector {
                 return nil
             }
             return url
+        }
+    }
+
+    private static func usageLogFiles(
+        at root: URL,
+        modifiedSince cutoffDate: Date?
+    ) -> [URL] {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory) else { return [] }
+        if !isDirectory.boolValue {
+            guard let values = try? root.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey]),
+                  values.isRegularFile == true
+            else { return [] }
+            if let cutoffDate, let modified = values.contentModificationDate, modified < cutoffDate { return [] }
+            return [root]
+        }
+        guard let enumerator = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+            options: []
+        ) else { return [] }
+        return enumerator.compactMap { item in
+            guard let url = item as? URL,
+                  url.pathExtension == "jsonl",
+                  let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey]),
+                  values.isRegularFile == true
+            else { return nil }
+            if let cutoffDate, let modified = values.contentModificationDate, modified < cutoffDate { return nil }
+            return url
+        }
+    }
+
+    private static func compressedDSHFiles(
+        under root: URL,
+        modifiedSince cutoffDate: Date?
+    ) -> [URL] {
+        guard FileManager.default.fileExists(atPath: root.path),
+              let enumerator = FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+                options: []
+              )
+        else { return [] }
+        return enumerator.compactMap { item in
+            guard let url = item as? URL,
+                  url.lastPathComponent.hasSuffix(".jsonl.zstd"),
+                  let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey]),
+                  values.isRegularFile == true
+            else { return nil }
+            if let cutoffDate, let modified = values.contentModificationDate, modified < cutoffDate { return nil }
+            return url
+        }
+    }
+
+    private static func zstdExecutableURL() -> URL? {
+        var candidates = [
+            "/opt/homebrew/bin/zstd",
+            "/usr/local/bin/zstd",
+            "/usr/bin/zstd"
+        ]
+        if let path = ProcessInfo.processInfo.environment["PATH"] {
+            candidates.append(contentsOf: path.split(separator: ":").map { "\($0)/zstd" })
+        }
+        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+            return URL(fileURLWithPath: path)
+        }
+        return nil
+    }
+
+    private static func decodeZstdFile(_ file: URL, executableURL: URL) -> Data? {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = executableURL
+        process.arguments = ["-dc", "--", file.path]
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            return process.terminationStatus == 0 ? data : nil
+        } catch {
+            return nil
         }
     }
 
@@ -2928,6 +5650,7 @@ enum UsageCollector {
     private static func integerValue(_ value: Any) -> Int {
         if let int = value as? Int { return int }
         if let double = value as? Double { return Int(double) }
+        if let number = value as? NSNumber { return number.intValue }
         if let string = value as? String { return Int(string) ?? 0 }
         return 0
     }
@@ -2935,6 +5658,7 @@ enum UsageCollector {
     private static func doubleValue(_ value: Any) -> Double {
         if let double = value as? Double { return double }
         if let int = value as? Int { return Double(int) }
+        if let number = value as? NSNumber { return number.doubleValue }
         if let string = value as? String { return Double(string) ?? 0 }
         return 0
     }
@@ -3006,8 +5730,20 @@ enum UsageCollector {
     }
 
     private static func modelKey(_ model: String?) -> String {
-        let value = (model ?? "unknown").trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? "unknown" : value
+        let raw = (model ?? "unknown").trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeScalars = raw.unicodeScalars.map { scalar -> String in
+            if scalar == "\u{1F}" || CharacterSet.controlCharacters.contains(scalar) {
+                return " "
+            }
+            return String(scalar)
+        }.joined()
+        let collapsed = safeScalars
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        let value = collapsed.isEmpty ? "unknown" : collapsed
+        let limited = value.unicodeScalars.prefix(128).map(String.init).joined()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return limited.isEmpty ? "unknown" : limited
     }
 
     private static func claudeIdentity(
@@ -3221,9 +5957,61 @@ enum UsageCollector {
     }()
 }
 
+private struct CollectedCursorUsageArchive: Decodable {
+    var schemaVersion: Int
+    var importedAt: String
+    var records: [CursorUsageCSVRecord]
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case importedAt = "imported_at"
+        case records
+    }
+}
+
 private struct CollectorResult {
     var records: [UsageRecord]
     var source: SourceInfo
+}
+
+private struct ClineMessagesArchive: Decodable {
+    var version: Int
+    var sessionID: String
+    var messages: [ClineStoredMessage]
+
+    enum CodingKeys: String, CodingKey {
+        case version
+        case sessionID = "sessionId"
+        case messages
+    }
+}
+
+private struct ClineStoredMessage: Decodable {
+    var id: String
+    var role: String
+    var timestampMilliseconds: Double?
+    var modelInfo: ClineStoredModelInfo?
+    var metrics: ClineStoredMetrics?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case role
+        case timestampMilliseconds = "ts"
+        case modelInfo
+        case metrics
+    }
+}
+
+private struct ClineStoredModelInfo: Decodable {
+    var id: String?
+}
+
+private struct ClineStoredMetrics: Decodable {
+    var inputTokens: Int?
+    var outputTokens: Int?
+    var cacheReadTokens: Int?
+    var cacheWriteTokens: Int?
+    var cost: Double?
 }
 
 private struct CodexCollectionOutcome {
@@ -4212,6 +7000,22 @@ private enum UsageRecordSource: String, Codable, Equatable {
     case ccSwitchProxy
     case zcode
     case hermes
+    case workbuddy
+    case codebuddy
+    case qoder
+    case kimi
+    case opencode
+    case grok
+    case qwen
+    case cursor
+    case cline
+    case copilot
+    case copilotOTel
+    case antigravity
+    case droid
+    case dsh
+    case pi
+    case openclaw
     case unknown
 }
 

@@ -15,11 +15,16 @@ TokenFleet 首版是本地优先、由管理员邀请接入的社群 AI Token �
 - 输入、输出、缓存读、缓存写 Token 数量；
 - 采集器与 schema 版本。
 
-macOS 首版可靠支持 Codex、Claude Code 和 CC Switch；ZCode 作为默认关闭的实验来源，
-只在成员主动开启后读取独立 SQLite `model_usage` 用量表。Windows 支持 Codex、Claude Code，
-并在 ZCode 用量库存在时自动只读同一张 `model_usage` 表。两端均不读取 ZCode 会话 transcript、
-Coding Plan 凭证或剩余额度；Windows 暂不采集 CC Switch。客户端只读取各平台已声明的固定数据位置，不要求
-管理员权限，不注入其他进程，不抓网络流量，也不安装根证书。
+macOS 正式来源为 Codex、Claude Code，CC Switch、ZCode 与设置页列出的其他 Agent
+为用户主动开启的实验来源；其中 Cursor 只接受用户主动导入的 Usage CSV。Windows
+支持 Codex、Claude Code，并在 ZCode 用量库存在时自动只读 `model_usage` 表；暂不采集
+CC Switch 或其他新增实验来源。两端均不读取 ZCode 会话 transcript、Coding Plan 凭证
+或剩余额度。客户端只读取各平台已声明的固定数据位置，不要求管理员权限，不注入其他
+进程，不抓网络流量，也不安装根证书。
+实验采集器从 session 文件或只读数据库中只提取时间、模型、usage、成本和稳定去重 ID，
+不把 prompt、回复、代码或路径写入 TokenFleet 数据文件。
+其中 dsh 的 `.jsonl.zstd` 仅在本机存在 `zstd` 可执行文件时解压到内存并解析 usage，
+不生成解压副本；缺少解码器时不读取、更不会用正文估算 Token。
 
 macOS 还保留了两项与本地用量展示有关的外部集成，不属于社群同步：
 

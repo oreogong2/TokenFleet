@@ -57,6 +57,7 @@ swiftc \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Theme.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/TokenPricing.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift" \
+  "$SWIFT_DIR/Sources/TokenStepSwift/Services/CursorUsageCSVParser.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift" \
   "$SWIFT_DIR/Tests/Fixtures/CodexCumulativeFixtureCheck.swift" \
   -o "$EXECUTABLE"
@@ -81,6 +82,7 @@ if printf '%s\n' 'import XCTest' | swiftc -typecheck - >/dev/null 2>&1; then
     "$SWIFT_DIR/Sources/TokenStepSwift/Support/Theme.swift" \
     "$SWIFT_DIR/Sources/TokenStepSwift/Support/TokenPricing.swift" \
     "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift" \
+    "$SWIFT_DIR/Sources/TokenStepSwift/Services/CursorUsageCSVParser.swift" \
     "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift" \
     -emit-module-path "$MODULE_DIR/TokenStepSwift.swiftmodule"
 

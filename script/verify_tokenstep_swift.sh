@@ -114,14 +114,16 @@ rg -Fq '内容字段不进入统计或上传' "$PRIVACY_SOURCE" \
 rg -Fq '路径仅作本机增量定位' "$PRIVACY_SOURCE" \
   || { echo "privacy card does not disclose local path metadata" >&2; exit 1; }
 
-rg -Fq 'title: L("启用 ZCode / Hermes")' "$EXPERIMENTAL_SOURCES_SOURCE" \
-  || { echo "ZCode/Hermes opt-in control is missing from the settings UI" >&2; exit 1; }
+rg -Fq 'title: L("启用下列实验 Agent 来源")' "$EXPERIMENTAL_SOURCES_SOURCE" \
+  || { echo "experimental Agent opt-in control is missing from the settings UI" >&2; exit 1; }
 rg -Fq 'get: { appState.settings.showExperimentalAgentSources }' "$EXPERIMENTAL_SOURCES_SOURCE" \
-  || { echo "ZCode/Hermes settings control does not read the persisted opt-in" >&2; exit 1; }
+  || { echo "experimental Agent settings control does not read the persisted opt-in" >&2; exit 1; }
 rg -Fq 'set: { appState.setExperimentalAgentSourcesVisible($0) }' "$EXPERIMENTAL_SOURCES_SOURCE" \
-  || { echo "ZCode/Hermes settings control does not activate the collector" >&2; exit 1; }
+  || { echo "experimental Agent settings control does not activate the collector" >&2; exit 1; }
 rg -Fq 'sourceLine(name: "ZCode", sourceKey: "ZCode")' "$EXPERIMENTAL_SOURCES_SOURCE" \
   || { echo "ZCode collector status is missing from the settings UI" >&2; exit 1; }
+rg -Fq 'sourceLine(name: "OpenClaw", sourceKey: "OpenClaw")' "$EXPERIMENTAL_SOURCES_SOURCE" \
+  || { echo "expanded Agent collector statuses are missing from the settings UI" >&2; exit 1; }
 
 SOURCE_LIST="$BUILD_DIR/sources.list"
 if ! rg --files "$SWIFT_DIR/Sources/TokenStepSwift" -g '*.swift' >"$SOURCE_LIST"; then

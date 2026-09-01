@@ -115,10 +115,10 @@ struct SettingsExperimentalAgentSourcesCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        SettingsCard(title: L("实验来源"), symbol: "point.3.connected.trianglepath.dotted", height: 196) {
-            VStack(alignment: .leading, spacing: 8) {
+        SettingsCard(title: L("实验 Agent 来源"), symbol: "point.3.connected.trianglepath.dotted", height: 710) {
+            VStack(alignment: .leading, spacing: 13) {
                 SettingsToggleRow(
-                    title: L("启用 ZCode / Hermes"),
+                    title: L("启用下列实验 Agent 来源"),
                     isOn: Binding(
                         get: { appState.settings.showExperimentalAgentSources },
                         set: { appState.setExperimentalAgentSourcesVisible($0) }
@@ -130,8 +130,70 @@ struct SettingsExperimentalAgentSourcesCard: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                sourceLine(name: "ZCode", sourceKey: "ZCode")
-                sourceLine(name: "Hermes Agent", sourceKey: "Hermes Agent")
+                ScrollView(.vertical) {
+                    VStack(spacing: 8) {
+                        sourceLine(name: "ZCode", sourceKey: "ZCode")
+                        sourceLine(name: "Hermes Agent", sourceKey: "Hermes Agent")
+                        sourceLine(name: "WorkBuddy", sourceKey: "WorkBuddy")
+                        sourceLine(name: "CodeBuddy", sourceKey: "CodeBuddy")
+                        sourceLine(name: "Qoder", sourceKey: "Qoder")
+                        sourceLine(name: "Kimi", sourceKey: "Kimi")
+                        sourceLine(name: "OpenCode", sourceKey: "OpenCode")
+                        sourceLine(name: "Grok", sourceKey: "Grok")
+                        sourceLine(name: "Qwen Code", sourceKey: "Qwen Code")
+                        sourceLine(name: "Cursor", sourceKey: "Cursor")
+                        sourceLine(name: "Cline", sourceKey: "Cline")
+                        sourceLine(name: "Copilot CLI", sourceKey: "Copilot CLI")
+                        sourceLine(name: "Copilot Chat / CLI OTel", sourceKey: "Copilot OTel")
+                        sourceLine(name: "Antigravity", sourceKey: "Antigravity")
+                        sourceLine(name: "Droid", sourceKey: "Droid")
+                        sourceLine(name: "dsh", sourceKey: "dsh")
+                        sourceLine(name: "Pi", sourceKey: "Pi")
+                        sourceLine(name: "OpenClaw", sourceKey: "OpenClaw")
+                    }
+                }
+                .frame(height: 360)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L("Cursor 个人账号请从 Dashboard 导出 Usage CSV 后导入。"))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 8) {
+                        Button {
+                            appState.chooseAndImportCursorUsageCSV()
+                        } label: {
+                            Label(L("导入 Cursor CSV"), systemImage: "square.and.arrow.down")
+                                .font(.caption.weight(.heavy))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 34)
+                        }
+                        .buttonStyle(SettingsPrimaryButtonStyle())
+
+                        Button {
+                            appState.removeCursorImportedUsage()
+                        } label: {
+                            Text(L("删除导入数据"))
+                                .font(.caption.weight(.heavy))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 34)
+                        }
+                        .buttonStyle(SettingsSecondaryButtonStyle())
+                        .disabled(appState.cursorImportedUsageRecordCount == nil)
+                    }
+
+                    if let status = appState.cursorImportStatus {
+                        Text(status)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.tokenInk.opacity(0.7))
+                            .lineLimit(2)
+                    }
+                }
+
+                Spacer(minLength: 0)
             }
         }
     }
@@ -177,10 +239,13 @@ struct SettingsExperimentalAgentSourcesCard: View {
         case "refreshing": return L("刷新中")
         case "pending_refresh": return L("等待刷新")
         case "disabled": return L("默认关闭")
-        case "missing_db", "missing": return L("未发现数据源")
+        case "missing_db", "missing", "missing_import": return L("未发现数据源")
         case "missing_valid_rows": return L("暂无可用 usage")
         case "schema_mismatch", "schema_unreadable", "missing_table": return L("结构待适配")
-        case "unreadable_db": return L("无法读取")
+        case "unreadable_db", "unreadable_import": return L("无法读取")
+        case "missing_decoder": return L("缺少 zstd 解码器")
+        case "partial_missing_decoder": return L("部分压缩日志缺少 zstd 解码器")
+        case "deduped_by_session_store": return L("CLI 已由本地库计入")
         default: return L("等待同步")
         }
     }

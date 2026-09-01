@@ -115,6 +115,7 @@ TokenFleet 首版是一套面向邀请制社群的 AI Token 本地账本与排�
 15. 自动检查更新与签名 DMG 下载流程。
 16. 本地数据与隐私说明。
 17. Agent 活跃、节奏和现有排行榜展示能力。
+18. 可选实验 Agent 本地采集：ZCode、Hermes、WorkBuddy、CodeBuddy、Qoder、Kimi Code、OpenCode、OpenClaw、Pi、Grok Build、Qwen Code、Cline、GitHub Copilot CLI / Chat OTel、Antigravity、Droid、dsh，以及用户主动导入的 Cursor Usage CSV。
 
 新增能力：
 
@@ -261,7 +262,7 @@ Token 用量不得作为个人绩效或产出指标。
 - 微信登录、无邀请开放注册、手机号/邮箱找回体系；
 - 面向所有人的开放平台、用户自建圈子、多社区发现与付费；
 - 城市采集、城市榜、关注、动态、私信与 PK；
-- Kimi Code、Gemini CLI、OpenCode 等新增采集器（按社群真实需求另立版本）；
+- 使用 Cursor 私有登录态做自动采集；个人账号只接受用户主动导入官方 Usage CSV，团队 API Key 另立授权入口；
 - prompt 或项目级生产力分析；
 - 复制任何第三方服务的品牌、视觉、会员关系或其反作弊逻辑；
 - 通过用量评价员工绩效；

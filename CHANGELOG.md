@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased — 主流 Agent 实验来源扩展
+
+### 升级前必须知道
+
+- “实验 Agent 来源”仍是一个总开关。已经打开该开关的用户升级后不需要再次授权，TokenFleet 会自动把本轮新增来源纳入本地扫描。
+- 自动扫描的新增固定位置包括：`~/.zcode/cli/db/db.sqlite`、`~/.hermes/state.db`、`~/.workbuddy/projects`、`~/Library/Application Support/WorkBuddyExtension`、`~/.codebuddy/projects`、`~/.codebuddy/sessions`、`~/.qoder/projects`、`~/.kimi-code/sessions`、`~/.local/share/opencode`、`~/.grok/sessions`、`~/.qwen/usage`、`~/.cline/data` 及受支持 IDE 的 Cline globalStorage、`~/.copilot/session-store.db`、`~/.copilot/otel`、`~/Library/Application Support/GitHub Copilot/otel`、`~/.gemini/antigravity*/brain`、`~/.factory/projects`、`${DSH_HOME:-~/.dsh}/sessions`、`~/.pi/agent/sessions`、`~/.openclaw`。Cursor 个人账号仍只读取用户主动导入的 Usage CSV，不会自动扫描浏览器下载目录。
+- 已经打开实验总开关、且本机存在上述日志的用户，升级并刷新后会自动补计最多 180 天历史。个人总量和排行榜可能因此上涨；这是新增来源或修正口径带来的正常历史补计，不是统计失真。
+
+### 采集与兼容性变化
+
+- 新增或补齐 CodeBuddy、Qoder、Kimi Code、OpenCode、Grok Build、Qwen Code、Cursor、Cline、Copilot CLI／Chat、Antigravity、Droid、dsh、Pi 与 OpenClaw 的实验采集。
+- ZCode 与 Hermes 放宽了旧版数据库结构要求。以前因 schema 不匹配而显示 0 的用户，可能在不改任何设置的情况下补计最多 180 天历史。
+- WorkBuddy 恢复稳定模型标识优先级，新增请求去重，并修正 cache 口径；升级后最多 180 天内的总量、cache 比例或模型分布可能发生合理校正。
+- dsh 在可解码时优先同名 `.jsonl.zstd`，并按 session／事件序号去重，避免明文与压缩副本双算；缺少 zstd 解码器且存在明文副本时继续使用明文，另有压缩-only 会话时明确显示部分缺失。
+- Copilot 本地数据库只覆盖其实际会话时间窗内的 CLI OTel 记录；OTel 缺 conversation/session ID 时仅压制数据库已覆盖同一天的 CLI trace fallback，不再因为数据库存在就删除全部较早历史。
+- Antigravity 的 Gemini thinking token 计入 completion 总量，同时保留为 reasoning 子集，确保本地总量与社群榜同步口径一致。
+- Cursor 兼容带 BOM 的 CSV 和旧版纯日期字段；设置页缓存已导入条数，不再在每次界面重绘时同步解码整份归档。
+- 所有来源的模型自然键都会移除控制字符，按 Unicode scalar 截断到 128、截断后再次去除首尾空白，并在聚合旧缓存时重新清洗，避免组合字符或旧脏模型名导致整份 TeamSync 报告被拒。
+
+### 服务端与老版本
+
+- TeamSync 的 `tool` 与 `model` 仍是自由字符串，本轮没有服务端 schema 或 migration；旧客户端可继续统计和同步原有来源。
+- 想使用新增来源的用户需要升级 Mac 客户端；不使用新增来源的老用户无需强制升级。
+
 ## 0.1.0-beta.8 - Unreleased
 
 ### Desktop identity, accuracy, and recovery
@@ -112,7 +136,6 @@
 - Moved private public-source markers out of repository source and added
   fail-closed ZIP regression fixtures for traversal, encoding, size, and secret
   markers.
-
 ## 0.1.0-beta.4 - 2026-08-10
 
 ### 50-person invited beta
