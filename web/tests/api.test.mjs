@@ -230,7 +230,8 @@ test("member entry and public navigation never expose the administrator console"
   ]);
 
   assert.match(appSource, /pathname === "\/admin"/);
-  assert.match(appSource, /仅限管理员。[\s\S]*成员批次邀请、一次性设备码和成员昵称不能在此使用/);
+  assert.match(appSource, /这里是管理员入口，普通成员无需在此操作。[\s\S]*成员批次邀请、一次性设备码和成员昵称不能在此使用/);
+  assert.match(appSource, /href="\/install"[\s\S]*href="\/rank"/);
   assert.match(appSource, /管理员登录信息不正确/);
   assert.equal(appSource.includes("invalid credentials"), false);
   assert.match(publicSource, /parseCommunityRoute\(location\) \|\| \{ kind: "install" \}/);
@@ -245,6 +246,7 @@ test("member entry and public navigation never expose the administrator console"
   assert.match(html, /src="\/public-app\.js/);
   assert.equal(html.includes("/app.js"), false);
   assert.match(adminHtml, /管理员入口/);
+  assert.match(adminHtml, /<meta name="robots" content="noindex,nofollow"/);
   assert.match(adminHtml, /src="\/app\.js/);
 });
 
