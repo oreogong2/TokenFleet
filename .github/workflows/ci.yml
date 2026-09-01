@@ -340,7 +340,9 @@ jobs:
           $upgradedTask = Get-ScheduledTask -TaskName "TokenFleet Community Sync" -ErrorAction Stop
           $upgradedAction = $upgradedTask.Actions | Select-Object -First 1
           $runtimeRoot = Join-Path $env:LOCALAPPDATA "TokenFleet\runtime\Scripts"
-          if (-not $upgradedAction.Execute.StartsWith($runtimeRoot, [System.StringComparison]::OrdinalIgnoreCase)) { throw "TokenFleet upgrade kept the old scheduled-task interpreter" }
+          $expectedRuntimePython = Join-Path $runtimeRoot "python.exe"
+          $upgradedExecute = $upgradedAction.Execute.Trim([char]34)
+          if (-not [System.IO.Path]::GetFullPath($upgradedExecute).Equals([System.IO.Path]::GetFullPath($expectedRuntimePython), [System.StringComparison]::OrdinalIgnoreCase)) { throw "TokenFleet upgrade kept the old scheduled-task interpreter: actual=$upgradedExecute expected=$expectedRuntimePython" }
           if ($upgradedAction.Arguments -notlike '*TokenFleet\app\tokenfleet_cli.py*sync --quiet*') { throw "TokenFleet upgrade scheduled-task arguments are wrong" }
           if ([System.IO.File]::ReadAllText($actionTokenPath) -ne $actionTokenBeforeUpgrade) { throw "TokenFleet upgrade rotated the local action token" }
           powershell -NoProfile -ExecutionPolicy Bypass -File .\clients\windows\uninstall.ps1 -Yes
