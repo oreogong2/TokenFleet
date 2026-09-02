@@ -1,4 +1,4 @@
-import { createCommunityApiClient } from "./community-api.js?v=beta11-capability-ledger-1";
+import { createCommunityApiClient } from "./community-api.js?v=beta11-capability-ledger-2";
 import {
   PUBLIC_METRICS,
   PUBLIC_PERIODS,
@@ -10,13 +10,13 @@ import {
   normalizePublicMemberDetail,
   publicMetricValue,
   sanitizePublicFilters,
-} from "./community-contract.js?v=beta11-capability-ledger-1";
+} from "./community-contract.js?v=beta11-capability-ledger-2";
 import {
   SUPPORTED_TOOL_CATALOG,
   communityCapabilitiesState,
   loadCommunityCapabilities,
-} from "./community-capabilities.js?v=beta11-capability-ledger-1";
-import { createCommunityDemoApi } from "./community-demo-data.js?v=beta11-capability-ledger-1";
+} from "./community-capabilities.js?v=beta11-capability-ledger-2";
+import { createCommunityDemoApi } from "./community-demo-data.js?v=beta11-capability-ledger-2";
 import { buildCommunityPosterModel, createCommunityPosterArtifact } from "./community-poster.js?v=beta8-canvas-preview-copy";
 import { formatTokenCount, toTokenBigInt, tokenRatio } from "./server-adapter.js";
 
@@ -204,7 +204,10 @@ export function capabilityDirectory({ capabilityState, leaderboard, filters, rou
   const modelsCompleteness = data && !data.modelsComplete
     ? `<small data-capability-model-count>当前展示 ${data.models.length}／共 ${data.modelsTotal} 个模型</small>`
     : `<small data-capability-model-count>${data ? `当前公开历史目录 ${data.models.length} 个模型` : "目录读取中"}</small>`;
-  return `<section class="community-capabilities" aria-labelledby="community-capabilities-title"><header><div><span class="panel-kicker">CAPABILITY LEDGER / BETA.11</span><h2 id="community-capabilities-title">主流工具接入，模型自动识别</h2><p>工具是产品支持目录；模型来自当前公开账本中仍实际留存的历史快照，不是固定白名单。</p></div><dl><div><dt>主要工具标签</dt><dd>${SUPPORTED_TOOL_CATALOG.length}</dd></div><div><dt>历史出现标签</dt><dd>${toolsCount}</dd></div><div><dt>历史识别模型</dt><dd>${modelsCount}</dd></div><div><dt>本期模型</dt><dd>${leaderboard.availableModels.length}</dd></div></dl></header><div class="community-capability-section"><div class="community-capability-section-head"><div><strong>主要支持工具标签</strong><small>Cursor 需手动导入；Copilot 部分场景需开启 OTel</small></div>${toolsCompleteness}</div><div class="community-capability-tools">${toolCards}</div></div><div class="community-capability-section"><div class="community-capability-section-head"><div><strong>当前公开账本历史识别模型</strong>${modelsCompleteness}</div>${data?.models.length ? '<label class="community-capability-search"><span>搜索模型</span><input type="search" inputmode="search" autocomplete="off" placeholder="输入模型名" data-community-model-search /></label>' : ""}</div>${modelStatus}</div></section>`;
+  const modelSearch = data?.models.length
+    ? '<label class="community-capability-search"><span>搜索模型</span><input type="search" inputmode="search" autocomplete="off" placeholder="输入模型名" data-community-model-search /></label>'
+    : "";
+  return `<details class="community-capabilities" data-community-capabilities><summary class="community-capabilities-summary"><span class="community-capabilities-copy"><span class="panel-kicker">CAPABILITY LEDGER / BETA.11</span><strong id="community-capabilities-title" role="heading" aria-level="2">主流工具接入，模型自动识别</strong><small>支持 ${SUPPORTED_TOOL_CATALOG.length} 个主流工具 · 历史识别 ${modelsCount} 个模型 · 本期 ${leaderboard.availableModels.length} 个</small></span><span class="community-capability-disclosure-label"><span class="when-closed">查看完整目录</span><span class="when-open">收起目录</span><i aria-hidden="true"></i></span></summary><div class="community-capabilities-content" aria-labelledby="community-capabilities-title"><p class="community-capabilities-note">工具是产品支持目录；模型来自当前公开账本中仍实际留存的历史快照，不是固定白名单。当前公开账本历史出现 ${toolsCount} 个工具标签。</p><div class="community-capability-section"><div class="community-capability-section-head"><div><strong>主要支持工具标签</strong><small>Cursor 需手动导入；Copilot 部分场景需开启 OTel</small></div>${toolsCompleteness}</div><div class="community-capability-tools">${toolCards}</div></div><div class="community-capability-section"><div class="community-capability-section-head"><div><strong>当前公开账本历史识别模型</strong>${modelsCompleteness}</div>${modelSearch}</div>${modelStatus}</div></div></details>`;
 }
 
 function totalsCells(person) {

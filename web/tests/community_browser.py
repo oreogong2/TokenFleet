@@ -219,11 +219,12 @@ def main():
             ).count() == 1
             assert page.locator(".community-capability-tool").count() == 21
             assert page.locator(".community-capability-tool:not(.is-derived)").count() == 20
-            assert page.get_by_role("link", name=re.compile(r"Kimi Code.*实验来源")).count() == 1
-            assert page.get_by_role("link", name=re.compile(r"Grok Build.*实验来源")).count() == 1
-            assert page.get_by_role("link", name=re.compile(r"Cursor.*手动导入 CSV")).count() == 1
             assert page.locator(".community-capability-model").count() == 6
             assert page.get_by_text("当前公开历史目录 6 个模型", exact=True).count() == 1
+            capability_directory = page.locator("[data-community-capabilities]")
+            assert capability_directory.get_attribute("open") is None
+            assert page.locator(".community-capability-tools").bounding_box() is None
+            assert page.locator(".community-capability-models").bounding_box() is None
             assert page.get_by_role("button", name="应用筛选").count() == 0
             assert page.locator('a.community-install-link[href="/install"]').count() == 1
             assert page.get_by_text("管理员后台", exact=True).count() == 0
@@ -242,6 +243,11 @@ def main():
             assert_accessible_controls(page)
             page.screenshot(path=str(ARTIFACT_DIR / f"tokenfleet-rank-{width}.png"), full_page=True)
 
+            capability_directory.locator("summary").click()
+            assert capability_directory.get_attribute("open") == ""
+            assert page.get_by_role("link", name=re.compile(r"Kimi Code.*实验来源")).count() == 1
+            assert page.get_by_role("link", name=re.compile(r"Grok Build.*实验来源")).count() == 1
+            assert page.get_by_role("link", name=re.compile(r"Cursor.*手动导入 CSV")).count() == 1
             model_search = page.locator("[data-community-model-search]")
             model_search.fill("kimi")
             visible_models = page.locator(".community-capability-model:visible")
@@ -254,6 +260,8 @@ def main():
             model_search.fill("")
             assert page.locator(".community-capability-model:visible").count() == 6
             assert page.locator(".community-capability-model[hidden]").count() == 0
+            capability_directory.locator("summary").click()
+            assert capability_directory.get_attribute("open") is None
 
             page.keyboard.press("Tab")
             focused = page.evaluate("document.activeElement?.tagName")
