@@ -31,6 +31,173 @@ struct CodexAccountingComparisonDiagnostics {
     var referenceRecordCount: Int
 }
 
+struct CollectorSourcePerformance: Codable, Equatable {
+    var source: String
+    var elapsedMilliseconds: Int
+    var files: Int
+    var bytes: UInt64
+    var status: String
+    var skipped: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case source
+        case elapsedMilliseconds = "elapsed_ms"
+        case files
+        case bytes
+        case status
+        case skipped
+    }
+}
+
+final class CollectorPerformanceRecorder {
+    private(set) var sources = [CollectorSourcePerformance]()
+
+    fileprivate func measure(
+        source: String,
+        operation: () -> CollectorResult
+    ) -> CollectorResult {
+        let startedAt = ProcessInfo.processInfo.systemUptime
+        let result = operation()
+        let elapsed = ProcessInfo.processInfo.systemUptime - startedAt
+        sources.append(
+            CollectorSourcePerformance(
+                source: source,
+                elapsedMilliseconds: max(0, Int((elapsed * 1_000).rounded())),
+                files: max(0, result.source.files ?? 0),
+                bytes: result.inputBytes,
+                status: result.source.status ?? "unknown",
+                skipped: false
+            )
+        )
+        return result
+    }
+
+    func recordSkippedSources(_ sourceInfo: [String: SourceInfo]) {
+        sources = sourceInfo.keys.sorted().map { source in
+            let info = sourceInfo[source]!
+            return CollectorSourcePerformance(
+                source: source,
+                elapsedMilliseconds: 0,
+                files: max(0, info.files ?? 0),
+                bytes: 0,
+                status: info.status ?? "unknown",
+                skipped: true
+            )
+        }
+    }
+
+    #if TOKENSTEP_TESTING
+    func measureForTests(
+        source: String,
+        inputURLs: [URL],
+        status: String = "ok"
+    ) {
+        _ = measure(source: source) {
+            CollectorResult(
+                records: [],
+                source: SourceInfo(status: status, files: inputURLs.count, records: 0),
+                inputURLs: inputURLs
+            )
+        }
+    }
+    #endif
+}
+
+struct CollectorRunPerformanceLog: Codable, Equatable {
+    var event = "collector_run"
+    var finishedAt: String
+    var outcome: String
+    var totalElapsedMilliseconds: Int
+    var peakRSSBytes: UInt64
+    var sources: [CollectorSourcePerformance]
+
+    enum CodingKeys: String, CodingKey {
+        case event
+        case finishedAt = "finished_at"
+        case outcome
+        case totalElapsedMilliseconds = "total_elapsed_ms"
+        case peakRSSBytes = "peak_rss_bytes"
+        case sources
+    }
+}
+
+enum CollectorPerformanceLogger {
+    static let filename = "collector-performance.jsonl"
+    private static let maximumLogBytes: UInt64 = 2 * 1_024 * 1_024
+    private static let retainedLineCount = 500
+
+    static func append(
+        outcome: String,
+        totalElapsedMilliseconds: Int,
+        peakRSSBytes: UInt64,
+        sources: [CollectorSourcePerformance],
+        finishedAt: Date = Date(),
+        logURL: URL = AppPaths.logs.appendingPathComponent(filename)
+    ) throws {
+        let line = try encodedLine(
+            outcome: outcome,
+            totalElapsedMilliseconds: totalElapsedMilliseconds,
+            peakRSSBytes: peakRSSBytes,
+            sources: sources,
+            finishedAt: finishedAt
+        )
+        try FileManager.default.createDirectory(
+            at: logURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        if !FileManager.default.fileExists(atPath: logURL.path) {
+            _ = FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        }
+        do {
+            let handle = try FileHandle(forWritingTo: logURL)
+            defer { try? handle.close() }
+            try handle.seekToEnd()
+            try handle.write(contentsOf: line)
+        }
+        try trimIfNeeded(logURL: logURL)
+    }
+
+    static func encodedLine(
+        outcome: String,
+        totalElapsedMilliseconds: Int,
+        peakRSSBytes: UInt64,
+        sources: [CollectorSourcePerformance],
+        finishedAt: Date
+    ) throws -> Data {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let report = CollectorRunPerformanceLog(
+            finishedAt: formatter.string(from: finishedAt),
+            outcome: outcome,
+            totalElapsedMilliseconds: max(0, totalElapsedMilliseconds),
+            peakRSSBytes: peakRSSBytes,
+            sources: sources
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        var data = try encoder.encode(report)
+        data.append(0x0A)
+        return data
+    }
+
+    private static func trimIfNeeded(logURL: URL) throws {
+        let attributes = try FileManager.default.attributesOfItem(atPath: logURL.path)
+        guard let size = attributes[.size] as? NSNumber,
+              size.uint64Value > maximumLogBytes
+        else {
+            return
+        }
+
+        let lines = try Data(contentsOf: logURL).split(separator: 0x0A)
+        var retained = Data()
+        for line in lines.suffix(retainedLineCount) {
+            retained.append(contentsOf: line)
+            retained.append(0x0A)
+        }
+        try retained.write(to: logURL, options: .atomic)
+    }
+}
+
 enum UsageCollector {
     static let codexAccountingRevision = 8
 
@@ -61,82 +228,133 @@ enum UsageCollector {
         dshRootURL: URL? = nil,
         piSessionsRootURL: URL? = nil,
         openClawRootURLs: [URL]? = nil,
-        forceFullValidation: Bool = false
+        forceFullValidation: Bool = false,
+        performanceRecorder: CollectorPerformanceRecorder? = nil
     ) -> UsageSnapshot {
+        func measured(_ source: String, _ operation: () -> CollectorResult) -> CollectorResult {
+            guard let performanceRecorder else { return operation() }
+            return performanceRecorder.measure(source: source, operation: operation)
+        }
+
         let cacheLoad = loadCache()
         var cache = cacheLoad.cache
         var livePaths = Set<String>()
         let sourceCutoff = sourceFileCutoffDate(historyDays: historyDays)
-        var ccSwitch = includeCCSwitchProxyUsage
-            ? collectCCSwitchProxyUsage(databaseURL: ccSwitchDatabaseURL)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let codexOutcome = collectCodex(
-            cache: &cache,
-            livePaths: &livePaths,
-            modifiedSince: sourceCutoff,
-            databaseURL: AppPaths.codexIncrementalCacheSQLite,
-            forceFullValidation: forceFullValidation,
-            requiresDetailedRecords: !ccSwitch.records.isEmpty
-        )
-        var codex = codexOutcome.result
+        var ccSwitch = measured(ccSwitchSourceName) {
+            includeCCSwitchProxyUsage
+                ? collectCCSwitchProxyUsage(databaseURL: ccSwitchDatabaseURL)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        var usedIncrementalStore = false
+        let collectedCodex = measured("Codex") {
+            let outcome = collectCodex(
+                cache: &cache,
+                livePaths: &livePaths,
+                modifiedSince: sourceCutoff,
+                databaseURL: AppPaths.codexIncrementalCacheSQLite,
+                forceFullValidation: forceFullValidation,
+                requiresDetailedRecords: !ccSwitch.records.isEmpty
+            )
+            usedIncrementalStore = outcome.usedIncrementalStore
+            return outcome.result
+        }
+        var codex = collectedCodex
         codex.source.recalibratedFromRevision = cacheLoad.recalibratedFromRevision
-        let claude = collectClaudeCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
-        let zCode = includeExperimentalAgentSources
-            ? collectZCodeUsage(databaseURL: zCodeDatabaseURL)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let hermes = includeExperimentalAgentSources
-            ? collectHermesUsage(databaseURL: hermesDatabaseURL)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let workBuddy = includeExperimentalAgentSources
-            ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let codeBuddy = includeExperimentalAgentSources
-            ? collectCodeBuddyUsage(rootURLs: codeBuddyRootURLs, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let qoder = includeExperimentalAgentSources
-            ? collectQoderUsage(rootURL: qoderRootURL, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let kimi = includeExperimentalAgentSources
-            ? collectKimiCodeUsage(rootURL: kimiCodeRootURL, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let openCode = includeExperimentalAgentSources
-            ? collectOpenCodeUsage(rootURL: openCodeRootURL)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let grok = includeExperimentalAgentSources
-            ? collectGrokBuildUsage(rootURL: grokBuildRootURL, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let qwen = includeExperimentalAgentSources
-            ? collectQwenCodeUsage(rootURL: qwenCodeRootURL, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let cursor = includeExperimentalAgentSources
-            ? collectCursorUsage(importURL: cursorUsageImportURL)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let cline = includeExperimentalAgentSources
-            ? collectClineUsage(rootURLs: clineRootURLs, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let copilot = includeExperimentalAgentSources
-            ? collectCopilotCLIUsage(databaseURL: copilotDatabaseURL)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        var copilotOTel = includeExperimentalAgentSources
-            ? collectCopilotOTelUsage(urls: copilotOTelURLs, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let claude = measured("Claude Code") {
+            collectClaudeCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
+        }
+        let zCode = measured("ZCode") {
+            includeExperimentalAgentSources
+                ? collectZCodeUsage(databaseURL: zCodeDatabaseURL)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let hermes = measured("Hermes Agent") {
+            includeExperimentalAgentSources
+                ? collectHermesUsage(databaseURL: hermesDatabaseURL, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let workBuddy = measured("WorkBuddy") {
+            includeExperimentalAgentSources
+                ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let codeBuddy = measured("CodeBuddy") {
+            includeExperimentalAgentSources
+                ? collectCodeBuddyUsage(rootURLs: codeBuddyRootURLs, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let qoder = measured("Qoder") {
+            includeExperimentalAgentSources
+                ? collectQoderUsage(rootURL: qoderRootURL, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let kimi = measured("Kimi") {
+            includeExperimentalAgentSources
+                ? collectKimiCodeUsage(rootURL: kimiCodeRootURL, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let openCode = measured("OpenCode") {
+            includeExperimentalAgentSources
+                ? collectOpenCodeUsage(rootURL: openCodeRootURL)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let grok = measured("Grok") {
+            includeExperimentalAgentSources
+                ? collectGrokBuildUsage(rootURL: grokBuildRootURL, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let qwen = measured("Qwen Code") {
+            includeExperimentalAgentSources
+                ? collectQwenCodeUsage(rootURL: qwenCodeRootURL, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let cursor = measured("Cursor") {
+            includeExperimentalAgentSources
+                ? collectCursorUsage(importURL: cursorUsageImportURL)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let cline = measured("Cline") {
+            includeExperimentalAgentSources
+                ? collectClineUsage(rootURLs: clineRootURLs, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let copilot = measured("Copilot CLI") {
+            includeExperimentalAgentSources
+                ? collectCopilotCLIUsage(databaseURL: copilotDatabaseURL)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        var copilotOTel = measured("Copilot OTel") {
+            includeExperimentalAgentSources
+                ? collectCopilotOTelUsage(urls: copilotOTelURLs, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
         preferCopilotSessionStore(sessionStore: copilot, otel: &copilotOTel)
-        let antigravity = includeExperimentalAgentSources
-            ? collectAntigravityUsage(rootURLs: antigravityRootURLs, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let droid = includeExperimentalAgentSources
-            ? collectDroidUsage(rootURL: droidRootURL, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let dsh = includeExperimentalAgentSources
-            ? collectDSHUsage(rootURL: dshRootURL, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let pi = includeExperimentalAgentSources
-            ? collectPiUsage(sessionsRootURL: piSessionsRootURL, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let openClaw = includeExperimentalAgentSources
-            ? collectOpenClawUsage(rootURLs: openClawRootURLs, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        if codexOutcome.usedIncrementalStore {
+        let antigravity = measured("Antigravity") {
+            includeExperimentalAgentSources
+                ? collectAntigravityUsage(rootURLs: antigravityRootURLs, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let droid = measured("Droid") {
+            includeExperimentalAgentSources
+                ? collectDroidUsage(rootURL: droidRootURL, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let dsh = measured("dsh") {
+            includeExperimentalAgentSources
+                ? collectDSHUsage(rootURL: dshRootURL, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let pi = measured("Pi") {
+            includeExperimentalAgentSources
+                ? collectPiUsage(sessionsRootURL: piSessionsRootURL, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        let openClaw = measured("OpenClaw") {
+            includeExperimentalAgentSources
+                ? collectOpenClawUsage(rootURLs: openClawRootURLs, modifiedSince: sourceCutoff)
+                : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        }
+        if usedIncrementalStore {
             cache.files = cache.files.filter { $0.value.tool != "Codex" && livePaths.contains($0.key) }
         } else {
             cache.files = cache.files.filter { livePaths.contains($0.key) }
@@ -531,6 +749,9 @@ enum UsageCollector {
         historyDays: Int? = nil,
         now: Date = Date()
     ) -> UsageSnapshot {
+        let sourceCutoff = historyDays.flatMap {
+            sourceFileCutoffDate(historyDays: $0, now: now)
+        }
         var cache = CollectorCache()
         var livePaths = Set<String>()
         let codex = codexRoots.isEmpty
@@ -551,7 +772,9 @@ enum UsageCollector {
             ? zCodeDatabaseURL.map { collectZCodeUsage(databaseURL: $0) } ?? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
         let hermes = includeExperimentalAgentSources
-            ? hermesDatabaseURL.map { collectHermesUsage(databaseURL: $0) } ?? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
+            ? hermesDatabaseURL.map {
+                collectHermesUsage(databaseURL: $0, modifiedSince: sourceCutoff)
+            } ?? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
         let workBuddy = includeExperimentalAgentSources
             ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs ?? [], modifiedSince: nil)
@@ -984,7 +1207,8 @@ enum UsageCollector {
             records: records,
             diagnostics: diagnostics,
             fileCount: paths.count,
-            sourceRecordCount: sourceRecordCount
+            sourceRecordCount: sourceRecordCount,
+            inputURLs: paths
         )
     }
 
@@ -1046,7 +1270,8 @@ enum UsageCollector {
                 status: "ok_sqlite",
                 files: 1,
                 records: records.count
-            )
+            ),
+            inputURLs: [database]
         )
     }
 
@@ -1102,7 +1327,8 @@ enum UsageCollector {
         return codexCollectorResult(
             records: records,
             diagnostics: diagnostics,
-            fileCount: paths.count
+            fileCount: paths.count,
+            inputURLs: paths
         )
     }
 
@@ -1110,7 +1336,8 @@ enum UsageCollector {
         records: [UsageRecord],
         diagnostics: CodexCollectionDiagnostics,
         fileCount: Int,
-        sourceRecordCount: Int? = nil
+        sourceRecordCount: Int? = nil,
+        inputURLs: [URL] = []
     ) -> CollectorResult {
         let breakdown = records.reduce(into: TokenUsageCounts()) { partial, record in
             partial.add(record.usage)
@@ -1146,7 +1373,8 @@ enum UsageCollector {
                     outputTokens: breakdown.outputTokens,
                     reasoningTokens: breakdown.reasoningOutputTokens
                 )
-            )
+            ),
+            inputURLs: inputURLs
         )
     }
 
@@ -1909,7 +2137,8 @@ enum UsageCollector {
                 status: records.isEmpty ? "missing" : "ok",
                 files: paths.count,
                 records: records.count
-            )
+            ),
+            inputURLs: paths
         )
     }
 
@@ -2060,7 +2289,8 @@ enum UsageCollector {
                 status: records.isEmpty ? "missing_valid_rows" : "ok",
                 files: 1,
                 records: records.count
-            )
+            ),
+            inputURLs: [database]
         )
     }
 
@@ -2177,11 +2407,15 @@ enum UsageCollector {
 
         return CollectorResult(
             records: records,
-            source: SourceInfo(status: records.isEmpty ? "missing_valid_rows" : "ok", files: 1, records: records.count)
+            source: SourceInfo(status: records.isEmpty ? "missing_valid_rows" : "ok", files: 1, records: records.count),
+            inputURLs: [database]
         )
     }
 
-    private static func collectHermesUsage(databaseURL: URL? = nil) -> CollectorResult {
+    private static func collectHermesUsage(
+        databaseURL: URL? = nil,
+        modifiedSince cutoffDate: Date? = nil
+    ) -> CollectorResult {
         let database = databaseURL ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".hermes/state.db")
 
@@ -2227,6 +2461,9 @@ enum UsageCollector {
         let actualCostExpression = optionalInteger("actual_cost_usd")
         let estimatedCostExpression = optionalInteger("estimated_cost_usd")
         let costStatusExpression = optionalText("cost_status", "")
+        let startedAtLowerBound = cutoffDate.map {
+            String(format: "and cast(started_at as real) >= %.6f", $0.timeIntervalSince1970)
+        } ?? ""
         let query = """
         select
             id,
@@ -2251,6 +2488,7 @@ enum UsageCollector {
             + \(cacheWriteExpression)
             + \(reasoningExpression)
         ) > 0
+        \(startedAtLowerBound)
         order by started_at, id
         """
 
@@ -2300,7 +2538,8 @@ enum UsageCollector {
 
         return CollectorResult(
             records: records,
-            source: SourceInfo(status: records.isEmpty ? "missing_valid_rows" : "ok", files: 1, records: records.count)
+            source: SourceInfo(status: records.isEmpty ? "missing_valid_rows" : "ok", files: 1, records: records.count),
+            inputURLs: [database]
         )
     }
 
@@ -2384,7 +2623,8 @@ enum UsageCollector {
                 status: status,
                 files: files.count,
                 records: records.count
-            )
+            ),
+            inputURLs: files
         )
     }
 
@@ -2568,7 +2808,8 @@ enum UsageCollector {
                 files: files.count,
                 records: records.count,
                 strategy: "transcript_assistant_usage"
-            )
+            ),
+            inputURLs: files
         )
     }
 
@@ -2670,7 +2911,8 @@ enum UsageCollector {
         }
         return CollectorResult(
             records: records,
-            source: SourceInfo(status: status, files: files.count, records: records.count)
+            source: SourceInfo(status: status, files: files.count, records: records.count),
+            inputURLs: files
         )
     }
 
@@ -2790,7 +3032,8 @@ enum UsageCollector {
                 rawRecords: archive.records.count,
                 dedupedRecords: records.count,
                 strategy: "cursor_usage_csv_v1"
-            )
+            ),
+            inputURLs: [url]
         )
     }
 
@@ -2975,7 +3218,8 @@ enum UsageCollector {
                 rawRecords: rawRecords,
                 dedupedRecords: records.count,
                 strategy: "cline_exact_usage_v1_and_legacy"
-            )
+            ),
+            inputURLs: files
         )
     }
 
@@ -3198,7 +3442,8 @@ enum UsageCollector {
                 rawRecords: rows.count,
                 dedupedRecords: records.count,
                 strategy: "copilot_session_store_per_request"
-            )
+            ),
+            inputURLs: [database]
         )
     }
 
@@ -3405,7 +3650,8 @@ enum UsageCollector {
                 files: files.count,
                 records: records.count,
                 strategy: "otel_chat_spans_only"
-            )
+            ),
+            inputURLs: files
         )
     }
 
@@ -3525,7 +3771,8 @@ enum UsageCollector {
         else { status = "ok" }
         return CollectorResult(
             records: records,
-            source: SourceInfo(status: status, files: files.count, records: records.count, strategy: "exact_result_usage")
+            source: SourceInfo(status: status, files: files.count, records: records.count, strategy: "exact_result_usage"),
+            inputURLs: files
         )
     }
 
@@ -3673,7 +3920,8 @@ enum UsageCollector {
                 records: records.count,
                 skippedRecords: skippedCompressedFiles,
                 strategy: "dsh_exact_usage_events_compressed_preferred_session_seq_dedupe"
-            )
+            ),
+            inputURLs: files
         )
     }
 
@@ -3737,7 +3985,8 @@ enum UsageCollector {
                 rawRecords: rawRecords,
                 dedupedRecords: records.count,
                 strategy: "pi_session_usage"
-            )
+            ),
+            inputURLs: files
         )
     }
 
@@ -3906,7 +4155,8 @@ enum UsageCollector {
                 rawRecords: rawRecords,
                 dedupedRecords: records.count,
                 strategy: "openclaw_sqlite_and_legacy_transcripts"
-            )
+            ),
+            inputURLs: databases + transcriptFiles
         )
     }
 
@@ -4121,7 +4371,8 @@ enum UsageCollector {
         }
         return CollectorResult(
             records: records,
-            source: SourceInfo(status: status, files: files.count, records: records.count)
+            source: SourceInfo(status: status, files: files.count, records: records.count),
+            inputURLs: files
         )
     }
 
@@ -4238,7 +4489,8 @@ enum UsageCollector {
         }
         return CollectorResult(
             records: records,
-            source: SourceInfo(status: status, files: files.count, records: records.count)
+            source: SourceInfo(status: status, files: files.count, records: records.count),
+            inputURLs: files
         )
     }
 
@@ -4484,7 +4736,8 @@ enum UsageCollector {
         }
         return CollectorResult(
             records: records,
-            source: SourceInfo(status: status, files: databases.count, records: records.count)
+            source: SourceInfo(status: status, files: databases.count, records: records.count),
+            inputURLs: databases
         )
     }
 
@@ -5412,8 +5665,8 @@ enum UsageCollector {
         }
     }
 
-    private static func sourceFileCutoffDate(historyDays: Int) -> Date? {
-        calendar.date(byAdding: .day, value: -max(7, historyDays + 1), to: Date())
+    private static func sourceFileCutoffDate(historyDays: Int, now: Date = Date()) -> Date? {
+        calendar.date(byAdding: .day, value: -max(7, historyDays + 1), to: now)
     }
 
     private static func recordsInHistoryWindow(
@@ -5867,9 +6120,7 @@ enum UsageCollector {
             try? FileManager.default.removeItem(at: outputURL)
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        process.arguments = ["-readonly", "-json", database.path, query]
+        let process = sqliteJSONProcess(database: database, query: query)
         process.standardOutput = outputHandle
         process.standardError = Pipe()
 
@@ -5885,6 +6136,23 @@ enum UsageCollector {
         guard !data.isEmpty else { return [] }
         return try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
     }
+
+    private static func sqliteJSONProcess(database: URL, query: String) -> Process {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = ["-readonly", "-json", database.path, query]
+        process.qualityOfService = .utility
+        return process
+    }
+
+    #if TOKENSTEP_TESTING
+    static func sqliteJSONQualityOfServiceForTests() -> QualityOfService {
+        sqliteJSONProcess(
+            database: URL(fileURLWithPath: "/tmp/tokenfleet-qos-test.sqlite"),
+            query: "select 1"
+        ).qualityOfService
+    }
+    #endif
 
     private static func resolveCost(for record: UsageRecord) -> ResolvedRecordCost {
         if let sourceCost = record.costUSD,
@@ -5983,6 +6251,32 @@ private struct CollectedCursorUsageArchive: Decodable {
 private struct CollectorResult {
     var records: [UsageRecord]
     var source: SourceInfo
+    var inputURLs: [URL]
+
+    init(records: [UsageRecord], source: SourceInfo, inputURLs: [URL] = []) {
+        self.records = records
+        self.source = source
+        self.inputURLs = inputURLs
+    }
+
+    var inputBytes: UInt64 {
+        let recordURLs = records.compactMap { record -> URL? in
+            guard let path = record.sourcePath else { return nil }
+            return URL(fileURLWithPath: path)
+        }
+        let uniqueURLs = Dictionary(
+            grouping: inputURLs + recordURLs,
+            by: { $0.standardizedFileURL.path }
+        ).compactMap { $0.value.first }
+        return uniqueURLs.reduce(into: UInt64(0)) { total, url in
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  let size = attributes[.size] as? NSNumber
+            else {
+                return
+            }
+            total &+= size.uint64Value
+        }
+    }
 }
 
 private struct ClineMessagesArchive: Decodable {

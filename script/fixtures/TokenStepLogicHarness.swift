@@ -1529,6 +1529,116 @@ struct TokenStepLogicHarness {
                 && retentionOnlyState.state?.terminalReason == nil,
             "Retention-only success entered terminal state"
         )
+
+        expect(
+            DataService.collectorHelperQualityOfServiceForTests() == .utility,
+            "Collector helper Process did not use utility QoS"
+        )
+        expect(
+            UsageCollector.sqliteJSONQualityOfServiceForTests() == .utility,
+            "sqlite3 Process did not use utility QoS"
+        )
+        let startupDelay = InitialUsageRefreshPolicy.delaySeconds(for: .automaticStartup)
+        expect(
+            startupDelay >= 90 && startupDelay <= 120,
+            "Initial automatic collection delay left the approved 90-120 second window"
+        )
+        expect(
+            InitialUsageRefreshPolicy.delaySeconds(for: .manual) == 0,
+            "Manual collection inherited the startup delay"
+        )
+
+        let performanceRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TokenFleetPerformanceHarness-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: performanceRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: performanceRoot) }
+        let performanceInput = performanceRoot.appendingPathComponent("source.jsonl")
+        try Data(repeating: 0x61, count: 4_096).write(to: performanceInput)
+        let performanceRecorder = CollectorPerformanceRecorder()
+        performanceRecorder.measureForTests(
+            source: "Fixture Agent",
+            inputURLs: [performanceInput]
+        )
+        expect(
+            performanceRecorder.sources.first?.files == 1
+                && performanceRecorder.sources.first?.bytes == 4_096,
+            "Per-source performance metrics lost file or byte counts"
+        )
+        let performanceLine = try CollectorPerformanceLogger.encodedLine(
+            outcome: "updated",
+            totalElapsedMilliseconds: 123,
+            peakRSSBytes: 45_678,
+            sources: performanceRecorder.sources,
+            finishedAt: Date(timeIntervalSince1970: 1_784_610_000)
+        )
+        let performanceLog = try JSONDecoder().decode(
+            CollectorRunPerformanceLog.self,
+            from: Data(performanceLine.dropLast())
+        )
+        expect(
+            performanceLog.totalElapsedMilliseconds == 123
+                && performanceLog.peakRSSBytes == 45_678
+                && performanceLog.sources.first?.source == "Fixture Agent",
+            "Collector performance log omitted required run fields"
+        )
+        let oversizedLog = performanceRoot.appendingPathComponent("collector-performance.jsonl")
+        let oversizedLine = Data(repeating: 0x78, count: 4_096) + Data([0x0A])
+        var oversizedContents = Data()
+        for _ in 0..<520 {
+            oversizedContents.append(oversizedLine)
+        }
+        try oversizedContents.write(to: oversizedLog)
+        try CollectorPerformanceLogger.append(
+            outcome: "rotation-check",
+            totalElapsedMilliseconds: 1,
+            peakRSSBytes: 2,
+            sources: [],
+            finishedAt: Date(timeIntervalSince1970: 1_784_610_000),
+            logURL: oversizedLog
+        )
+        let retainedPerformanceLines = try Data(contentsOf: oversizedLog).split(separator: 0x0A)
+        expect(
+            retainedPerformanceLines.count == 500,
+            "Oversized collector performance log did not retain exactly the latest 500 lines"
+        )
+        let retainedPerformanceLog = try JSONDecoder().decode(
+            CollectorRunPerformanceLog.self,
+            from: Data(retainedPerformanceLines.last!)
+        )
+        expect(
+            retainedPerformanceLog.outcome == "rotation-check",
+            "Collector performance log rotation discarded the newest run"
+        )
+
+        let hermesDatabase = performanceRoot.appendingPathComponent("hermes.sqlite")
+        let hermesNow = Date(timeIntervalSince1970: 1_784_610_000)
+        let hermesOutsideCutoff = Int(
+            hermesNow.addingTimeInterval(-182 * 86_400).timeIntervalSince1970
+        )
+        let hermesInsideCutoff = Int(
+            hermesNow.addingTimeInterval(-86_400).timeIntervalSince1970
+        )
+        try runSQLiteHarness(database: hermesDatabase, sql: """
+        create table sessions (
+            id text primary key,
+            started_at real not null,
+            input_tokens integer default 0,
+            output_tokens integer default 0
+        );
+        insert into sessions values ('outside', \(hermesOutsideCutoff), 900, 100);
+        insert into sessions values ('inside', \(hermesInsideCutoff), 20, 6);
+        """)
+        let hermesSnapshot = UsageCollector.collectUsageSnapshotForTests(
+            hermesDatabaseURL: hermesDatabase,
+            includeExperimentalAgentSources: true,
+            historyDays: 180,
+            now: hermesNow
+        )
+        expect(
+            hermesSnapshot.sources["Hermes Agent"]?.records == 1
+                && hermesSnapshot.totals.tokens == 26,
+            "Hermes SQL did not enforce the source-file cutoff"
+        )
         print("TokenStep logic harness passed")
     }
 }

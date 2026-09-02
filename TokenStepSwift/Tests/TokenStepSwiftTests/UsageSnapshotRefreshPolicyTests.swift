@@ -5,6 +5,13 @@ import XCTest
 final class UsageSnapshotRefreshPolicyTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_784_610_000)
 
+    func testInitialAutomaticRefreshIsDeferredButManualRefreshIsImmediate() {
+        let automaticDelay = InitialUsageRefreshPolicy.delaySeconds(for: .automaticStartup)
+        XCTAssertTrue(automaticDelay >= 90)
+        XCTAssertTrue(automaticDelay <= 120)
+        XCTAssertEqual(InitialUsageRefreshPolicy.delaySeconds(for: .manual), 0)
+    }
+
     func testOlderAccountingRevisionRefreshesEvenWhenAutomaticRefreshIsDisabled() {
         let snapshot = makeSnapshot(
             accountingRevision: UsageCollector.codexAccountingRevision - 1,

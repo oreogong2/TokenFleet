@@ -187,6 +187,31 @@ final class UsageCollectorExperimentalAgentTests: XCTestCase {
         XCTAssertEqual(snapshot.daily.first?.models["unknown"], 26)
     }
 
+    func testHermesCollectorQueriesOnlyRowsInsideSourceCutoff() throws {
+        let now = Date(timeIntervalSince1970: 1_784_610_000)
+        let outsideCutoff = Int(now.addingTimeInterval(-182 * 86_400).timeIntervalSince1970)
+        let insideCutoff = Int(now.addingTimeInterval(-1 * 86_400).timeIntervalSince1970)
+        let database = try makeHermesDatabase(rowsSQL: """
+        insert into sessions (
+            id, source, model, started_at, input_tokens, output_tokens
+        ) values
+            ('h-outside', 'cli', 'old-model', \(outsideCutoff), 900, 100),
+            ('h-inside', 'cli', 'current-model', \(insideCutoff), 20, 6);
+        """)
+
+        let snapshot = UsageCollector.collectUsageSnapshotForTests(
+            hermesDatabaseURL: database,
+            includeExperimentalAgentSources: true,
+            historyDays: 180,
+            now: now
+        )
+
+        XCTAssertEqual(snapshot.sources["Hermes Agent"]?.records, 1)
+        XCTAssertEqual(snapshot.totals.tokens, 26)
+        XCTAssertNil(snapshot.models.first(where: { $0.model == "old-model" }))
+        XCTAssertEqual(snapshot.daily.first?.models["current-model"], 26)
+    }
+
     func testWorkBuddyDiscoveryDoesNotEnterTotals() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TokenStepWorkBuddy-\(UUID().uuidString)", isDirectory: true)
