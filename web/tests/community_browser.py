@@ -244,10 +244,16 @@ def main():
 
             model_search = page.locator("[data-community-model-search]")
             model_search.fill("kimi")
-            assert page.locator(".community-capability-model:not([hidden])").count() == 1
-            assert page.locator(".community-capability-model:not([hidden])").inner_text().startswith("kimi-k2")
+            visible_models = page.locator(".community-capability-model:visible")
+            hidden_models = page.locator(".community-capability-model[hidden]")
+            assert visible_models.count() == 1
+            assert visible_models.inner_text().startswith("kimi-k2")
+            assert hidden_models.count() == 5
+            for index in range(hidden_models.count()):
+                assert hidden_models.nth(index).bounding_box() is None
             model_search.fill("")
-            assert page.locator(".community-capability-model:not([hidden])").count() == 6
+            assert page.locator(".community-capability-model:visible").count() == 6
+            assert page.locator(".community-capability-model[hidden]").count() == 0
 
             page.keyboard.press("Tab")
             focused = page.evaluate("document.activeElement?.tagName")

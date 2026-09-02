@@ -1286,6 +1286,7 @@ body.community-mode :focus-visible { outline-color: rgba(29,119,79,.48); }
   font-weight: 680;
   text-decoration: none;
 }
+.community-capability-model[hidden] { display: none; }
 .community-capability-model:hover,.community-capability-model[aria-current="true"] { border-color: rgba(29,119,79,.38); color: #185f43; background: #fffdf7; }
 .community-capability-model[aria-current="true"] { box-shadow: inset 0 0 0 1px #1d774f; }
 .community-capability-model small { color: #909790; font-size: 7px; font-weight: 720; }
