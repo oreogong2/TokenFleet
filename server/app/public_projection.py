@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from .models import DailyUsage, Organization, PriceVersion, User, UserRole, utcnow
 from .schemas import (
     DeviceCommunityRankResponse,
+    PublicCapabilitiesResponse,
     PublicDailyTrendItem,
     PublicDistributionItem,
     PublicLeaderboardEntry,
@@ -27,6 +28,7 @@ from .schemas import (
 )
 
 PUBLIC_DISTRIBUTION_LIMIT = 100
+PUBLIC_CAPABILITY_LABEL_LIMIT = 1000
 PUBLIC_SCAN_LIMIT_CODE = "public_projection_scan_limit_exceeded"
 MIXED_TIMEZONE_WARNING = (
     "Daily usage uses device-local date buckets and has not been recalculated "
@@ -43,7 +45,11 @@ METRIC_DEFINITIONS = {
         "null when any matching bucket is unpriced or currencies are mixed"
     ),
 }
-PublicProjectionResponse = PublicLeaderboardResponse | PublicMemberDetailResponse
+PublicProjectionResponse = (
+    PublicCapabilitiesResponse
+    | PublicLeaderboardResponse
+    | PublicMemberDetailResponse
+)
 ResponseT = TypeVar("ResponseT", bound=PublicProjectionResponse)
 
 
@@ -452,6 +458,7 @@ def _member_aggregates(
     session: Session, query: Select
 ) -> dict[str, MemberAggregate]:
     members: dict[str, MemberAggregate] = {}
+    model_identity = func.lower(DailyUsage.model).label("model_identity")
     grouped_query = _grouped_usage_query(
         session,
         query,
@@ -460,6 +467,7 @@ def _member_aggregates(
             User.display_name,
             DailyUsage.tool,
             DailyUsage.model,
+            model_identity,
         ),
     )
     for row in session.execute(grouped_query):
@@ -475,10 +483,11 @@ def _member_aggregates(
         tool_name = str(row.tool)
         model_name = str(row.model)
         member.tools.setdefault(tool_name, UsageAggregate()).add_group(row)
-        _add_case_insensitive_group(
+        _add_database_identity_group(
             member.models,
             member.model_labels,
             model_name,
+            str(row.model_identity),
             row,
         )
     return members
@@ -487,16 +496,18 @@ def _member_aggregates(
 def _model_matches(model: str):
     """Match public model filters without splitting provider casing variants."""
 
-    return func.lower(DailyUsage.model) == model.lower()
+    # Normalize both operands in the active database. Python ``lower()`` and
+    # SQLite/PostgreSQL ``lower()`` do not have identical Unicode behavior.
+    return func.lower(DailyUsage.model) == func.lower(literal(model))
 
 
-def _add_case_insensitive_group(
+def _add_database_identity_group(
     aggregates: dict[str, UsageAggregate],
     labels: dict[str, str],
     raw_label: str,
+    identity: str,
     row,
 ) -> None:
-    identity = raw_label.casefold()
     display_label = labels.get(identity)
     if display_label is None:
         display_label = raw_label
@@ -519,6 +530,8 @@ def _primary_usage(
         aggregates.items(),
         key=lambda item: (
             -item[1].total_tokens,
+            # Display-only tie break. This preserves the frozen primary tool
+            # ordering and never decides model identity or filter matching.
             item[0].casefold(),
             item[0],
         ),
@@ -534,26 +547,60 @@ def _distribution_aggregates(
     case_insensitive: bool = False,
 ) -> dict[object, UsageAggregate]:
     aggregates: dict[object, UsageAggregate] = {}
-    casefolded_aggregates: dict[str, UsageAggregate] = {}
+    identity_aggregates: dict[str, UsageAggregate] = {}
     labels: dict[str, str] = {}
+    dimensions = (dimension,)
+    if case_insensitive:
+        dimensions = (
+            dimension,
+            func.lower(dimension).label("dimension_identity"),
+        )
     grouped_query = _grouped_usage_query(
         session,
         query,
-        dimensions=(dimension,),
+        dimensions=dimensions,
     )
     for row in session.execute(grouped_query):
         dimension_value = row[0]
         if case_insensitive:
-            _add_case_insensitive_group(
-                casefolded_aggregates,
+            _add_database_identity_group(
+                identity_aggregates,
                 labels,
                 str(dimension_value),
+                str(row[1]),
                 row,
             )
         else:
             aggregate = aggregates.setdefault(dimension_value, UsageAggregate())
             aggregate.add_group(row)
-    return casefolded_aggregates if case_insensitive else aggregates
+    return identity_aggregates if case_insensitive else aggregates
+
+
+def _database_identity_labels(
+    session: Session,
+    public_scope_query: Select,
+    *,
+    dimension,
+    limit: int | None = None,
+) -> list[tuple[str, str]]:
+    canonical_label = func.lower(dimension).label("canonical_label")
+    display_label = func.min(dimension).label("display_label")
+    statement = (
+        public_scope_query.with_only_columns(
+            canonical_label,
+            display_label,
+            maintain_column_froms=True,
+        )
+        .order_by(None)
+        .group_by(canonical_label)
+        .order_by(canonical_label, display_label)
+    )
+    if limit is not None:
+        statement = statement.limit(limit)
+    return [
+        (str(row.canonical_label), str(row.display_label))
+        for row in session.execute(statement)
+    ]
 
 
 def _available_labels(
@@ -562,7 +609,6 @@ def _available_labels(
     *,
     dimension,
     max_scan_rows: int,
-    case_insensitive: bool = False,
 ) -> list[str]:
     bounded_labels = (
         public_scope_query.with_only_columns(
@@ -586,15 +632,59 @@ def _available_labels(
             .limit(PUBLIC_DISTRIBUTION_LIMIT)
         )
     )
-    if not case_insensitive:
-        return labels
-    preferred: dict[str, str] = {}
-    for label in labels:
-        identity = label.casefold()
-        current = preferred.get(identity)
-        if current is None or label < current:
-            preferred[identity] = label
-    return sorted(preferred.values(), key=lambda label: (label.casefold(), label))
+    return labels
+
+
+def _available_model_labels(
+    session: Session,
+    public_scope_query: Select,
+) -> tuple[list[str], list[str]]:
+    pairs = _database_identity_labels(
+        session,
+        public_scope_query,
+        dimension=DailyUsage.model,
+        limit=PUBLIC_DISTRIBUTION_LIMIT,
+    )
+    return (
+        [display_label for _identity, display_label in pairs],
+        [identity for identity, _display_label in pairs],
+    )
+
+
+def _capability_tool_labels(
+    session: Session,
+    public_scope_query: Select,
+) -> tuple[list[str], int]:
+    raw_labels = session.scalars(
+        public_scope_query.with_only_columns(
+            DailyUsage.tool,
+            maintain_column_froms=True,
+        )
+        .order_by(None)
+        .distinct()
+    )
+    labels = sorted(
+        {str(label) for label in raw_labels},
+        key=lambda label: (label.lower(), label),
+    )
+    return labels[:PUBLIC_CAPABILITY_LABEL_LIMIT], len(labels)
+
+
+def _capability_model_labels(
+    session: Session,
+    public_scope_query: Select,
+) -> tuple[list[str], list[str], int]:
+    pairs = _database_identity_labels(
+        session,
+        public_scope_query,
+        dimension=DailyUsage.model,
+    )
+    limited = pairs[:PUBLIC_CAPABILITY_LABEL_LIMIT]
+    return (
+        [display_label for _identity, display_label in limited],
+        [identity for identity, _display_label in limited],
+        len(pairs),
+    )
 
 
 def _metric_value(aggregate: UsageAggregate, metric: PublicMetric) -> int | None:
@@ -674,6 +764,38 @@ def _member_rank(
     return None
 
 
+def build_public_capabilities(
+    session: Session,
+    *,
+    organization: Organization,
+    max_scan_rows: int,
+) -> PublicCapabilitiesResponse:
+    _start_date, end_date = period_bounds(organization, "all")
+    public_scope_query = _base_public_usage_query(
+        organization=organization,
+        start_date=None,
+        end_date=end_date,
+        tool=None,
+        model=None,
+    )
+    _enforce_scan_limit(session, public_scope_query, max_scan_rows)
+    tools, tools_total = _capability_tool_labels(session, public_scope_query)
+    models, model_keys, models_total = _capability_model_labels(
+        session,
+        public_scope_query,
+    )
+    return PublicCapabilitiesResponse(
+        tools=tools,
+        tools_total=tools_total,
+        models=models,
+        model_keys=model_keys,
+        models_total=models_total,
+        partial=(len(tools) < tools_total or len(models) < models_total),
+        timezone=organization.default_timezone,
+        end_date=end_date,
+    )
+
+
 def build_public_leaderboard(
     session: Session,
     *,
@@ -711,12 +833,9 @@ def build_public_leaderboard(
         dimension=DailyUsage.tool,
         max_scan_rows=max_scan_rows,
     )
-    available_models = _available_labels(
+    available_models, available_model_keys = _available_model_labels(
         session,
         public_scope_query,
-        dimension=DailyUsage.model,
-        max_scan_rows=max_scan_rows,
-        case_insensitive=True,
     )
     members = _member_aggregates(session, query)
     response_timezones = TimezoneAggregate()
@@ -779,6 +898,7 @@ def build_public_leaderboard(
         end_date=end_date,
         available_tools=available_tools,
         available_models=available_models,
+        available_model_keys=available_model_keys,
         total_entries=len(ordered),
         entries=entries,
     )

@@ -15,11 +15,7 @@ enum TokenFleetHelper {
             switch command {
             case "collect":
                 let historyDays = arguments.first.flatMap(Int.init) ?? DataService.loadSettings().historyDays
-                let outcome = try DataService.runCollector(
-                    historyDays: historyDays,
-                    force: arguments.contains("--force")
-                )
-                FileHandle.standardOutput.write(Data("\(outcome.rawValue)\n".utf8))
+                try runCollection(historyDays: historyDays, force: arguments.contains("--force"))
             case "install":
                 try UpdateInstaller(arguments: arguments).run()
             default:
@@ -33,6 +29,43 @@ enum TokenFleetHelper {
     private static func fail(_ message: String) -> Never {
         FileHandle.standardError.write(Data("\(message)\n".utf8))
         exit(1)
+    }
+
+    private static func runCollection(historyDays: Int, force: Bool) throws {
+        let recorder = CollectorPerformanceRecorder()
+        let startedAt = ProcessInfo.processInfo.systemUptime
+        do {
+            let outcome = try DataService.runCollector(
+                historyDays: historyDays,
+                force: force,
+                performanceRecorder: recorder
+            )
+            try? CollectorPerformanceLogger.append(
+                outcome: outcome.rawValue,
+                totalElapsedMilliseconds: elapsedMilliseconds(since: startedAt),
+                peakRSSBytes: peakResidentMemoryBytes(),
+                sources: recorder.sources
+            )
+            FileHandle.standardOutput.write(Data("\(outcome.rawValue)\n".utf8))
+        } catch {
+            try? CollectorPerformanceLogger.append(
+                outcome: "failed",
+                totalElapsedMilliseconds: elapsedMilliseconds(since: startedAt),
+                peakRSSBytes: peakResidentMemoryBytes(),
+                sources: recorder.sources
+            )
+            throw error
+        }
+    }
+
+    private static func elapsedMilliseconds(since startedAt: TimeInterval) -> Int {
+        max(0, Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000).rounded()))
+    }
+
+    private static func peakResidentMemoryBytes() -> UInt64 {
+        var usage = rusage()
+        guard getrusage(RUSAGE_SELF, &usage) == 0 else { return 0 }
+        return UInt64(max(0, usage.ru_maxrss))
     }
 }
 

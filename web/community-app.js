@@ -1,16 +1,22 @@
-import { createCommunityApiClient } from "./community-api.js";
+import { createCommunityApiClient } from "./community-api.js?v=beta11-capability-ledger-2";
 import {
   PUBLIC_METRICS,
   PUBLIC_PERIODS,
   communityHref,
   formatPublicCost,
   isHttpsPublicUrl,
+  normalizePublicCapabilities,
   normalizePublicLeaderboard,
   normalizePublicMemberDetail,
   publicMetricValue,
   sanitizePublicFilters,
-} from "./community-contract.js";
-import { createCommunityDemoApi } from "./community-demo-data.js";
+} from "./community-contract.js?v=beta11-capability-ledger-2";
+import {
+  SUPPORTED_TOOL_CATALOG,
+  communityCapabilitiesState,
+  loadCommunityCapabilities,
+} from "./community-capabilities.js?v=beta11-capability-ledger-2";
+import { createCommunityDemoApi } from "./community-demo-data.js?v=beta11-capability-ledger-2";
 import { buildCommunityPosterModel, createCommunityPosterArtifact } from "./community-poster.js?v=beta8-canvas-preview-copy";
 import { formatTokenCount, toTokenBigInt, tokenRatio } from "./server-adapter.js";
 
@@ -138,9 +144,70 @@ function filterGroup(label, name, values, current, filters, route, emptyLabel = 
 }
 
 function filterForm(filters, route, { tools = [], models = [] } = {}) {
-  const toolLabel = tools.length ? `全部工具（${tools.length}）` : "全部工具";
-  const modelLabel = models.length ? `全部模型（${models.length}）` : "全部模型";
+  const toolLabel = tools.length ? `不限工具 · 本期有数据 ${tools.length} 种` : "不限工具";
+  const modelLabel = models.length ? `不限模型 · 本期有数据 ${models.length} 种` : "不限模型";
   return `<nav class="community-filters" aria-label="排行榜筛选">${filterGroup("日期", "period", PUBLIC_PERIODS, filters.period, filters, route)}${filterGroup("口径", "metric", PUBLIC_METRICS, filters.metric, filters, route)}${filterGroup("工具", "tool", tools, filters.tool, filters, route, toolLabel)}${filterGroup("模型", "model", models, filters.model, filters, route, modelLabel)}</nav>`;
+}
+
+function searchIdentity(value) {
+  return String(value || "").toLocaleLowerCase("en-US");
+}
+
+function capabilityStateView(key) {
+  const state = communityCapabilitiesState(key);
+  return {
+    status: state.status,
+    data: state.value ? normalizePublicCapabilities(state.value) : null,
+  };
+}
+
+export function capabilityDirectory({ capabilityState, leaderboard, filters, route }) {
+  const data = capabilityState.data;
+  const currentTools = new Set(leaderboard.availableTools);
+  const currentModelKeys = new Set(leaderboard.availableModelKeys);
+  const supportedLabels = new Set(SUPPORTED_TOOL_CATALOG.map(({ label }) => label));
+  const discoveredTools = [
+    ...(data?.tools || []),
+    ...leaderboard.availableTools,
+  ].filter((label, index, values) =>
+    !supportedLabels.has(label) && values.indexOf(label) === index
+  );
+  const tools = [
+    ...SUPPORTED_TOOL_CATALOG,
+    ...discoveredTools.map((label) => ({
+      label,
+      displayName: label,
+      note: label.includes(" via CC Switch") ? "经 CC Switch" : "公开账本历史出现来源",
+      derived: true,
+    })),
+  ];
+  const toolCards = tools.map((tool) => {
+    const active = currentTools.has(tool.label);
+    return `<a class="community-capability-tool ${active ? "has-data" : "no-data"} ${tool.derived ? "is-derived" : ""}" href="${filterHref(filters, route, "tool", tool.label)}" ${filters.tool === tool.label ? 'aria-current="true"' : ""}><span>${escapeHTML(tool.displayName)}</span><small>${active ? "本期有数据" : "本期暂无数据"}</small><em>${escapeHTML(tool.note)}</em></a>`;
+  }).join("");
+  const models = data?.models || [];
+  const modelItems = models.map((model, index) => {
+    const active = currentModelKeys.has(data.modelKeys[index]);
+    return `<a class="community-capability-model ${active ? "has-data" : "no-data"}" data-capability-model data-search-value="${escapeHTML(searchIdentity(model))}" href="${filterHref(filters, route, "model", model)}" ${filters.model === model ? 'aria-current="true"' : ""}><span>${escapeHTML(model)}</span><small>${active ? "本期有数据" : "本期 0"}</small></a>`;
+  }).join("");
+  const toolsCount = data ? String(data.toolsTotal) : "—";
+  const modelsCount = data ? String(data.modelsTotal) : "—";
+  const loading = ["idle", "loading"].includes(capabilityState.status);
+  const modelStatus = loading
+    ? '<div class="community-capability-state" role="status"><span></span><p>正在读取公开历史模型目录…</p></div>'
+    : capabilityState.status === "failure"
+      ? '<div class="community-capability-state is-error" role="alert"><strong>历史模型目录暂时读不到</strong><p>排行榜仍可正常使用；不会拿本期列表冒充完整目录。</p><button class="secondary-button small" type="button" data-community-action="retry-capabilities">重新读取</button></div>'
+      : `<div class="community-capability-models" data-capability-models>${modelItems || '<div class="community-capability-state"><p>当前公开账本暂未识别到模型。</p></div>'}</div>`;
+  const toolsCompleteness = data && !data.toolsComplete
+    ? `<small>当前展示 ${data.tools.length}／共 ${data.toolsTotal} 个历史标签</small>`
+    : "";
+  const modelsCompleteness = data && !data.modelsComplete
+    ? `<small data-capability-model-count>当前展示 ${data.models.length}／共 ${data.modelsTotal} 个模型</small>`
+    : `<small data-capability-model-count>${data ? `当前公开历史目录 ${data.models.length} 个模型` : "目录读取中"}</small>`;
+  const modelSearch = data?.models.length
+    ? '<label class="community-capability-search"><span>搜索模型</span><input type="search" inputmode="search" autocomplete="off" placeholder="输入模型名" data-community-model-search /></label>'
+    : "";
+  return `<details class="community-capabilities" data-community-capabilities><summary class="community-capabilities-summary"><span class="community-capabilities-copy"><span class="panel-kicker">CAPABILITY LEDGER / BETA.11</span><strong id="community-capabilities-title" role="heading" aria-level="2">主流工具接入，模型自动识别</strong><small>支持 ${SUPPORTED_TOOL_CATALOG.length} 个主流工具 · 历史识别 ${modelsCount} 个模型 · 本期 ${leaderboard.availableModels.length} 个</small></span><span class="community-capability-disclosure-label"><span class="when-closed">查看完整目录</span><span class="when-open">收起目录</span><i aria-hidden="true"></i></span></summary><div class="community-capabilities-content" aria-labelledby="community-capabilities-title"><p class="community-capabilities-note">工具是产品支持目录；模型来自当前公开账本中仍实际留存的历史快照，不是固定白名单。当前公开账本历史出现 ${toolsCount} 个工具标签。</p><div class="community-capability-section"><div class="community-capability-section-head"><div><strong>主要支持工具标签</strong><small>Cursor 需手动导入；Copilot 部分场景需开启 OTel</small></div>${toolsCompleteness}</div><div class="community-capability-tools">${toolCards}</div></div><div class="community-capability-section"><div class="community-capability-section-head"><div><strong>当前公开账本历史识别模型</strong>${modelsCompleteness}</div>${modelSearch}</div>${modelStatus}</div></div></details>`;
 }
 
 function totalsCells(person) {
@@ -181,12 +248,23 @@ function leaderboardRows(data) {
   return data.participants.map((person) => `<article class="community-rank-row"><span class="community-rank ${person.rank && person.rank <= 3 ? "is-top" : ""}">${person.rank && person.rank <= 3 ? `<i aria-hidden="true">${medals[person.rank]}</i>` : ""}<b>${person.rank ? String(person.rank).padStart(2, "0") : "—"}</b></span><a class="community-person" href="${localHref({ kind: "profile", publicId: person.publicId, filters: data })}"><span><strong title="${escapeHTML(person.displayName)}">${escapeHTML(person.displayName)}</strong><small>查看全部工具、模型与趋势</small></span></a>${primaryModelSummary(person)}${totalsCells(person)}<div class="community-primary"><span>${escapeHTML(metricLabel(data.metric))}</span><strong title="${escapeHTML(metricDisplay(person, data.metric, false))}">${escapeHTML(metricDisplay(person, data.metric))}</strong><small>${escapeHTML(formatPublicCost(person.cost))}</small></div></article>`).join("");
 }
 
-function renderLeaderboard({ data, filters, canonicalUrl, viewerPublicId = "" }) {
+function leaderboardEmptyState(data, filters, capabilityState) {
+  const supported = SUPPORTED_TOOL_CATALOG.find(({ label }) => label === filters.tool);
+  if (supported) {
+    return `<div class="community-empty"><span>0</span><h2>${escapeHTML(supported.displayName)} 本期暂无公开数据</h2><p>TokenFleet 已支持这个工具，但当前日期范围还没有社群成员产生可统计数据。${supported.note ? ` ${escapeHTML(supported.note)}。` : ""}</p><div><a class="secondary-button small" href="${filterHref({ ...filters, period: "all" }, { kind: "leaderboard" }, "period", "all")}">查看全部时间</a><a class="secondary-button small" href="${filterHref(filters, { kind: "leaderboard" }, "tool", "")}">返回不限工具</a></div></div>`;
+  }
+  if (filters.model && capabilityState.data?.models.includes(filters.model)) {
+    return `<div class="community-empty"><span>0</span><h2>这个模型本期暂无公开数据</h2><p>它存在于当前公开历史识别目录，但所选日期范围还没有可统计数据。</p><div><a class="secondary-button small" href="${filterHref({ ...filters, period: "all" }, { kind: "leaderboard" }, "period", "all")}">查看全部时间</a><a class="secondary-button small" href="${filterHref(filters, { kind: "leaderboard" }, "model", "")}">返回不限模型</a></div></div>`;
+  }
+  return `<div class="community-empty"><span>∅</span><h2>这个筛选下还没有参与者</h2><p>换一个日期、工具或模型再看看。</p></div>`;
+}
+
+function renderLeaderboard({ data, filters, canonicalUrl, capabilityState, viewerPublicId = "" }) {
   const ownShare = ownRankingShareButton({ viewerPublicId, enabled: Boolean(canonicalUrl) });
   const shareSummary = ownShare
     ? `<div class="community-summary-share"><span>我的排名</span>${ownShare}</div>`
     : "";
-  return `<main id="main-content" class="community-shell">${publicHeader({ title: "让自己 AI Native 化，Learn in Public.", description: "只记录 AI 用量，不查看任何对话内容。和一群人一起，看见进步的速度。" })}${filterForm(filters, { kind: "leaderboard" }, { tools: data.availableTools, models: data.availableModels })}<section class="community-summary"><div><span>参与人数</span><strong>${data.totalEntries}</strong></div><div><span>日期</span><strong>${escapeHTML(periodLabel(data.period))}</strong></div><div><span>当前口径</span><strong>${escapeHTML(metricLabel(data.metric))}</strong></div>${shareSummary}</section><p class="community-share-hint" role="note">公开榜可自由浏览；个人排名海报仅会在已接入成员从 TokenFleet App 打开时出现。</p>${timezoneNotice(data)}<section class="community-board" aria-labelledby="leaderboard-title"><div class="community-board-head"><div><span class="panel-kicker">TOKEN USAGE / COMMUNITY</span><h2 id="leaderboard-title">Token 消耗排行榜</h2></div>${data.generatedAt ? `<small>更新于 ${escapeHTML(data.generatedAt)}</small>` : ""}</div>${data.participants.length ? leaderboardRows(data) : `<div class="community-empty"><span>∅</span><h2>这个筛选下还没有参与者</h2><p>换一个日期、工具或模型再看看。</p></div>`}</section>${privacyNotice()}<footer class="community-footer">TokenFleet · 看见 AI 使用进步</footer><div class="community-toast" aria-live="polite"></div></main>`;
+  return `<main id="main-content" class="community-shell">${publicHeader({ title: "让自己 AI Native 化，Learn in Public.", description: "只记录 AI 用量，不查看任何对话内容。和一群人一起，看见进步的速度。" })}${capabilityDirectory({ capabilityState, leaderboard: data, filters, route: { kind: "leaderboard" } })}${filterForm(filters, { kind: "leaderboard" }, { tools: data.availableTools, models: data.availableModels })}<section class="community-summary"><div><span>参与人数</span><strong>${data.totalEntries}</strong></div><div><span>日期</span><strong>${escapeHTML(periodLabel(data.period))}</strong></div><div><span>当前口径</span><strong>${escapeHTML(metricLabel(data.metric))}</strong></div>${shareSummary}</section><p class="community-share-hint" role="note">公开榜可自由浏览；个人排名海报仅会在已接入成员从 TokenFleet App 打开时出现。</p>${timezoneNotice(data)}<section class="community-board" aria-labelledby="leaderboard-title"><div class="community-board-head"><div><span class="panel-kicker">TOKEN USAGE / COMMUNITY</span><h2 id="leaderboard-title">Token 消耗排行榜</h2></div>${data.generatedAt ? `<small>更新于 ${escapeHTML(data.generatedAt)}</small>` : ""}</div>${data.participants.length ? leaderboardRows(data) : leaderboardEmptyState(data, filters, capabilityState)}</section>${privacyNotice()}<footer class="community-footer">TokenFleet · 看见 AI 使用进步</footer><div class="community-toast" aria-live="polite"></div></main>`;
 }
 
 function breakdownValue(item, metric) {
@@ -207,7 +285,7 @@ function costComparisonState(items, parentCost = {}) {
   return { comparable: !hasUnpriced && !mixedCurrency, hasUnpriced, mixedCurrency };
 }
 
-export function breakdownList(items, metric, parentCost = {}) {
+export function breakdownList(items, metric, parentCost = {}, total = items.length) {
   if (!items.length) return `<div class="community-empty compact"><span>∅</span><p>暂无公开分项</p></div>`;
   const comparison = metric === "cost"
     ? costComparisonState(items, parentCost)
@@ -217,7 +295,10 @@ export function breakdownList(items, metric, parentCost = {}) {
     return value > current ? value : current;
   }, 1n);
   const notice = comparison.comparable ? "" : `<p class="community-cost-comparison-note" role="note">${comparison.mixedCurrency ? "含多种币种，未做汇率换算；金额不可直接比较，未绘制比例条。" : "存在未定价分项；金额不可完整比较，未绘制比例条。"}</p>`;
-  return `${notice}<div class="community-distribution">${items.slice(0, 10).map((item, index) => {
+  const completeness = total > items.length
+    ? `<p class="community-distribution-note" role="note">当前展示前 ${items.length} 项／共 ${total} 项</p>`
+    : `<p class="community-distribution-note">共 ${items.length} 项</p>`;
+  return `${notice}${completeness}<div class="community-distribution">${items.map((item, index) => {
     const rawValue = breakdownValue(item, metric);
     const width = rawValue === null ? 0 : Math.max(1, tokenRatio(rawValue, maximum) * 100);
     const value = metric === "cost" ? formatPublicCost(item.cost) : formatTokens(rawValue);
@@ -271,11 +352,11 @@ export function publicTrend(items, metric, parentCost = {}) {
   return `<div class="community-trend"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${items.length} 天${escapeHTML(metricLabel(metric))}趋势"><line x1="${inset}" y1="${height * .5}" x2="${width - inset}" y2="${height * .5}"/><polyline points="${line}"/>${observations}</svg><div><span>${escapeHTML(items[0]?.date || "")}</span><strong>峰值 ${escapeHTML(metric === "cost" ? "按公开标准价" : formatTokens(maximum))}</strong><span>${escapeHTML(items.at(-1)?.date || "")}</span></div></div>`;
 }
 
-function renderProfile({ person, leaderboard, filters, canonicalUrl, viewerPublicId = "" }) {
+function renderProfile({ person, leaderboard, filters, canonicalUrl, capabilityState, viewerPublicId = "" }) {
   const ownShare = viewerPublicId === person.publicId
     ? ownRankingShareButton({ viewerPublicId, enabled: Boolean(canonicalUrl) })
     : "";
-  return `<main id="main-content" class="community-shell"><header class="community-header"><a class="community-brand" href="#/rank"><span>TF</span><strong>TokenFleet</strong><small>COMMUNITY LEDGER</small></a><nav aria-label="公开页面导航"><a href="${localHref({ filters })}">返回社群榜</a><a class="community-install-link" href="/install">安装与参与</a></nav></header><a class="community-back" href="${localHref({ filters })}">← 返回社群榜</a><section class="community-profile-hero"><span class="community-profile-rank">${person.rank ? `#${person.rank}` : "未上榜"}</span><div><span class="panel-kicker">PUBLIC MEMBER</span><h1 title="${escapeHTML(person.displayName)}">${escapeHTML(person.displayName)}</h1><p>${escapeHTML(periodLabel(filters.period))} · ${escapeHTML(metricLabel(filters.metric))}</p></div><div><strong>${escapeHTML(metricDisplay(person, filters.metric))}</strong><span>${escapeHTML(metricLabel(filters.metric))}</span></div>${ownShare}</section>${filterForm(filters, { kind: "profile", publicId: person.publicId }, { tools: leaderboard.availableTools, models: leaderboard.availableModels })}${timezoneNotice(person)}<section class="community-total-panel"><div class="community-total-title"><span class="panel-kicker">TOKEN COMPOSITION</span><h2>四类 Token 构成</h2></div>${totalsCells(person)}<dl class="community-extra-totals"><div><dt>不含缓存</dt><dd title="${escapeHTML(formatTokens(person.normTokens, false))}">${escapeHTML(formatTokens(person.normTokens))}</dd></div><div><dt>含缓存合计</dt><dd title="${escapeHTML(formatTokens(person.totalTokens, false))}">${escapeHTML(formatTokens(person.totalTokens))}</dd></div><div><dt>API 等价估算</dt><dd>${escapeHTML(formatPublicCost(person.cost))}</dd></div></dl></section><section class="community-detail-grid"><article><div class="community-board-head"><div><span class="panel-kicker">BY TOOL</span><h2>工具分布</h2></div></div>${breakdownList(person.tools, filters.metric, person.cost)}</article><article><div class="community-board-head"><div><span class="panel-kicker">BY MODEL</span><h2>模型分布</h2></div></div>${breakdownList(person.models, filters.metric, person.cost)}</article><article class="wide"><div class="community-board-head"><div><span class="panel-kicker">DAILY TREND</span><h2>日趋势</h2></div></div>${publicTrend(person.dailyTrend, filters.metric, person.cost)}</article></section>${person.rank && person.rank > 100 ? '<p class="community-rank-note">该参赛者当前在榜单接口 Top 100 之外；分享图会单独附上其公开位置。</p>' : ""}${privacyNotice()}<footer class="community-footer">TokenFleet · 只记数量，不看内容</footer><div class="community-toast" aria-live="polite"></div></main>`;
+  return `<main id="main-content" class="community-shell"><header class="community-header"><a class="community-brand" href="#/rank"><span>TF</span><strong>TokenFleet</strong><small>COMMUNITY LEDGER</small></a><nav aria-label="公开页面导航"><a href="${localHref({ filters })}">返回社群榜</a><a class="community-install-link" href="/install">安装与参与</a></nav></header><a class="community-back" href="${localHref({ filters })}">← 返回社群榜</a><section class="community-profile-hero"><span class="community-profile-rank">${person.rank ? `#${person.rank}` : "未上榜"}</span><div><span class="panel-kicker">PUBLIC MEMBER</span><h1 title="${escapeHTML(person.displayName)}">${escapeHTML(person.displayName)}</h1><p>${escapeHTML(periodLabel(filters.period))} · ${escapeHTML(metricLabel(filters.metric))}</p></div><div><strong>${escapeHTML(metricDisplay(person, filters.metric))}</strong><span>${escapeHTML(metricLabel(filters.metric))}</span></div>${ownShare}</section>${capabilityDirectory({ capabilityState, leaderboard, filters, route: { kind: "profile", publicId: person.publicId } })}${filterForm(filters, { kind: "profile", publicId: person.publicId }, { tools: leaderboard.availableTools, models: leaderboard.availableModels })}${timezoneNotice(person)}<section class="community-total-panel"><div class="community-total-title"><span class="panel-kicker">TOKEN COMPOSITION</span><h2>四类 Token 构成</h2></div>${totalsCells(person)}<dl class="community-extra-totals"><div><dt>不含缓存</dt><dd title="${escapeHTML(formatTokens(person.normTokens, false))}">${escapeHTML(formatTokens(person.normTokens))}</dd></div><div><dt>含缓存合计</dt><dd title="${escapeHTML(formatTokens(person.totalTokens, false))}">${escapeHTML(formatTokens(person.totalTokens))}</dd></div><div><dt>API 等价估算</dt><dd>${escapeHTML(formatPublicCost(person.cost))}</dd></div></dl></section><section class="community-detail-grid"><article><div class="community-board-head"><div><span class="panel-kicker">BY TOOL</span><h2>工具分布</h2></div></div>${breakdownList(person.tools, filters.metric, person.cost, person.toolDistributionTotal)}</article><article><div class="community-board-head"><div><span class="panel-kicker">BY MODEL</span><h2>模型分布</h2></div></div>${breakdownList(person.models, filters.metric, person.cost, person.modelDistributionTotal)}</article><article class="wide"><div class="community-board-head"><div><span class="panel-kicker">DAILY TREND</span><h2>日趋势</h2></div></div>${publicTrend(person.dailyTrend, filters.metric, person.cost)}</article></section>${person.rank && person.rank > 100 ? '<p class="community-rank-note">该参赛者当前在榜单接口 Top 100 之外；分享图会单独附上其公开位置。</p>' : ""}${privacyNotice()}<footer class="community-footer">TokenFleet · 只记数量，不看内容</footer><div class="community-toast" aria-live="polite"></div></main>`;
 }
 
 function renderInstall() {
@@ -354,12 +435,22 @@ export function mountCommunityApp({
   // never enters a component state, a link, a log, or a referrer.
   const initialShareGrant = takeCommunityShareGrant(locationRef, historyRef);
   const canonicalUrl = publicShareUrl({ route, filters, documentRef, locationRef, demoMode });
+  const demoOptions = {
+    empty: new URLSearchParams(locationRef.search).get("scenario") === "empty",
+    locationRef,
+  };
   const api = demoMode
-    ? createCommunityDemoApi({
-      empty: new URLSearchParams(locationRef.search).get("scenario") === "empty",
-      locationRef,
-    })
+    ? createCommunityDemoApi(demoOptions)
     : createCommunityApiClient({ signal: controller.signal });
+  const capabilityKey = demoMode ? "demo" : "live";
+  const capabilityRequest = (signal) => demoMode
+    ? createCommunityDemoApi(demoOptions).capabilities()
+    : createCommunityApiClient({ signal }).capabilities();
+  const startCapabilities = (force = false) => loadCommunityCapabilities({
+    key: capabilityKey,
+    request: capabilityRequest,
+    force,
+  });
 
   const clearSecret = () => {
     secret = "";
@@ -422,6 +513,35 @@ export function mountCommunityApp({
     }
   };
 
+  const renderCurrentCommunity = () => {
+    if (!leaderboard) return;
+    const capabilityState = capabilityStateView(capabilityKey);
+    root.innerHTML = route.kind === "profile" && focus
+      ? renderProfile({
+        person: focus,
+        leaderboard,
+        filters,
+        canonicalUrl,
+        capabilityState,
+        viewerPublicId: communityShareViewerPublicId,
+      })
+      : renderLeaderboard({
+        data: leaderboard,
+        filters,
+        canonicalUrl,
+        capabilityState,
+        viewerPublicId: communityShareViewerPublicId,
+      });
+    applyCommunityDemoBanner(root, demoMode, documentRef);
+  };
+
+  const settleCapabilities = (promise) => {
+    promise.then(
+      () => { if (active()) renderCurrentCommunity(); },
+      () => { if (active()) renderCurrentCommunity(); },
+    );
+  };
+
   const load = async () => {
     if (!active()) return;
     if (route.kind === "join") {
@@ -453,6 +573,8 @@ export function mountCommunityApp({
     }
     await redeemInitialShareGrant();
     if (!active()) return;
+    const capabilityPromise = startCapabilities();
+    settleCapabilities(capabilityPromise);
     renderLoading(root);
     try {
       if (route.kind === "profile") {
@@ -471,28 +593,16 @@ export function mountCommunityApp({
         if (!active()) return;
         leaderboard = nextLeaderboard;
         focus = nextFocus;
-        root.innerHTML = renderProfile({
-          person: focus,
-          leaderboard,
-          filters,
-          canonicalUrl,
-          viewerPublicId: communityShareViewerPublicId,
-        });
+        renderCurrentCommunity();
       } else {
         const rawLeaderboard = await api.leaderboard(filters);
         if (!active()) return;
         const nextLeaderboard = normalizePublicLeaderboard(rawLeaderboard, filters);
         if (!active()) return;
         leaderboard = nextLeaderboard;
-        root.innerHTML = renderLeaderboard({
-          data: leaderboard,
-          filters,
-          canonicalUrl,
-          viewerPublicId: communityShareViewerPublicId,
-        });
+        renderCurrentCommunity();
       }
       if (!active()) return;
-      applyCommunityDemoBanner(root, demoMode, documentRef);
       if (bridgeNotice) {
         showToast(root, bridgeNotice, true, active);
         bridgeNotice = "";
@@ -630,6 +740,12 @@ export function mountCommunityApp({
       }
     }
     if (action === "retry") void load();
+    if (action === "retry-capabilities") {
+      const retry = startCapabilities(true);
+      renderCurrentCommunity();
+      settleCapabilities(retry);
+      return;
+    }
     if (action === "share-own-rank") {
       const publicId = String(target.dataset.viewerPublicId || "");
       if (!active() || !canonicalUrl || !leaderboard || !COMMUNITY_PUBLIC_ID.test(publicId) || publicId !== communityShareViewerPublicId || target.dataset.pending === "true") return;
@@ -683,6 +799,15 @@ export function mountCommunityApp({
         target.removeAttribute("aria-busy");
       }
     }
+  }, { signal: controller.signal });
+
+  root.addEventListener("input", (event) => {
+    const search = event.target.closest("[data-community-model-search]");
+    if (!search) return;
+    const query = searchIdentity(search.value.trim());
+    root.querySelectorAll("[data-capability-model]").forEach((item) => {
+      item.hidden = Boolean(query) && !String(item.dataset.searchValue || "").includes(query);
+    });
   }, { signal: controller.signal });
 
   root.addEventListener("keydown", (event) => {

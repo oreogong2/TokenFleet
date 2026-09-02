@@ -115,7 +115,7 @@ TokenFleet 首版是一套面向邀请制社群的 AI Token 本地账本与排�
 15. 自动检查更新与签名 DMG 下载流程。
 16. 本地数据与隐私说明。
 17. Agent 活跃、节奏和现有排行榜展示能力。
-18. 可选实验 Agent 本地采集：ZCode、Hermes、WorkBuddy、CodeBuddy、Qoder、Kimi Code、OpenCode、OpenClaw、Pi、Grok Build、Qwen Code、Cline、GitHub Copilot CLI / Chat OTel、Antigravity、Droid、dsh，以及用户主动导入的 Cursor Usage CSV。
+18. 默认开启、可随时关闭的实验 Agent 本地采集：ZCode（Windows 常开）、Hermes、WorkBuddy、CodeBuddy、Qoder、Kimi Code、OpenCode、OpenClaw、Pi、Grok Build、Qwen Code、Cline、GitHub Copilot CLI / Chat OTel、Antigravity、Droid、dsh；Cursor Usage CSV 仅由用户主动导入，Copilot OTel 仍需用户自行开启 exporter。
 
 新增能力：
 

@@ -898,6 +898,7 @@ struct TokenStepSettings: Codable {
     var menuBarShowsTokenCount: Bool
     var showCodexQuota: Bool
     var showExperimentalAgentSources: Bool
+    var experimentalAgentSourcesConfigured: Bool
     var language: TokenStepLanguage
     var skippedUpdateVersion: String?
     var teamSyncEnabled: Bool
@@ -916,6 +917,7 @@ struct TokenStepSettings: Codable {
         case menuBarShowsTokenCount = "menu_bar_shows_token_count"
         case showCodexQuota = "show_codex_quota"
         case showExperimentalAgentSources = "show_experimental_agent_sources"
+        case experimentalAgentSourcesConfigured = "experimental_agent_sources_configured"
         case language
         case skippedUpdateVersion = "skipped_update_version"
         case teamSyncEnabled = "team_sync_enabled"
@@ -934,7 +936,8 @@ struct TokenStepSettings: Codable {
         tokenIslandPlacement: .menuBar,
         menuBarShowsTokenCount: false,
         showCodexQuota: false,
-        showExperimentalAgentSources: false,
+        showExperimentalAgentSources: true,
+        experimentalAgentSourcesConfigured: false,
         language: .system,
         skippedUpdateVersion: nil,
         teamSyncEnabled: false,
@@ -954,6 +957,7 @@ struct TokenStepSettings: Codable {
         menuBarShowsTokenCount: Bool = false,
         showCodexQuota: Bool,
         showExperimentalAgentSources: Bool,
+        experimentalAgentSourcesConfigured: Bool = false,
         language: TokenStepLanguage,
         skippedUpdateVersion: String?,
         teamSyncEnabled: Bool = false,
@@ -971,6 +975,7 @@ struct TokenStepSettings: Codable {
         self.menuBarShowsTokenCount = menuBarShowsTokenCount
         self.showCodexQuota = showCodexQuota
         self.showExperimentalAgentSources = showExperimentalAgentSources
+        self.experimentalAgentSourcesConfigured = experimentalAgentSourcesConfigured
         self.language = language
         self.skippedUpdateVersion = skippedUpdateVersion
         self.teamSyncEnabled = teamSyncEnabled
@@ -1000,7 +1005,23 @@ struct TokenStepSettings: Codable {
         menuBarShowsTokenCount = try container.decodeIfPresent(Bool.self, forKey: .menuBarShowsTokenCount)
             ?? defaults.menuBarShowsTokenCount
         showCodexQuota = try container.decodeIfPresent(Bool.self, forKey: .showCodexQuota) ?? defaults.showCodexQuota
-        showExperimentalAgentSources = try container.decodeIfPresent(Bool.self, forKey: .showExperimentalAgentSources) ?? defaults.showExperimentalAgentSources
+        let storedExperimentalAgentSources = try container.decodeIfPresent(Bool.self, forKey: .showExperimentalAgentSources)
+        let storedExperimentalAgentSourcesConfigured = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .experimentalAgentSourcesConfigured
+        )
+        if let storedExperimentalAgentSourcesConfigured {
+            experimentalAgentSourcesConfigured = storedExperimentalAgentSourcesConfigured
+            showExperimentalAgentSources = storedExperimentalAgentSourcesConfigured
+                ? (storedExperimentalAgentSources ?? defaults.showExperimentalAgentSources)
+                : defaults.showExperimentalAgentSources
+        } else if storedExperimentalAgentSources == true {
+            showExperimentalAgentSources = true
+            experimentalAgentSourcesConfigured = true
+        } else {
+            showExperimentalAgentSources = defaults.showExperimentalAgentSources
+            experimentalAgentSourcesConfigured = false
+        }
         language = try container.decodeIfPresent(TokenStepLanguage.self, forKey: .language) ?? defaults.language
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
         teamSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .teamSyncEnabled) ?? defaults.teamSyncEnabled
@@ -1021,6 +1042,7 @@ struct TokenStepSettings: Codable {
         try container.encode(menuBarShowsTokenCount, forKey: .menuBarShowsTokenCount)
         try container.encode(showCodexQuota, forKey: .showCodexQuota)
         try container.encode(showExperimentalAgentSources, forKey: .showExperimentalAgentSources)
+        try container.encode(experimentalAgentSourcesConfigured, forKey: .experimentalAgentSourcesConfigured)
         try container.encode(language, forKey: .language)
         try container.encodeIfPresent(skippedUpdateVersion, forKey: .skippedUpdateVersion)
         try container.encode(teamSyncEnabled, forKey: .teamSyncEnabled)

@@ -11,11 +11,14 @@ from unittest import mock
 
 from tokenfleet.client import TokenFleetClient
 from tokenfleet.collectors import CollectionDiagnostics, CollectionResult
-from tokenfleet.constants import DAILY_USAGE_PATH, SIGNING_KEY_DERIVATION
+from tokenfleet.constants import (
+    COMMUNITY_RANK_PATH,
+    DAILY_USAGE_PATH,
+    SIGNING_KEY_DERIVATION,
+)
 from tokenfleet.credential import DeviceCredential
 from tokenfleet.paths import ClientPaths
-from tokenfleet.protocol import canonical_json, signed_headers
-from tokenfleet.protocol import ProtocolError
+from tokenfleet.protocol import ProtocolError, canonical_json, signed_headers
 from tokenfleet.state import StateStore
 
 
@@ -46,6 +49,7 @@ class FixtureTransport:
         self.public_id = public_id
         self.requests: list[tuple[str, dict[str, Any]]] = []
         self.uploads: list[tuple[str, bytes, dict[str, str]]] = []
+        self.gets: list[tuple[str, dict[str, str]]] = []
 
     def post(
         self,
@@ -76,6 +80,40 @@ class FixtureTransport:
         count = len(json.loads(body)["buckets"])
         return {"created": count, "updated": 0, "unchanged": 0, "ledger_version": 7}
 
+    def get(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+        expected_status: int,
+    ) -> Any:
+        assert headers is not None
+        self.gets.append((url, headers))
+        return {
+            "public_id": "33333333-3333-4333-8333-333333333333",
+            "nickname": "奥哥",
+            "public_profile_enabled": True,
+            "period": "today",
+            "metric": "tokens",
+            "rank": 137,
+            "total_entries": 200,
+            "metric_value": "12345",
+            "primary_tool": "Codex",
+            "primary_model": "gpt-5",
+            "totals": {
+                "input_tokens": "10000",
+                "output_tokens": "2345",
+                "cache_read_tokens": "0",
+                "cache_write_tokens": "0",
+                "norm_tokens": "12345",
+                "total_tokens": "12345",
+                "estimated_cost_microunits": None,
+                "cost_currency": None,
+                "unpriced": True,
+                "mixed_currency": False,
+            },
+        }
+
 
 class ClientTests(unittest.TestCase):
     bucket = {
@@ -90,6 +128,26 @@ class ClientTests(unittest.TestCase):
         "cache_write_tokens": 40,
         "completeness": "exact",
     }
+
+    def test_preview_defaults_experimental_sources_on_without_a_settings_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            captured: dict[str, object] = {}
+
+            def collector(*_args: object, **kwargs: object) -> CollectionResult:
+                captured.update(kwargs)
+                return CollectionResult([], CollectionDiagnostics())
+
+            client = TokenFleetClient(
+                credential_store=MemoryDeviceStore(),  # type: ignore[arg-type]
+                state_store=StateStore(Path(temporary) / "state.json"),
+                source_home=Path(temporary),
+                community_origin="https://community.example.com",
+                collector=collector,
+            )
+
+            client.preview()
+
+            self.assertIs(captured["include_experimental"], True)
 
     def test_connect_prepares_local_store_before_consuming_code(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -237,6 +295,42 @@ class ClientTests(unittest.TestCase):
             )
             with self.assertRaises(ProtocolError):
                 client.sync()
+
+    def test_rank_uses_device_signature_and_returns_rank_beyond_top_100(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            credential = DeviceCredential(
+                server_origin="https://community.example.com",
+                device_id="11111111-1111-4111-8111-111111111111",
+                device_public_id="22222222-2222-4222-8222-222222222222",
+                device_secret="fixture_device_value_1234567890",
+            )
+            transport = FixtureTransport(credential.device_public_id)
+            client = TokenFleetClient(
+                credential_store=MemoryDeviceStore(credential),  # type: ignore[arg-type]
+                state_store=StateStore(Path(temporary) / "state.json"),
+                source_home=Path(temporary),
+                community_origin=credential.server_origin,
+                transport=transport,
+            )
+
+            value = client.community_rank()
+
+            self.assertEqual(value["rank"], 137)
+            self.assertEqual(value["metric_value"], "12345")
+            self.assertEqual(len(transport.gets), 1)
+            url, headers = transport.gets[0]
+            self.assertEqual(url, credential.server_origin + COMMUNITY_RANK_PATH)
+            expected = signed_headers(
+                device_id=credential.device_id,
+                device_secret=credential.device_secret,
+                body=b"",
+                timestamp=int(headers["X-Timestamp"]),
+                nonce=headers["X-Nonce"],
+                method="GET",
+                path=COMMUNITY_RANK_PATH,
+            )
+            expected.pop("Content-Type")
+            self.assertEqual(headers, expected)
 
     def test_chunking_respects_server_bucket_and_body_limits(self) -> None:
         buckets = [

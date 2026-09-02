@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import event, func, select, text
 from sqlalchemy.exc import IntegrityError
 
+import app.public_projection as public_projection
 from app.models import (
     CommunityShareGrant,
     DailyUsage,
@@ -428,6 +429,7 @@ def test_public_projection_exact_only_norm_cost_and_privacy_contract(harness) ->
     assert payload["total_entries"] == 1
     assert payload["available_tools"] == ["Claude", "Codex"]
     assert payload["available_models"] == ["private-model", "public-model"]
+    assert payload["available_model_keys"] == ["private-model", "public-model"]
     entry = payload["entries"][0]
     assert entry["nickname"] == "甲"
     assert entry["metric_value"] == "340"
@@ -552,6 +554,7 @@ def test_public_model_projection_merges_case_variants_without_rewriting_ledger(
     assert leaderboard.status_code == 200
     payload = leaderboard.json()
     assert payload["available_models"] == ["GLM-5.3"]
+    assert payload["available_model_keys"] == ["glm-5.3"]
     assert payload["entries"][0]["metric_value"] == "335"
     assert payload["entries"][0]["primary_model"] == "GLM-5.3"
     assert payload["entries"][0]["primary_model_tokens"] == "335"
@@ -590,6 +593,296 @@ def test_public_model_projection_merges_case_variants_without_rewriting_ledger(
             )
         )
     assert stored_models == {"GLM-5.3", "glm-5.3"}
+
+
+def test_public_primary_tool_tie_break_remains_case_insensitive(harness) -> None:
+    _enable_alpha_public_board(harness)
+    participant = _create_participant(harness, public_profile_enabled=True)
+    device = _enroll_participant(harness, participant)
+    assert harness.signed_post(
+        device,
+        harness.usage_payload(
+            buckets=[
+                _bucket(
+                    harness,
+                    tool="ZCode",
+                    model="tie-zcode",
+                    input_tokens=10,
+                    output_tokens=0,
+                    cache_read_tokens=0,
+                    cache_write_tokens=0,
+                ),
+                _bucket(
+                    harness,
+                    tool="dsh",
+                    model="tie-dsh",
+                    input_tokens=10,
+                    output_tokens=0,
+                    cache_read_tokens=0,
+                    cache_write_tokens=0,
+                ),
+            ]
+        ),
+    ).status_code == 200
+
+    payload = harness.client.get("/api/v1/public/leaderboard").json()
+    assert payload["entries"][0]["primary_tool"] == "dsh"
+
+
+def test_public_capabilities_exposes_complete_current_public_label_snapshot(
+    harness,
+) -> None:
+    _enable_alpha_public_board(harness)
+    participant = _create_participant(
+        harness,
+        display_name="能力目录",
+        public_profile_enabled=True,
+    )
+    device = _enroll_participant(harness, participant)
+    buckets = [
+        _bucket(
+            harness,
+            tool=f"Tool {index:03d}",
+            model=f"model-{index:03d}",
+            input_tokens=1,
+            output_tokens=0,
+            cache_read_tokens=0,
+            cache_write_tokens=0,
+        )
+        for index in range(130)
+    ]
+    buckets.extend(
+        _bucket(
+            harness,
+            tool="Tool 000",
+            model=f"MODEL-{index:03d}",
+            input_tokens=1,
+            output_tokens=0,
+            cache_read_tokens=0,
+            cache_write_tokens=0,
+        )
+        for index in range(10)
+    )
+    assert harness.signed_post(
+        device,
+        harness.usage_payload(buckets=buckets),
+    ).status_code == 200
+
+    response = harness.client.get("/api/v1/public/capabilities")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == (
+        "public, max-age=15, s-maxage=15"
+    )
+    payload = response.json()
+    assert payload["timezone"] == "Asia/Shanghai"
+    assert payload["end_date"] == datetime.now(
+        ZoneInfo("Asia/Shanghai")
+    ).date().isoformat()
+    assert payload["tools_total"] == 130
+    assert len(payload["tools"]) == 130
+    assert payload["models_total"] == 130
+    assert len(payload["models"]) == 130
+    assert payload["models"][:3] == ["MODEL-000", "MODEL-001", "MODEL-002"]
+    assert payload["model_keys"][:3] == ["model-000", "model-001", "model-002"]
+    assert len(payload["model_keys"]) == len(payload["models"])
+    assert payload["partial"] is False
+    assert set(payload) == {
+        "tools",
+        "tools_total",
+        "models",
+        "model_keys",
+        "models_total",
+        "partial",
+        "timezone",
+        "end_date",
+    }
+
+
+def test_public_capabilities_applies_limit_after_model_identity_grouping(
+    harness,
+    monkeypatch,
+) -> None:
+    _enable_alpha_public_board(harness)
+    monkeypatch.setattr(
+        public_projection,
+        "PUBLIC_CAPABILITY_LABEL_LIMIT",
+        3,
+    )
+    participant = _create_participant(harness, public_profile_enabled=True)
+    device = _enroll_participant(harness, participant)
+    buckets = [
+        _bucket(
+            harness,
+            tool=f"Tool {index}",
+            model=f"model-{index}",
+            input_tokens=1,
+            output_tokens=0,
+            cache_read_tokens=0,
+            cache_write_tokens=0,
+        )
+        for index in range(5)
+    ]
+    buckets.extend(
+        _bucket(
+            harness,
+            tool="Tool 0",
+            model=f"MODEL-{index}",
+            input_tokens=1,
+            output_tokens=0,
+            cache_read_tokens=0,
+            cache_write_tokens=0,
+        )
+        for index in range(5)
+    )
+    assert harness.signed_post(
+        device,
+        harness.usage_payload(buckets=buckets),
+    ).status_code == 200
+
+    payload = harness.client.get("/api/v1/public/capabilities").json()
+    assert payload["tools_total"] == 5
+    assert payload["tools"] == ["Tool 0", "Tool 1", "Tool 2"]
+    assert payload["models_total"] == 5
+    assert payload["models"] == ["MODEL-0", "MODEL-1", "MODEL-2"]
+    assert payload["model_keys"] == ["model-0", "model-1", "model-2"]
+    assert payload["partial"] is True
+
+
+def test_public_capability_model_identity_matches_clickable_database_filter(
+    harness,
+) -> None:
+    _enable_alpha_public_board(harness)
+    participant = _create_participant(harness, public_profile_enabled=True)
+    device = _enroll_participant(harness, participant)
+    local_today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    assert harness.signed_post(
+        device,
+        harness.usage_payload(
+            buckets=[
+                _bucket(
+                    harness,
+                    usage_date=local_today - timedelta(days=1),
+                    model="ÄModel",
+                    input_tokens=11,
+                    output_tokens=0,
+                    cache_read_tokens=0,
+                    cache_write_tokens=0,
+                ),
+                _bucket(
+                    harness,
+                    model="ämodel",
+                    input_tokens=17,
+                    output_tokens=0,
+                    cache_read_tokens=0,
+                    cache_write_tokens=0,
+                ),
+            ]
+        ),
+    ).status_code == 200
+
+    capabilities = harness.client.get("/api/v1/public/capabilities").json()
+    assert set(capabilities["models"]) == {"ÄModel", "ämodel"}
+    assert set(capabilities["model_keys"]) == {"Ämodel", "ämodel"}
+    assert capabilities["models_total"] == 2
+    for label, expected_total in (("ÄModel", "11"), ("ämodel", "17")):
+        filtered = harness.client.get(
+            "/api/v1/public/leaderboard",
+            params={"period": "all", "model": label},
+        )
+        assert filtered.status_code == 200
+        assert filtered.json()["entries"][0]["totals"]["total_tokens"] == expected_total
+
+    current = harness.client.get(
+        "/api/v1/public/leaderboard",
+        params={"period": "today"},
+    ).json()
+    assert current["available_models"] == ["ämodel"]
+    assert current["available_model_keys"] == ["ämodel"]
+    assert current["entries"][0]["model_count"] == 1
+
+    historical = harness.client.get(
+        "/api/v1/public/leaderboard",
+        params={"period": "all"},
+    ).json()
+    assert historical["available_models"] == ["ÄModel", "ämodel"]
+    assert historical["available_model_keys"] == ["Ämodel", "ämodel"]
+    assert historical["entries"][0]["model_count"] == 2
+
+
+def test_public_capabilities_caches_and_invalidates_with_public_ledger_version(
+    harness,
+) -> None:
+    _enable_alpha_public_board(harness)
+    participant = _create_participant(harness, public_profile_enabled=True)
+    device = _enroll_participant(harness, participant)
+    assert harness.signed_post(
+        device,
+        harness.usage_payload(
+            buckets=[_bucket(harness, model="cache-model-a")]
+        ),
+    ).status_code == 200
+
+    statements: list[str] = []
+
+    def capture_statement(
+        _connection,
+        _cursor,
+        statement,
+        _parameters,
+        _context,
+        _executemany,
+    ) -> None:
+        statements.append(statement)
+
+    event.listen(harness.app.state.engine, "before_cursor_execute", capture_statement)
+    try:
+        first = harness.client.get("/api/v1/public/capabilities")
+        assert first.status_code == 200
+        assert len(
+            [item for item in statements if "daily_usage" in item.lower()]
+        ) == 3
+
+        statements.clear()
+        second = harness.client.get("/api/v1/public/capabilities")
+        assert second.json() == first.json()
+        assert not [item for item in statements if "daily_usage" in item.lower()]
+
+        assert harness.signed_post(
+            device,
+            harness.usage_payload(
+                buckets=[
+                    _bucket(harness, model="cache-model-a"),
+                    _bucket(harness, model="cache-model-b"),
+                ]
+            ),
+        ).status_code == 200
+        statements.clear()
+        refreshed = harness.client.get("/api/v1/public/capabilities")
+        assert refreshed.json()["models"] == ["cache-model-a", "cache-model-b"]
+        assert len(
+            [item for item in statements if "daily_usage" in item.lower()]
+        ) == 3
+
+        hidden = harness.client.patch(
+            f"/api/v1/users/{participant['participant']['id']}",
+            headers=harness.auth("a_admin"),
+            json={"public_profile_enabled": False},
+        )
+        assert hidden.status_code == 200
+        statements.clear()
+        private_snapshot = harness.client.get("/api/v1/public/capabilities")
+        assert private_snapshot.status_code == 200
+        assert private_snapshot.json()["tools"] == []
+        assert private_snapshot.json()["models"] == []
+        assert len(
+            [item for item in statements if "daily_usage" in item.lower()]
+        ) == 3
+    finally:
+        event.remove(
+            harness.app.state.engine,
+            "before_cursor_execute",
+            capture_statement,
+        )
 
 
 def test_authenticated_device_reads_only_its_public_rank_context(harness) -> None:
@@ -1241,7 +1534,7 @@ def test_public_input_limits_rate_limit_and_no_anonymous_upload(harness) -> None
             "/api/v1/public/leaderboard", headers=forwarded_headers
         ).status_code == 200
         assert proxy_client.get(
-            "/api/v1/public/leaderboard", headers=forwarded_headers
+            "/api/v1/public/capabilities", headers=forwarded_headers
         ).status_code == 200
         limited = proxy_client.get(
             "/api/v1/public/leaderboard", headers=forwarded_headers
@@ -1350,6 +1643,10 @@ def test_public_scan_limit_applies_before_caller_controlled_filters(harness) -> 
             ),
         }
     }
+    capabilities = harness.client.get("/api/v1/public/capabilities")
+    assert capabilities.status_code == 503
+    assert capabilities.headers["cache-control"] == "no-store"
+    assert capabilities.json() == broad.json()
     narrowed = harness.client.get(
         "/api/v1/public/leaderboard", params={"model": "scan-a"}
     )
@@ -1441,10 +1738,11 @@ def test_public_projection_groups_in_sql_and_caches_by_ledger_version(
             for statement in statements
             if "daily_usage" in statement.lower()
         ]
-        # One bounded scan count, two DISTINCT label queries, and one grouped
-        # member aggregate: row count changes do not increase query count.
+        # One bounded scan count, one DISTINCT tool query, one DB-identity
+        # grouped model query, and one grouped member aggregate: row count
+        # changes do not increase query count.
         assert len(first_daily_queries) == 4
-        assert sum("group by" in item.lower() for item in first_daily_queries) == 1
+        assert sum("group by" in item.lower() for item in first_daily_queries) == 2
 
         statements.clear()
         second = harness.client.get(leaderboard_url)
@@ -1579,6 +1877,7 @@ def test_public_leaderboard_scales_to_one_hundred_and_two_hundred_members(
     assert payload["entries"][0]["primary_model"].startswith("scale-model-")
     assert set(payload["available_tools"]) == {"Codex", "Claude Code"}
     assert len(payload["available_models"]) == 4
+    assert len(payload["available_model_keys"]) == 4
 
 
 def test_public_member_detail_rank_is_exact_beyond_leaderboard_limit(harness) -> None:

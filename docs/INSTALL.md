@@ -1,6 +1,10 @@
 # TokenFleet 社群成员安装与多设备登记
 
-状态：当前发布版本为 beta.10（tag `v0.1.0-beta.10`），源码安装固定检出本次 GitHub Release 标注的完整 commit SHA。源码版不会自动更新；希望统计新增 Agent 的老用户需要按本文原位升级。已经开启“实验 Agent 来源”的用户升级后会自动扫描本轮新增固定目录，并补计窗口内最多 180 天历史，个人总量和排行榜上涨属于正常补计。Windows 安装或升级后若检测到 ZCode 用量库会自动采集；本轮新增 Agent 仅在 macOS 的“设置 → 统计与采集 → 实验 Agent 来源”中启用。线上成员 Web 的滚动热修不修改同步协议、昵称、设备身份或历史数据。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
+状态：当前发布版本为 beta.12（tag `v0.1.0-beta.12`），源码安装固定检出本次 GitHub Release 标注的完整 commit SHA。源码版不会自动更新；线上成员 Web 的滚动热修不修改同步协议、昵称、设备身份或历史数据。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
+
+> **beta.12 macOS 优化：** 已降低采集 helper 与 sqlite3 查询的系统优先级，并把冷启动后的首次自动采集延后约 105 秒；用户手动“立即刷新”仍会立即执行。老用户在原设备原位升级即可，不要卸载、清数据或重新领取设备码。
+
+> **beta.11 升级提醒：** macOS 与 Windows 的实验 Agent 来源将在升级后默认开启（包括老用户），自动只读扫描新增工具的固定目录，并最多补计 180 天历史；个人总量和排行榜普遍上涨属于正常补计。用户可随时在 macOS“设置 → 统计与采集”或 Windows 本机页／`tokenfleet experimental disable` 关闭，beta.11 及后续版本中的显式关闭会永久尊重。Windows 的 ZCode 继续默认采集且不受开关控制；Cursor 仍需主动导入 Usage CSV，Copilot OTel 仍需自行开启 exporter，结果可能显示为 Copilot CLI 或 Copilot Chat。
 
 ## 1. 三套身份不要混在一起
 
@@ -114,7 +118,7 @@ tokenfleet sync
 tokenfleet open-rank
 ```
 
-Windows 参赛端采集 Codex 与 Claude Code 本地 JSONL；若存在 ZCode 独立用量库，还会只读 `model_usage` 完成行，不读取转录或 Coding Plan 额度。它支持安全连接、自动同步和上榜；暂不采集 CC Switch，也没有与 macOS 原生 App 等同的完整桌面历史与统计界面。完整说明与卸载方式见 `clients/windows/README.md`。
+Windows 参赛端采集 Codex 与 Claude Code 本地 JSONL；若存在 ZCode 独立用量库，还会只读 `model_usage` 完成行，不读取转录或 Coding Plan 额度。beta.11 默认开启 16 个已披露的自动实验来源，可在本机页或 CLI 一键关闭；CC Switch 仍不采集，也没有与 macOS 原生 App 等同的桌面界面。完整说明与卸载方式见 `clients/windows/README.md`。
 
 ## 6. 与 TokenStep 短期共存
 

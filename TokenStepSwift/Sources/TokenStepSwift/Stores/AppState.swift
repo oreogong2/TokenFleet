@@ -38,6 +38,7 @@ final class AppState: ObservableObject {
     private var timer: Timer?
     private var foregroundTimer: Timer?
     private var teamSyncTimer: Timer?
+    private var initialUsageRefreshTask: Task<Void, Never>?
     private var foregroundRefreshSurfaces = Set<String>()
     private var pendingRefreshAfterCurrent = false
     private var pendingForcedRefresh = false
@@ -87,7 +88,7 @@ final class AppState: ObservableObject {
     private init(communityServerOrigin: URL?) {
         fixedCommunityServerOrigin = communityServerOrigin
         load()
-        refreshIfSnapshotIsStale()
+        scheduleInitialUsageRefresh()
         applyDefaultAutostartIfNeeded()
         configureTimer()
         configureTeamSyncTimer()
@@ -99,6 +100,7 @@ final class AppState: ObservableObject {
         timer?.invalidate()
         foregroundTimer?.invalidate()
         teamSyncTimer?.invalidate()
+        initialUsageRefreshTask?.cancel()
     }
 
     var today: DailyUsage {
@@ -536,6 +538,7 @@ final class AppState: ObservableObject {
 
     func setExperimentalAgentSourcesVisible(_ visible: Bool) {
         settings.showExperimentalAgentSources = visible
+        settings.experimentalAgentSourcesConfigured = true
         saveSettingsAndReload()
         refresh()
     }
@@ -1048,6 +1051,15 @@ final class AppState: ObservableObject {
         refresh(forceCollection: reason != .stale)
     }
 
+    private func scheduleInitialUsageRefresh() {
+        let delay = InitialUsageRefreshPolicy.delaySeconds(for: .automaticStartup)
+        initialUsageRefreshTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.refreshIfSnapshotIsStale()
+        }
+    }
+
     private func scheduleDeferredUpdateCheck() {
         guard settings.autoUpdateEnabled else { return }
         Task { @MainActor in
@@ -1110,6 +1122,24 @@ enum UsageSnapshotRefreshReason: Equatable {
     case missingModelBreakdown
     case missingSnapshotTimestamp
     case stale
+}
+
+enum InitialUsageRefreshTrigger {
+    case automaticStartup
+    case manual
+}
+
+enum InitialUsageRefreshPolicy {
+    static let automaticStartupDelaySeconds: TimeInterval = 105
+
+    static func delaySeconds(for trigger: InitialUsageRefreshTrigger) -> TimeInterval {
+        switch trigger {
+        case .automaticStartup:
+            automaticStartupDelaySeconds
+        case .manual:
+            0
+        }
+    }
 }
 
 enum UsageSnapshotRefreshPolicy {

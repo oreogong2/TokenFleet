@@ -236,6 +236,19 @@ export function createCommunityDemoApi({ empty = false, locationRef = globalThis
     if (slow) await pause(300);
   };
   return {
+    async capabilities() {
+      await delay("capabilities");
+      return {
+        tools: TOOLS,
+        tools_total: TOOLS.length,
+        models: MODELS,
+        model_keys: MODELS.map((model) => model.toLowerCase()),
+        models_total: MODELS.length,
+        partial: false,
+        timezone: "Asia/Shanghai",
+        end_date: "2026-08-09",
+      };
+    },
     async leaderboard(filters = {}) {
       await delay("leaderboard");
       if (empty) return {
@@ -244,6 +257,7 @@ export function createCommunityDemoApi({ empty = false, locationRef = globalThis
         total_entries: 0,
         available_tools: [...TOOLS],
         available_models: [...MODELS],
+        available_model_keys: MODELS.map((model) => model.toLowerCase()),
         mixed_timezones: true,
         timezone_warning: "部分数据来自不同的设备本地时区。",
         entries: [],
@@ -260,6 +274,7 @@ export function createCommunityDemoApi({ empty = false, locationRef = globalThis
         generated_at: "2026-08-09T12:00:00Z",
         available_tools: [...TOOLS],
         available_models: [...MODELS],
+        available_model_keys: MODELS.map((model) => model.toLowerCase()),
         mixed_timezones: true,
         timezone_warning: "部分数据来自不同的设备本地时区。",
         total_entries: filtered.length,

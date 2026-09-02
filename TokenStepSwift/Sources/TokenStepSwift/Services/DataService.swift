@@ -49,7 +49,8 @@ enum DataService {
     @discardableResult
     static func runCollector(
         historyDays: Int = TokenStepSettings.defaults.historyDays,
-        force: Bool = false
+        force: Bool = false,
+        performanceRecorder: CollectorPerformanceRecorder? = nil
     ) throws -> CollectionRunOutcome {
         defer { MemoryPressure.relieveAllocatorPressure() }
         let settings = loadSettings()
@@ -71,12 +72,14 @@ enum DataService {
             state: beforeState,
             now: Date()
         ) {
+            performanceRecorder?.recordSkippedSources(previousSnapshot?.sources ?? [:])
             return .unchanged
         }
         let collectedSnapshot = UsageCollector.collect(
             historyDays: historyDays,
             includeExperimentalAgentSources: settings.showExperimentalAgentSources,
-            forceFullValidation: force || existingCheckpoint?.isFresh(at: Date()) != true
+            forceFullValidation: force || existingCheckpoint?.isFresh(at: Date()) != true,
+            performanceRecorder: performanceRecorder
         )
         try validateRecalibrationCandidate(
             collectedSnapshot,
@@ -299,9 +302,11 @@ enum DataService {
             return try runCollector(historyDays: historyDays, force: force)
         }
 
-        let process = Process()
-        process.executableURL = helperURL
-        process.arguments = ["collect", "\(historyDays)"] + (force ? ["--force"] : [])
+        let process = collectorHelperProcess(
+            helperURL: helperURL,
+            historyDays: historyDays,
+            force: force
+        )
         let standardOutput = Pipe()
         process.standardOutput = standardOutput
         let standardError = Pipe()
@@ -345,6 +350,28 @@ enum DataService {
         return CollectionRunOutcome(rawValue: output ?? "") ?? .updated
     }
 
+    private static func collectorHelperProcess(
+        helperURL: URL,
+        historyDays: Int,
+        force: Bool
+    ) -> Process {
+        let process = Process()
+        process.executableURL = helperURL
+        process.arguments = ["collect", "\(historyDays)"] + (force ? ["--force"] : [])
+        process.qualityOfService = .utility
+        return process
+    }
+
+    #if TOKENSTEP_TESTING
+    static func collectorHelperQualityOfServiceForTests() -> QualityOfService {
+        collectorHelperProcess(
+            helperURL: URL(fileURLWithPath: "/usr/bin/true"),
+            historyDays: 180,
+            force: false
+        ).qualityOfService
+    }
+    #endif
+
     static func bundledHelperURL() -> URL? {
         let bundleHelper = Bundle.main.bundleURL
             .appendingPathComponent("Contents/Helpers/\(helperName)")
@@ -382,6 +409,7 @@ enum DataService {
             menuBarShowsTokenCount: settings.menuBarShowsTokenCount,
             showCodexQuota: settings.showCodexQuota,
             showExperimentalAgentSources: settings.showExperimentalAgentSources,
+            experimentalAgentSourcesConfigured: settings.experimentalAgentSourcesConfigured,
             language: settings.language,
             skippedUpdateVersion: settings.skippedUpdateVersion,
             teamSyncEnabled: settings.teamSyncEnabled,

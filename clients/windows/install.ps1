@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$CommunityServer,
     [switch]$ValidateOnly,
-    [switch]$NoPathUpdate
+    [switch]$NoPathUpdate,
+    [switch]$NoOpen
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,7 +45,9 @@ $sourceRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $required = @(
     (Join-Path $sourceRoot "tokenfleet_cli.py"),
     (Join-Path $sourceRoot "tokenfleet"),
-    (Join-Path $sourceRoot "uninstall.ps1")
+    (Join-Path $sourceRoot "uninstall.ps1"),
+    (Join-Path $sourceRoot "requirements.txt"),
+    (Join-Path $sourceRoot "web")
 )
 foreach ($item in $required) {
     if (-not (Test-Path -LiteralPath $item)) {
@@ -87,16 +90,50 @@ if ((Split-Path -Parent $resolvedRoot) -ne $expectedParent -or (Split-Path -Leaf
 
 $appRoot = Join-Path $installRoot "app"
 $binRoot = Join-Path $installRoot "bin"
+$dataRoot = Join-Path $installRoot "data"
+$runtimeRoot = Join-Path $installRoot "runtime"
+$runtimePython = Join-Path $runtimeRoot "Scripts\python.exe"
+$dashboardPidPath = Join-Path $dataRoot "local-dashboard.pid"
+$actionTokenPath = Join-Path $dataRoot "local-dashboard.token"
+$scheduledTaskWasRegistered = $null -ne (Get-ScheduledTask -TaskName "TokenFleet Community Sync" -ErrorAction SilentlyContinue)
+$dashboardWasRunning = $false
+if (Test-Path -LiteralPath $dashboardPidPath) {
+    $dashboardPidText = [System.IO.File]::ReadAllText($dashboardPidPath).Trim()
+    $dashboardPid = 0
+    if ([int]::TryParse($dashboardPidText, [ref]$dashboardPid) -and $dashboardPid -gt 0) {
+        $dashboardProcess = Get-Process -Id $dashboardPid -ErrorAction SilentlyContinue
+        if ($null -ne $dashboardProcess -and (Test-Path -LiteralPath $runtimePython)) {
+            $processPath = [System.IO.Path]::GetFullPath($dashboardProcess.Path)
+            if ($processPath -ieq [System.IO.Path]::GetFullPath($runtimePython)) {
+                Stop-Process -Id $dashboardPid -Force -ErrorAction Stop
+                $dashboardWasRunning = $true
+            }
+        }
+    }
+}
 $stagingRoot = Join-Path $installRoot (".install-staging-" + [guid]::NewGuid().ToString("N"))
 $stagedApp = Join-Path $stagingRoot "app"
 $oldApp = Join-Path $installRoot "app.previous"
 
 New-Item -ItemType Directory -Force -Path $stagedApp | Out-Null
 New-Item -ItemType Directory -Force -Path $binRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
+if (-not (Test-Path -LiteralPath $runtimePython)) {
+    & $python -m venv $runtimeRoot
+    if ($LASTEXITCODE -ne 0) {
+        throw "TokenFleet isolated Python runtime could not be created."
+    }
+}
+& $runtimePython -m pip install --disable-pip-version-check --only-binary=:all: --requirement (Join-Path $sourceRoot "requirements.txt")
+if ($LASTEXITCODE -ne 0) {
+    throw "TokenFleet Python dependencies could not be installed."
+}
 Copy-Item -LiteralPath (Join-Path $sourceRoot "tokenfleet") -Destination $stagedApp -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot "tokenfleet_cli.py") -Destination $stagedApp -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot "uninstall.ps1") -Destination $stagedApp -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot "README.md") -Destination $stagedApp -Force
+Copy-Item -LiteralPath (Join-Path $sourceRoot "requirements.txt") -Destination $stagedApp -Force
+Copy-Item -LiteralPath (Join-Path $sourceRoot "web") -Destination $stagedApp -Recurse -Force
 
 $writeConfig = @'
 import sys
@@ -112,7 +149,34 @@ if ($LASTEXITCODE -ne 0) {
     throw "TokenFleet community configuration could not be staged."
 }
 
-& $python -m compileall -q $stagedApp
+if (-not (Test-Path -LiteralPath $actionTokenPath)) {
+    $writeActionToken = @'
+import secrets
+import sys
+from pathlib import Path
+Path(sys.argv[1]).write_bytes(secrets.token_urlsafe(32).encode() + bytes((10,)))
+'@
+    & $runtimePython -B -c $writeActionToken $actionTokenPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "TokenFleet local action token could not be created."
+    }
+}
+$tokenAcl = [System.Security.AccessControl.FileSecurity]::new()
+$currentUserSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+$tokenAcl.SetOwner($currentUserSid)
+$tokenAcl.SetAccessRuleProtection($true, $false)
+foreach ($sidValue in @($currentUserSid.Value, "S-1-5-18", "S-1-5-32-544")) {
+    $sid = [System.Security.Principal.SecurityIdentifier]::new($sidValue)
+    $rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+        $sid,
+        [System.Security.AccessControl.FileSystemRights]::FullControl,
+        [System.Security.AccessControl.AccessControlType]::Allow
+    )
+    [void]$tokenAcl.AddAccessRule($rule)
+}
+Set-Acl -LiteralPath $actionTokenPath -AclObject $tokenAcl
+
+& $runtimePython -m compileall -q $stagedApp
 if ($LASTEXITCODE -ne 0) {
     throw "TokenFleet source validation failed."
 }
@@ -143,9 +207,37 @@ finally {
 
 $launcher = Join-Path $binRoot "tokenfleet.cmd"
 $entrypoint = Join-Path $appRoot "tokenfleet_cli.py"
-$launcherText = "@echo off`r`n`"$python`" `"$entrypoint`" %*`r`n"
+$launcherText = "@echo off`r`n`"$runtimePython`" `"$entrypoint`" %*`r`n"
 [System.IO.File]::WriteAllText($launcher, $launcherText, [System.Text.UTF8Encoding]::new($false))
-[System.IO.File]::WriteAllText((Join-Path $installRoot ".installed"), "source-install-v2`r`n", [System.Text.UTF8Encoding]::new($false))
+$openLauncher = Join-Path $binRoot "tokenfleet-open.cmd"
+$openLauncherText = "@echo off`r`n`"$runtimePython`" `"$entrypoint`" open`r`n"
+[System.IO.File]::WriteAllText($openLauncher, $openLauncherText, [System.Text.UTF8Encoding]::new($false))
+[System.IO.File]::WriteAllText((Join-Path $installRoot ".installed"), "source-install-v3`r`n", [System.Text.UTF8Encoding]::new($false))
+
+if ($scheduledTaskWasRegistered) {
+    $refreshScheduledTask = @'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from tokenfleet.scheduler import register
+register(Path(sys.argv[2]), python_executable=Path(sys.argv[3]))
+'@
+    & $runtimePython -B -c $refreshScheduledTask $appRoot $entrypoint $runtimePython
+    if ($LASTEXITCODE -ne 0) {
+        throw "TokenFleet scheduled sync could not be upgraded to the isolated runtime."
+    }
+}
+
+$shell = New-Object -ComObject WScript.Shell
+$desktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "TokenFleet.lnk"
+$startMenuShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "TokenFleet.lnk"
+foreach ($shortcutPath in @($desktopShortcut, $startMenuShortcut)) {
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $openLauncher
+    $shortcut.WorkingDirectory = $binRoot
+    $shortcut.Description = "Open TokenFleet local statistics"
+    $shortcut.Save()
+}
 
 if (-not $NoPathUpdate) {
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -160,3 +252,10 @@ if (-not $NoPathUpdate) {
 Write-Output "TokenFleet Windows client installed."
 Write-Output "Open a new terminal, then run: tokenfleet connect"
 Write-Output "The one-time code is requested with hidden input and is never placed in command history."
+Write-Output "Desktop and Start Menu shortcuts open the self-healing local statistics page."
+if (-not $NoOpen) {
+    Start-Process -FilePath $openLauncher | Out-Null
+}
+elseif ($dashboardWasRunning) {
+    Start-Process -FilePath $runtimePython -ArgumentList @($entrypoint, "_serve") -WindowStyle Hidden | Out-Null
+}

@@ -28,8 +28,19 @@ issues a separate one-time code for every device.
   logged in plaintext and is not put in Windows roaming settings.
 - A Task Scheduler job every six hours, plus `status`, `preview`, `sync`,
   `open-rank`, and `uninstall` commands.
+- Sixteen automatically discovered experimental Agent sources behind one switch
+  that defaults on and can be disabled from the local dashboard or with
+  `tokenfleet experimental disable`. Never-configured installs adopt the new
+  default; an explicit prior choice is preserved. Automatic experimental history
+  is capped at 180 days.
+- Manual Cursor Usage CSV import. Cursor is never scanned automatically and uses
+  the normal client history window instead of the automatic-source 180-day cap.
+  Copilot OTel remains empty until the user enables its file exporter; accepted
+  spans are labeled `Copilot CLI` or `Copilot Chat` according to their source.
 
-CC Switch is deliberately **not collected in Windows v1**. Its proxy database
+ZCode remains automatically collected when its usage database exists and is not
+controlled by the experimental switch. CC Switch is deliberately **not collected
+in Windows v1**. Its proxy database
 can overlap the native Codex/Claude JSONL. Uploading both before the same
 cross-source deduplication has been proven would over-count usage.
 

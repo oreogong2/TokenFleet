@@ -27,6 +27,11 @@ def test_optional_same_origin_web_mount_keeps_api_routes_ahead_of_spa(
     (web_root / "index.html").write_text(
         "<!doctype html><title>TokenFleet test shell</title>", encoding="utf-8"
     )
+    admin_root = web_root / "admin"
+    admin_root.mkdir()
+    (admin_root / "index.html").write_text(
+        "<!doctype html><title>TokenFleet admin shell</title>", encoding="utf-8"
+    )
     (web_root / "styles.css").write_text("body { color: black; }", encoding="utf-8")
     engine = build_engine(f"sqlite:///{tmp_path / 'static-web.db'}")
     Base.metadata.create_all(engine)
@@ -53,6 +58,15 @@ def test_optional_same_origin_web_mount_keeps_api_routes_ahead_of_spa(
         spa_fallback = client.get("/people/member-id")
         assert "TokenFleet test shell" in spa_fallback.text
         assert spa_fallback.headers["cache-control"] == "no-cache"
+        assert "x-robots-tag" not in spa_fallback.headers
+        admin_redirect = client.get("/admin", follow_redirects=False)
+        assert admin_redirect.status_code in {307, 308}
+        assert admin_redirect.headers["x-robots-tag"] == "noindex, nofollow"
+        admin = client.get("/admin/")
+        assert "TokenFleet admin shell" in admin.text
+        assert admin.headers["x-robots-tag"] == "noindex, nofollow"
+        admin_fallback = client.get("/admin/not-a-real-page")
+        assert admin_fallback.headers["x-robots-tag"] == "noindex, nofollow"
         unauthorized_api = client.get("/api/v1/me")
         assert unauthorized_api.status_code == 401
         assert unauthorized_api.headers["cache-control"] == "no-store"

@@ -4,9 +4,10 @@ import {
   parseJsonWithLosslessIntegers,
   toQuery,
 } from "./api.js";
-import { sanitizePublicFilters } from "./community-contract.js";
+import { sanitizePublicFilters } from "./community-contract.js?v=beta11-capability-ledger-2";
 
 export const PUBLIC_API_PATHS = Object.freeze({
+  capabilities: "/api/v1/public/capabilities",
   leaderboard: "/api/v1/public/leaderboard",
   member: "/api/v1/public/members",
   batchClaim: "/api/v1/public/invitation-batches/claim",
@@ -63,6 +64,9 @@ export function createCommunityApiClient({
   }
 
   return {
+    capabilities() {
+      return request(PUBLIC_API_PATHS.capabilities);
+    },
     leaderboard(rawFilters = {}) {
       const filters = sanitizePublicFilters(rawFilters);
       return request(`${PUBLIC_API_PATHS.leaderboard}${toQuery({

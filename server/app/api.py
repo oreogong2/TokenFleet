@@ -60,6 +60,7 @@ from .schemas import (
     PriceCreate,
     PriceResponse,
     PriceVisibilityUpdate,
+    PublicCapabilitiesResponse,
     PublicLeaderboardResponse,
     PublicMemberDetailResponse,
     PublicMetric,
@@ -77,6 +78,7 @@ from .schemas import (
 )
 from .public_projection import (
     build_device_community_rank,
+    build_public_capabilities,
     build_public_leaderboard,
     build_public_member_detail,
     period_bounds,
@@ -312,6 +314,39 @@ def _advance_public_projection_version(session: Session, org_id: str) -> None:
         .values(ledger_version=Organization.ledger_version + 1)
         .execution_options(synchronize_session="fetch")
     )
+
+
+@router.get(
+    "/api/v1/public/capabilities",
+    response_model=PublicCapabilitiesResponse,
+)
+def public_capabilities(
+    request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> PublicCapabilitiesResponse:
+    _consume_public_read_limit(request)
+    organization = resolve_public_organization(session, settings.public_org_slug)
+    _start_date, end_date = period_bounds(organization, "all")
+    cache_key = (
+        "capabilities",
+        organization.id,
+        organization.ledger_version,
+        end_date,
+    )
+    cached = request.app.state.public_projection_cache.get(
+        cache_key, PublicCapabilitiesResponse
+    )
+    if cached is None:
+        cached = build_public_capabilities(
+            session,
+            organization=organization,
+            max_scan_rows=settings.public_max_scan_rows,
+        )
+        request.app.state.public_projection_cache.put(cache_key, cached)
+    response.headers["Cache-Control"] = _public_cache_control(settings)
+    return cached
 
 
 @router.get(
