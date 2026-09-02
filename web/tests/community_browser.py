@@ -208,8 +208,22 @@ def main():
             assert page.locator('input[name="tool"], input[name="model"]').count() == 0
             assert page.get_by_role("link", name="CC Switch", exact=True).count() == 1
             assert page.get_by_role("link", name="kimi-k2", exact=True).count() == 1
-            assert page.get_by_role("link", name="全部工具（3）", exact=True).count() == 1
-            assert page.get_by_role("link", name="全部模型（6）", exact=True).count() == 1
+            assert page.get_by_role(
+                "link", name="不限工具 · 本期有数据 3 种", exact=True
+            ).count() == 1
+            assert page.get_by_role(
+                "link", name="不限模型 · 本期有数据 6 种", exact=True
+            ).count() == 1
+            assert page.get_by_role(
+                "heading", name="主流工具接入，模型自动识别", exact=True
+            ).count() == 1
+            assert page.locator(".community-capability-tool").count() == 21
+            assert page.locator(".community-capability-tool:not(.is-derived)").count() == 20
+            assert page.get_by_role("link", name=re.compile(r"Kimi Code.*实验来源")).count() == 1
+            assert page.get_by_role("link", name=re.compile(r"Grok Build.*实验来源")).count() == 1
+            assert page.get_by_role("link", name=re.compile(r"Cursor.*手动导入 CSV")).count() == 1
+            assert page.locator(".community-capability-model").count() == 6
+            assert page.get_by_text("当前公开历史目录 6 个模型", exact=True).count() == 1
             assert page.get_by_role("button", name="应用筛选").count() == 0
             assert page.locator('a.community-install-link[href="/install"]').count() == 1
             assert page.get_by_text("管理员后台", exact=True).count() == 0
@@ -227,6 +241,19 @@ def main():
             assert_no_horizontal_overflow(page)
             assert_accessible_controls(page)
             page.screenshot(path=str(ARTIFACT_DIR / f"tokenfleet-rank-{width}.png"), full_page=True)
+
+            model_search = page.locator("[data-community-model-search]")
+            model_search.fill("kimi")
+            visible_models = page.locator(".community-capability-model:visible")
+            hidden_models = page.locator(".community-capability-model[hidden]")
+            assert visible_models.count() == 1
+            assert visible_models.inner_text().startswith("kimi-k2")
+            assert hidden_models.count() == 5
+            for index in range(hidden_models.count()):
+                assert hidden_models.nth(index).bounding_box() is None
+            model_search.fill("")
+            assert page.locator(".community-capability-model:visible").count() == 6
+            assert page.locator(".community-capability-model[hidden]").count() == 0
 
             page.keyboard.press("Tab")
             focused = page.evaluate("document.activeElement?.tagName")
@@ -400,6 +427,17 @@ def main():
         # Empty state is deliberate and still keyboard-accessible.
         page.goto(f"{base}/?demo=1&scenario=empty#/rank", wait_until="networkidle")
         page.get_by_text("这个筛选下还没有参与者", exact=True).wait_for()
+        assert_no_horizontal_overflow(page)
+
+        # A supported-but-unused tool gets a product-aware empty state rather
+        # than looking like an unknown or broken capability.
+        page.goto(f"{base}/?demo=1#/rank?tool=Cursor", wait_until="networkidle")
+        page.get_by_role(
+            "heading", name="Cursor 本期暂无公开数据", exact=True
+        ).wait_for()
+        assert page.get_by_text("需手动导入 CSV", exact=False).count() >= 1
+        assert page.get_by_role("link", name="查看全部时间", exact=True).count() == 1
+        assert page.get_by_role("link", name="返回不限工具", exact=True).count() == 1
         assert_no_horizontal_overflow(page)
 
         # The secret is removed before the join DOM appears, never persisted, and never rendered.
@@ -658,6 +696,8 @@ def main():
         page.wait_for_timeout(350)
         assert page.locator(".community-profile-hero").count() == 1
         assert page.locator(".community-board").count() == 0
+        assert page.locator(".community-capability-state[role='status']").count() == 0
+        assert page.locator(".community-capability-model").count() == 6
 
         # A slow profile response is also inert after returning to admin overview.
         page.goto(f"{base}/?demo=1&scenario=slow-profile#/rank/p/demo-1")

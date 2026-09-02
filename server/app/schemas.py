@@ -551,8 +551,20 @@ class PublicLeaderboardResponse(StrictModel):
     end_date: date
     available_tools: list[str]
     available_models: list[str]
+    available_model_keys: list[str]
     total_entries: int
     entries: list[PublicLeaderboardEntry]
+
+
+class PublicCapabilitiesResponse(StrictModel):
+    tools: list[str]
+    tools_total: int
+    models: list[str]
+    model_keys: list[str]
+    models_total: int
+    partial: bool
+    timezone: str
+    end_date: date
 
 
 class PublicDistributionItem(StrictModel):
