@@ -18,7 +18,7 @@ TokenFleet 包含原生 macOS 菜单栏 App 和轻量 Windows 参赛端，用来
 
 ## 当前发布方式
 
-> **当前发布版本是 beta.11（tag `v0.1.0-beta.11`）。** 这是源码分发版本，不会自动安装到老用户电脑。升级后，macOS 与 Windows 的实验 Agent 来源默认开启（包括老用户），自动扫描已披露的固定目录并最多补计 180 天历史；个人总量和排行榜上涨属于正常补计。用户可随时关闭，beta.11 及后续版本中的显式关闭会永久尊重。
+> **当前发布版本是 beta.12（tag `v0.1.0-beta.12`）。** 这是源码分发版本，不会自动安装到老用户电脑。beta.12 降低了 macOS 采集进程的系统优先级，并把冷启动后的首次自动采集延后约 105 秒。macOS 与 Windows 的实验 Agent 来源仍默认开启（包括老用户），自动扫描已披露的固定目录并最多补计 180 天历史；用户可随时关闭，beta.11 及后续版本中的显式关闭会永久尊重。
 > 新成员请按[正式加入指南](https://scn2sjohx0z1.feishu.cn/docx/I6rCdR1sKoQ3l7x7TgpcRp2lnLc)
 > 安装时，客户端固定检出本次 GitHub Release 标注的完整 commit SHA。Windows 检测到 ZCode 用量库后会自动采集且不受实验开关控制；实验来源可在 macOS 设置或 Windows 本机页／CLI 随时关闭。Cursor 仍需主动导入 CSV，Copilot OTel 仍需自行开启 exporter。
 > 线上成员 Web 会在发布 tag 基础上滚动部署经复核的服务端/网页热修；这些服务器热修不修改
@@ -197,7 +197,7 @@ TokenStepSwift/dist/TokenFleet.app
 Developer ID 签名 + Apple 公证：
 
 ```bash
-TOKENFLEET_VERSION=0.1.0-beta.11 \
+TOKENFLEET_VERSION=0.1.0-beta.12 \
 TOKENFLEET_BUNDLE_ID="com.yourcompany.TokenFleet" \
 TOKENFLEET_TEAM_ID="ABCDE12345" \
 TOKENFLEET_UPDATE_API_URL="https://updates.example.com/tokenfleet/latest" \
