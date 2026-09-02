@@ -338,7 +338,7 @@ test("join security order, deep-link assets, demo labels and license boundaries 
   assert.match(communitySource, /持续在后台同步/);
   assert.match(communitySource, /演示数据 · 不是真实排名或真实成员数据/);
   assert.match(communitySource, /未跨时区重新归日/);
-  const version = "beta11-capability-ledger-1";
+  const version = "beta11-capability-ledger-2";
   assert.match(indexSource, new RegExp(`href="/styles\\.css\\?v=${version}"`));
   assert.match(indexSource, new RegExp(`src="/public-app\\.js\\?v=${version}"`));
   assert.match(adminIndexSource, new RegExp(`href="/styles\\.css\\?v=${version}"`));

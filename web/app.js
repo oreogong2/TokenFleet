@@ -13,8 +13,8 @@ import {
   saveApiKey,
 } from "./api.js";
 import { demoApi } from "./demo-data.js";
-import { parseCommunityRoute } from "./community-contract.js?v=beta11-capability-ledger-1";
-import { mountCommunityApp } from "./community-app.js?v=beta11-capability-ledger-1";
+import { parseCommunityRoute } from "./community-contract.js?v=beta11-capability-ledger-2";
+import { mountCommunityApp } from "./community-app.js?v=beta11-capability-ledger-2";
 import {
   aggregateTokenRows,
   adaptUsageDashboard,
