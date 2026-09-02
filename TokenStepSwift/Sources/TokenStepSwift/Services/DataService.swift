@@ -362,7 +362,6 @@ enum DataService {
         return process
     }
 
-    #if TOKENSTEP_TESTING
     static func collectorHelperQualityOfServiceForTests() -> QualityOfService {
         collectorHelperProcess(
             helperURL: URL(fileURLWithPath: "/usr/bin/true"),
@@ -370,7 +369,6 @@ enum DataService {
             force: false
         ).qualityOfService
     }
-    #endif
 
     static func bundledHelperURL() -> URL? {
         let bundleHelper = Bundle.main.bundleURL

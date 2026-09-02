@@ -86,7 +86,6 @@ final class CollectorPerformanceRecorder {
         }
     }
 
-    #if TOKENSTEP_TESTING
     func measureForTests(
         source: String,
         inputURLs: [URL],
@@ -100,7 +99,6 @@ final class CollectorPerformanceRecorder {
             )
         }
     }
-    #endif
 }
 
 struct CollectorRunPerformanceLog: Codable, Equatable {
@@ -6145,14 +6143,12 @@ enum UsageCollector {
         return process
     }
 
-    #if TOKENSTEP_TESTING
     static func sqliteJSONQualityOfServiceForTests() -> QualityOfService {
         sqliteJSONProcess(
             database: URL(fileURLWithPath: "/tmp/tokenfleet-qos-test.sqlite"),
             query: "select 1"
         ).qualityOfService
     }
-    #endif
 
     private static func resolveCost(for record: UsageRecord) -> ResolvedRecordCost {
         if let sourceCost = record.costUSD,
