@@ -16,6 +16,7 @@ import {
 } from "../join-secret.js";
 import {
   breakdownList,
+  capabilityDirectory,
   publicShareUrl,
   publicTrend,
   takeCommunityShareGrant,
@@ -306,13 +307,15 @@ test("share canonical stays same-origin and carries only route plus four public 
 });
 
 test("join security order, deep-link assets, demo labels and license boundaries remain visible", async () => {
-  const [appSource, publicSource, joinSource, communitySource, posterSource, indexSource, qrSource] = await Promise.all([
+  const [appSource, publicSource, joinSource, communitySource, posterSource, indexSource, adminIndexSource, apiSource, qrSource] = await Promise.all([
     readFile(new URL("../app.js", import.meta.url), "utf8"),
     readFile(new URL("../public-app.js", import.meta.url), "utf8"),
     readFile(new URL("../join-secret.js", import.meta.url), "utf8"),
     readFile(new URL("../community-app.js", import.meta.url), "utf8"),
     readFile(new URL("../community-poster.js", import.meta.url), "utf8"),
     readFile(new URL("../index.html", import.meta.url), "utf8"),
+    readFile(new URL("../admin/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../community-api.js", import.meta.url), "utf8"),
     readFile(new URL("../qr-code.js", import.meta.url), "utf8"),
   ]);
   const combined = `${joinSource}\n${communitySource}\n${posterSource}`;
@@ -335,8 +338,76 @@ test("join security order, deep-link assets, demo labels and license boundaries 
   assert.match(communitySource, /持续在后台同步/);
   assert.match(communitySource, /演示数据 · 不是真实排名或真实成员数据/);
   assert.match(communitySource, /未跨时区重新归日/);
-  assert.match(indexSource, /href="\/styles\.css\?v=beta8-canvas-preview-copy"/);
-  assert.match(indexSource, /src="\/public-app\.js(?:\?[^\"]*)?"/);
+  const version = "beta11-capability-ledger-1";
+  assert.match(indexSource, new RegExp(`href="/styles\\.css\\?v=${version}"`));
+  assert.match(indexSource, new RegExp(`src="/public-app\\.js\\?v=${version}"`));
+  assert.match(adminIndexSource, new RegExp(`href="/styles\\.css\\?v=${version}"`));
+  assert.match(adminIndexSource, new RegExp(`src="/app\\.js\\?v=${version}"`));
+  for (const source of [appSource, publicSource]) {
+    assert.match(source, new RegExp(`community-contract\\.js\\?v=${version}`));
+    assert.match(source, new RegExp(`community-app\\.js\\?v=${version}`));
+  }
+  for (const dependency of [
+    "community-api",
+    "community-contract",
+    "community-capabilities",
+    "community-demo-data",
+  ]) {
+    assert.match(communitySource, new RegExp(`${dependency}\\.js\\?v=${version}`));
+  }
+  assert.match(apiSource, new RegExp(`community-contract\\.js\\?v=${version}`));
   assert.match(qrSource, /The above copyright notice and this permission notice/);
   assert.match(qrSource, /AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM/);
+});
+
+test("member breakdown renders every contracted item and labels a server-side remainder", () => {
+  const items = Array.from({ length: 100 }, (_, index) => ({
+    name: `model-${String(index).padStart(3, "0")}`,
+    totalTokens: String(index + 1),
+    normTokens: String(index + 1),
+    cost: { amounts: [], unpriced: true, mixedCurrency: false },
+  }));
+
+  const complete = breakdownList(items.slice(0, 24), "tokens");
+  assert.match(complete, /共 24 项/);
+  assert.match(complete, /model-023/);
+  assert.equal((complete.match(/<div><span>/g) || []).length, 24);
+
+  const partial = breakdownList(items, "tokens", {}, 101);
+  assert.match(partial, /当前展示前 100 项／共 101 项/);
+  assert.match(partial, /model-099/);
+  assert.equal((partial.match(/<div><span>/g) || []).length, 100);
+});
+
+test("capability status uses server database identities while search casing stays cosmetic", () => {
+  const html = capabilityDirectory({
+    capabilityState: {
+      status: "success",
+      data: {
+        tools: [],
+        toolsTotal: 0,
+        toolsComplete: true,
+        models: ["ÄModel", "ämodel"],
+        modelKeys: ["Ämodel", "ämodel"],
+        modelsTotal: 2,
+        modelsComplete: true,
+      },
+    },
+    leaderboard: {
+      availableTools: [],
+      availableModels: ["ämodel"],
+      availableModelKeys: ["ämodel"],
+    },
+    filters: { period: "today", metric: "tokens", tool: "", model: "" },
+    route: { kind: "leaderboard" },
+  });
+
+  assert.match(
+    html,
+    /community-capability-model no-data[^>]*><span>ÄModel<\/span><small>本期 0<\/small>/,
+  );
+  assert.match(
+    html,
+    /community-capability-model has-data[^>]*><span>ämodel<\/span><small>本期有数据<\/small>/,
+  );
 });

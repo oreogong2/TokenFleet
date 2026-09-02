@@ -24,6 +24,8 @@ const PERIOD_KEYS = new Set(PUBLIC_PERIODS.map(([value]) => value));
 const METRIC_KEYS = new Set(PUBLIC_METRICS.map(([value]) => value));
 const SAFE_PUBLIC_ID = /^[A-Za-z0-9_-]{1,128}$/;
 const CURRENCY = /^[A-Z]{3}$/;
+export const PUBLIC_DISTRIBUTION_LIMIT = 100;
+const PUBLIC_CAPABILITY_LABEL_LIMIT = 1000;
 
 function text(value, fallback = "") {
   const normalized = String(value ?? "").replace(/[\u0000-\u001f\u007f]/g, "").trim();
@@ -45,7 +47,7 @@ function tokenTotal(value = {}) {
 
 function normalizeBreakdown(values, { includeTool = false } = {}) {
   if (!Array.isArray(values)) return [];
-  return values.slice(0, 64).map((item) => {
+  return values.slice(0, PUBLIC_DISTRIBUTION_LIMIT).map((item) => {
     const totals = item?.totals ?? item ?? {};
     const inputTokens = token(totals.input_tokens ?? totals.inputTokens);
     const outputTokens = token(totals.output_tokens ?? totals.outputTokens);
@@ -142,6 +144,11 @@ export function normalizePublicParticipant(value = {}) {
     cacheReadTokens,
     cacheWriteTokens,
   });
+  const tools = normalizeBreakdown(value.tool_distribution ?? value.tools ?? value.by_tool);
+  const models = normalizeBreakdown(
+    value.model_distribution ?? value.models ?? value.by_model,
+    { includeTool: true },
+  );
   return {
     publicId,
     displayName: text(value.nickname ?? value.display_name ?? value.displayName, "匿名参赛者"),
@@ -166,9 +173,55 @@ export function normalizePublicParticipant(value = {}) {
     totalTokens: computedTotal.toString(),
     normTokens: (toTokenBigInt(inputTokens) + toTokenBigInt(outputTokens)).toString(),
     cost: normalizePublicCost({ ...value, totals }),
-    tools: normalizeBreakdown(value.tool_distribution ?? value.tools ?? value.by_tool),
-    models: normalizeBreakdown(value.model_distribution ?? value.models ?? value.by_model, { includeTool: true }),
+    tools,
+    toolDistributionTotal: Math.max(
+      tools.length,
+      Math.max(0, Math.trunc(Number(
+        value.tool_distribution_total ?? value.toolDistributionTotal,
+      ) || 0)),
+    ),
+    models,
+    modelDistributionTotal: Math.max(
+      models.length,
+      Math.max(0, Math.trunc(Number(
+        value.model_distribution_total ?? value.modelDistributionTotal,
+      ) || 0)),
+    ),
     dailyTrend: normalizeTrend(value.daily_trend ?? value.daily_series ?? value.series),
+  };
+}
+
+export function normalizePublicCapabilities(payload = {}) {
+  const labels = (value) => (Array.isArray(value) ? value : [])
+    .slice(0, PUBLIC_CAPABILITY_LABEL_LIMIT)
+    .map((item) => text(item))
+    .filter(Boolean);
+  // Preserve the server's canonical display labels and deterministic order.
+  // Re-sorting or case-folding here could break clickable filter identity.
+  const tools = labels(payload.tools);
+  const models = labels(payload.models);
+  const rawModelKeys = labels(payload.model_keys ?? payload.modelKeys);
+  const modelKeys = models.map((model, index) => rawModelKeys[index] || model);
+  const toolsTotal = Math.max(
+    tools.length,
+    Math.max(0, Math.trunc(Number(payload.tools_total ?? payload.toolsTotal) || 0)),
+  );
+  const modelsTotal = Math.max(
+    models.length,
+    Math.max(0, Math.trunc(Number(payload.models_total ?? payload.modelsTotal) || 0)),
+  );
+  const endDate = String(payload.end_date ?? payload.endDate ?? "");
+  return {
+    tools,
+    toolsTotal,
+    models,
+    modelKeys,
+    modelsTotal,
+    partial: payload.partial === true || tools.length < toolsTotal || models.length < modelsTotal,
+    toolsComplete: tools.length >= toolsTotal,
+    modelsComplete: models.length >= modelsTotal,
+    timezone: text(payload.timezone),
+    endDate: /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : "",
   };
 }
 
@@ -224,10 +277,23 @@ export function normalizePublicLeaderboard(payload = {}, rawFilters = {}) {
     ...(Array.isArray(payload.available_tools) ? payload.available_tools.map((item) => text(item)) : []),
     ...participants.flatMap((person) => person.tools.map((item) => item.name)),
   ].filter(Boolean))].sort((left, right) => left.localeCompare(right, "zh-CN"));
-  const availableModels = [...new Set([
-    ...(Array.isArray(payload.available_models) ? payload.available_models.map((item) => text(item)) : []),
-    ...participants.flatMap((person) => person.models.map((item) => item.name)),
-  ].filter(Boolean))].sort((left, right) => left.localeCompare(right, "zh-CN"));
+  const serverModels = Array.isArray(payload.available_models)
+    ? payload.available_models.map((item) => text(item)).filter(Boolean)
+    : [];
+  const serverModelKeys = Array.isArray(payload.available_model_keys)
+    ? payload.available_model_keys.map((item) => text(item))
+    : [];
+  const modelPairs = (serverModels.length
+    ? serverModels.map((label, index) => ({
+      label,
+      key: serverModelKeys[index] || label,
+    }))
+    : [...new Set(participants.flatMap((person) =>
+      person.models.map((item) => item.name)
+    ).filter(Boolean))].map((label) => ({ label, key: label })))
+    .sort((left, right) => left.label.localeCompare(right.label, "zh-CN"));
+  const availableModels = modelPairs.map(({ label }) => label);
+  const availableModelKeys = modelPairs.map(({ key }) => key);
 
   return {
     period: filters.period,
@@ -241,6 +307,7 @@ export function normalizePublicLeaderboard(payload = {}, rawFilters = {}) {
     ),
     availableTools,
     availableModels,
+    availableModelKeys,
     generatedAt: text(payload.generated_at),
     mixedTimezones: payload.mixed_timezones === true,
     timezoneWarning: text(payload.timezone_warning),

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   communityHref,
   formatPublicCost,
+  normalizePublicCapabilities,
   normalizePublicLeaderboard,
   normalizePublicMemberDetail,
   parseCommunityRoute,
@@ -99,15 +100,19 @@ test("real PublicMemberDetailResponse nested totals feed non-zero tool/model/tre
     tool_distribution: [
       { name: "Codex", metric_value: "100", totals: { ...exactTotals, total_tokens: "100" } },
     ],
+    tool_distribution_total: 3,
     model_distribution: [
       { name: "gpt-5.2-codex", metric_value: "88", totals: { ...exactTotals, total_tokens: "88" } },
     ],
+    model_distribution_total: 4,
     daily_trend: [
       { date: "2026-08-09", metric_value: "77", totals: { ...exactTotals, total_tokens: "77" } },
     ],
   });
 
   assert.equal(detail.tools[0].name, "Codex");
+  assert.equal(detail.toolDistributionTotal, 3);
+  assert.equal(detail.modelDistributionTotal, 4);
   assert.equal(detail.mixedTimezones, true);
   assert.equal(detail.timezoneWarning, "设备本地日桶未跨时区重归日。");
   assert.equal(detail.tools[0].totalTokens, "900719925474099312376");
@@ -120,6 +125,69 @@ test("real PublicMemberDetailResponse nested totals feed non-zero tool/model/tre
   assert.equal(detail.dailyTrend[0].totalTokens, "900719925474099312376");
   assert.equal(detail.dailyTrend[0].normTokens, "900719925474099312352");
   assert.equal(detail.dailyTrend[0].cost.amounts[0].microunits, "18014398509481988");
+});
+
+test("capability contract preserves server identity order and independent partial state", () => {
+  const capabilities = normalizePublicCapabilities({
+    tools: ["ZCode", "Codex"],
+    tools_total: 3,
+    models: ["z-model", "A-model", "ÄModel"],
+    model_keys: ["z-model", "a-model", "ÄModel"],
+    models_total: 3,
+    partial: true,
+    timezone: "Asia/Shanghai",
+    end_date: "2026-09-02",
+  });
+
+  assert.deepEqual(capabilities.tools, ["ZCode", "Codex"]);
+  assert.deepEqual(capabilities.models, ["z-model", "A-model", "ÄModel"]);
+  assert.deepEqual(capabilities.modelKeys, ["z-model", "a-model", "ÄModel"]);
+  assert.equal(capabilities.toolsTotal, 3);
+  assert.equal(capabilities.modelsTotal, 3);
+  assert.equal(capabilities.toolsComplete, false);
+  assert.equal(capabilities.modelsComplete, true);
+  assert.equal(capabilities.partial, true);
+  assert.equal(capabilities.endDate, "2026-09-02");
+});
+
+test("leaderboard preserves database model identity keys alongside sorted labels", () => {
+  const leaderboard = normalizePublicLeaderboard({
+    period: "today",
+    metric: "tokens",
+    available_models: ["ämodel", "ÄModel", "GLM-5.3"],
+    available_model_keys: ["ämodel", "ÄModel", "glm-5.3"],
+    entries: [],
+  });
+
+  assert.deepEqual(
+    Object.fromEntries(leaderboard.availableModels.map((label, index) => [
+      label,
+      leaderboard.availableModelKeys[index],
+    ])),
+    {
+      "GLM-5.3": "glm-5.3",
+      "ämodel": "ämodel",
+      "ÄModel": "ÄModel",
+    },
+  );
+});
+
+test("member detail retains the server's full one-hundred-item distribution contract", () => {
+  const items = Array.from({ length: 101 }, (_, index) => ({
+    name: `model-${String(index).padStart(3, "0")}`,
+    totals: { input_tokens: String(index + 1) },
+  }));
+  const detail = normalizePublicMemberDetail({
+    public_id: "member-one-hundred",
+    nickname: "一百项成员",
+    totals: {},
+    model_distribution: items,
+    model_distribution_total: 101,
+  });
+
+  assert.equal(detail.models.length, 100);
+  assert.equal(detail.models.at(-1).name, "model-099");
+  assert.equal(detail.modelDistributionTotal, 101);
 });
 
 test("/rank is canonical while /community stays a compatible read route", () => {
