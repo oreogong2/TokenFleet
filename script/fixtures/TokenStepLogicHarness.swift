@@ -135,14 +135,14 @@ struct TokenStepLogicHarness {
             "Credential terminal state exposed a force bypass"
         )
 
-        let beta7LeaderboardData = Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":["gpt-5"],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"奥哥","metric_value":"704000000","totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false}}]}"#.utf8)
+        let beta7LeaderboardData = Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":["gpt-5"],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"示例成员","metric_value":"704000000","totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false}}]}"#.utf8)
         let beta7Leaderboard = try JSONDecoder().decode(
             TeamSyncPublicLeaderboard.self,
             from: beta7LeaderboardData
         )
         expect(beta7Leaderboard.isValid, "beta.7 public leaderboard response was rejected")
         expect(
-            beta7Leaderboard.entries.first?.nickname == "奥哥"
+            beta7Leaderboard.entries.first?.nickname == "示例成员"
                 && beta7Leaderboard.entries.first?.toolCount == 0
                 && beta7Leaderboard.entries.first?.primaryTool == nil
                 && beta7Leaderboard.entries.first?.modelCount == 0
@@ -150,7 +150,7 @@ struct TokenStepLogicHarness {
             "beta.7 public leaderboard fallback fabricated primary dimensions"
         )
 
-        let partialDimensionData = Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":[],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"奥哥","metric_value":"704000000","primary_tool":"Codex","totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false}}]}"#.utf8)
+        let partialDimensionData = Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":[],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"示例成员","metric_value":"704000000","primary_tool":"Codex","totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false}}]}"#.utf8)
         let partialDimensionBoard = try JSONDecoder().decode(
             TeamSyncPublicLeaderboard.self,
             from: partialDimensionData

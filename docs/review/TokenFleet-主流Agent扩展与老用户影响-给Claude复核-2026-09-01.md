@@ -1,7 +1,7 @@
 # TokenFleet 主流 Agent 扩展：Claude 增量复核报告
 
 日期：2026-09-01（Asia/Singapore）
-工作目录：`/Users/oreo/Desktop/code/TokenFleet`
+工作目录：`<PROJECT_ROOT>`
 分支：`codex/tokenfleet-platform`
 基线提交：`3e40bd76198edb4d2b9a43b61a564ff2c08b8b45`
 当前状态：Claude 两轮增量复核中提出的阻断项均已修；最新本地完整门禁通过；尚未提交、打包、安装或连接生产 TeamSync，等待 Claude 快速终审。
@@ -21,7 +21,7 @@ Claude 首轮指出的账本双计、误删历史和榜单漏同步问题均已�
 
 对老用户的答案没有变化：旧客户端可以继续使用，不强制升级；想统计新增来源的用户需要升级客户端。服务端的 `tool`、`model` 都是自由字符串，本轮没有服务端字段或 migration，也没有修改 `server/`。
 
-产品授权语义已经由奥哥改为最终口径：macOS 与 Windows 的实验总开关默认开启，并继续自动覆盖未来加入该开关的来源；升级后对老用户也统一开启，新版本中的显式关闭会永久尊重。升级后可能补计最多 180 天历史，必须通过更新说明显著告知，不能静默发布。Windows 的 ZCode 默认采集且不进开关；Cursor 仍是手动 CSV 且使用正常历史窗口，Copilot OTel 仍需用户自行开启 exporter，结果可能标为 Copilot CLI 或 Copilot Chat。
+产品授权语义已经由维护者改为最终口径：macOS 与 Windows 的实验总开关默认开启，并继续自动覆盖未来加入该开关的来源；升级后对老用户也统一开启，新版本中的显式关闭会永久尊重。升级后可能补计最多 180 天历史，必须通过更新说明显著告知，不能静默发布。Windows 的 ZCode 默认采集且不进开关；Cursor 仍是手动 CSV 且使用正常历史窗口，Copilot OTel 仍需用户自行开启 exporter，结果可能标为 Copilot CLI 或 Copilot Chat。
 
 ## 2. 首轮问题闭环
 
@@ -99,7 +99,7 @@ Cursor 是例外：个人账号数据只来自用户主动导入的官方 Usage 
 3. 自动补计最多 180 天历史，排行榜和个人总量可能因此上涨；
 4. Windows ZCode 不进开关，Cursor 手动导入与 Copilot OTel exporter 前置保持不变。
 
-同时单独披露 ZCode／Hermes 的旧 schema 回填，以及 WorkBuddy 的去重、模型键和 cache 口径变化。发版前仍需奥哥对最终用户文案做措辞把关。
+同时单独披露 ZCode／Hermes 的旧 schema 回填，以及 WorkBuddy 的去重、模型键和 cache 口径变化。发版前仍需维护者对最终用户文案做措辞把关。
 
 ## 7. 服务端与 10 万行／设备配额
 
@@ -140,7 +140,7 @@ git diff --check
 
 ## 9. 建议放量方式：直接利用现有已安装用户
 
-奥哥补充后，放量判断修正如下：TokenFleet 已经发给现有用户，很多老用户的电脑本来就安装并实际使用了这些 Agent，没有必要再单独招募 8–15 台“真机”。现有安装用户就是最有代表性的样本池，更新可以直接提供给他们。
+维护者补充后，放量判断修正如下：TokenFleet 已经发给现有用户，很多老用户的电脑本来就安装并实际使用了这些 Agent，没有必要再单独招募 8–15 台“真机”。现有安装用户就是最有代表性的样本池，更新可以直接提供给他们。
 
 - 价值不只是“模型名更多”。模型通常由云端 Agent 调用，TokenFleet 真正读取的是本地日志里实际出现的模型 ID；更关键的是现有用户覆盖了不同产品版本、账号类型、IDE／安装路径、功能开关和日志 schema。
 - 更新后可以立即利用真实日志验证 Copilot DB+OTel 同机、dsh 明文／zstd／cache、Antigravity thinking／tool usage、WorkBuddy、CodeBuddy／Qoder，以及 Cursor 大归档。
@@ -159,7 +159,7 @@ git diff --check
 
 ## 11. 给 Claude 的快速终审任务
 
-请在 `/Users/oreo/Desktop/code/TokenFleet` 对分支 `codex/tokenfleet-platform` 的未提交工作树做独立只读增量复核。不要修改文件、提交、安装 App、读取真实对话正文、访问真实 Keychain、开启 OTel、上传数据或连接生产 TeamSync。
+请在 `<PROJECT_ROOT>` 对分支 `codex/tokenfleet-platform` 的未提交工作树做独立只读增量复核。不要修改文件、提交、安装 App、读取真实对话正文、访问真实 Keychain、开启 OTel、上传数据或连接生产 TeamSync。
 
 优先审查：
 

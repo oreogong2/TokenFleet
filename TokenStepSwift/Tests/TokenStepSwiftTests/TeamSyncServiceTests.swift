@@ -95,7 +95,7 @@ final class TeamSyncServiceTests: XCTestCase {
         let http = RecordingTeamSyncHTTPClient(
             responses: [
                 TeamSyncHTTPResponse(
-                    data: Data(#"{"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"奥哥","public_profile_enabled":true,"period":"today","metric":"tokens","rank":2,"total_entries":10,"metric_value":"704000000"}"#.utf8),
+                    data: Data(#"{"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"维护者","public_profile_enabled":true,"period":"today","metric":"tokens","rank":2,"total_entries":10,"metric_value":"704000000"}"#.utf8),
                     statusCode: 200
                 )
             ]

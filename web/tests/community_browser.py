@@ -275,8 +275,8 @@ def main():
             assert page.get_by_text("只下载安装不会自动加入", exact=False).count() == 1
             assert page.get_by_text("只用于客户端安装参数", exact=False).count() == 1
             assert page.get_by_text("没有批次链接和设备码，安装后仍无法加入社群。", exact=True).count() == 1
-            assert page.get_by_text("诗奥", exact=False).count() == 0
-            assert page.get_by_text("奥哥", exact=False).count() == 0
+            assert page.get_by_text("示例成员", exact=False).count() == 0
+            assert page.get_by_text("示例成员", exact=False).count() == 0
             assert page.get_by_role("img", name="扫码添加微信领取邀请码二维码", exact=True).count() == 1
             qr_layout = page.locator(".install-qr-frame").evaluate(
                 """frame => {

@@ -193,7 +193,7 @@ final class TeamSyncProtocolTests: XCTestCase {
     }
 
     func testCommunityRankResponseValidatesIdentityAndRankBounds() throws {
-        let data = Data(#"{"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"奥哥","public_profile_enabled":true,"period":"today","metric":"tokens","rank":2,"total_entries":10,"metric_value":"704000000","primary_tool":"Codex","primary_model":"gpt-5","totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":"1200000","cost_currency":"USD","unpriced":false,"mixed_currency":false}}"#.utf8)
+        let data = Data(#"{"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"维护者","public_profile_enabled":true,"period":"today","metric":"tokens","rank":2,"total_entries":10,"metric_value":"704000000","primary_tool":"Codex","primary_model":"gpt-5","totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":"1200000","cost_currency":"USD","unpriced":false,"mixed_currency":false}}"#.utf8)
         let rank = try JSONDecoder().decode(TeamSyncCommunityRank.self, from: data)
         XCTAssertTrue(rank.isValid)
         XCTAssertEqual(rank.exceededPercentage, 80)
@@ -235,7 +235,7 @@ final class TeamSyncProtocolTests: XCTestCase {
     }
 
     func testPublicLeaderboardValidatesTopTenAndPrimaryDimensions() throws {
-        let data = Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":["gpt-5"],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"奥哥","metric_value":"704000000","primary_tool":"Codex","primary_tool_tokens":"704000000","tool_count":1,"primary_model":"gpt-5","primary_model_tokens":"704000000","model_count":1,"totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":"1200000","cost_currency":"USD","unpriced":false,"mixed_currency":false}}]}"#.utf8)
+        let data = Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":["gpt-5"],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"维护者","metric_value":"704000000","primary_tool":"Codex","primary_tool_tokens":"704000000","tool_count":1,"primary_model":"gpt-5","primary_model_tokens":"704000000","model_count":1,"totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":"1200000","cost_currency":"USD","unpriced":false,"mixed_currency":false}}]}"#.utf8)
         let board = try JSONDecoder().decode(TeamSyncPublicLeaderboard.self, from: data)
 
         XCTAssertTrue(board.isValid)
@@ -252,11 +252,11 @@ final class TeamSyncProtocolTests: XCTestCase {
     }
 
     func testPublicLeaderboardAcceptsBeta7RowsWithoutPrimaryDimensions() throws {
-        let data = Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":["gpt-5"],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"奥哥","metric_value":"704000000","totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false}}]}"#.utf8)
+        let data = Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":["gpt-5"],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"维护者","metric_value":"704000000","totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false}}]}"#.utf8)
         let board = try JSONDecoder().decode(TeamSyncPublicLeaderboard.self, from: data)
 
         XCTAssertTrue(board.isValid)
-        XCTAssertEqual(board.entries.first?.nickname, "奥哥")
+        XCTAssertEqual(board.entries.first?.nickname, "维护者")
         XCTAssertEqual(board.entries.first?.toolCount, 0)
         XCTAssertNil(board.entries.first?.primaryTool)
         XCTAssertEqual(board.entries.first?.modelCount, 0)
@@ -264,7 +264,7 @@ final class TeamSyncProtocolTests: XCTestCase {
     }
 
     func testPublicLeaderboardStillRejectsPartialPrimaryDimension() throws {
-        let data = Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":[],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"奥哥","metric_value":"704000000","primary_tool":"Codex","totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false}}]}"#.utf8)
+        let data = Data(#"{"period":"today","metric":"tokens","timezone":"Asia/Shanghai","mixed_timezones":false,"total_entries":1,"available_tools":["Codex"],"available_models":[],"entries":[{"rank":1,"public_id":"123e4567-e89b-12d3-a456-426614174000","nickname":"维护者","metric_value":"704000000","primary_tool":"Codex","totals":{"input_tokens":"4","output_tokens":"0","cache_read_tokens":"704000000","cache_write_tokens":"0","norm_tokens":"4","total_tokens":"704000000","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false}}]}"#.utf8)
         let board = try JSONDecoder().decode(TeamSyncPublicLeaderboard.self, from: data)
 
         XCTAssertFalse(board.isValid)
