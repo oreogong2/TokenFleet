@@ -13,7 +13,7 @@ class PublicPrivacyTests(unittest.TestCase):
         email = "synthetic.person" + "@" + "gmail.com"
         home = "/Users/" + "synthetic-owner/project"
         address = ".".join(["8", "8", "4", "4"])
-        key = "-----" + "BEGIN PRIVATE KEY" + "-----"
+        key = "-----" + " ".join(("BEGIN", "PRIVATE", "KEY")) + "-----"
         text = "\n".join([email, home, address, key])
         issues = content_issues("docs/report.md", text)
         self.assertEqual({kind for _, kind in issues}, {
