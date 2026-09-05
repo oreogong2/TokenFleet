@@ -556,7 +556,7 @@
       </div>
       <div class="progress-panel" aria-live="polite">
         <div class="metric"><small>清单总项</small><b id="totalCount">0</b></div>
-        <div class="metric"><small>奥哥已勾选</small><b id="checkedCount">0</b></div>
+        <div class="metric"><small>维护者已勾选</small><b id="checkedCount">0</b></div>
         <div class="metric"><small>还未决定</small><b id="remainingCount">0</b></div>
       </div>
       <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="progressFill"></div></div>
@@ -931,7 +931,7 @@
 
     async function copyList(selected) {
       const items = allItems.filter(item => Boolean(state[item.id]) === selected);
-      const title = selected ? "TokenFleet beta.8｜奥哥希望保留或实现" : "TokenFleet beta.8｜尚未勾选";
+      const title = selected ? "TokenFleet beta.8｜维护者希望保留或实现" : "TokenFleet beta.8｜尚未勾选";
       const lines = [title, "", ...items.map(item => `- [${selected ? "x" : " "}] ${item.title}（${statusMeta[item.status].label}｜${item.source}）`)];
       try {
         await navigator.clipboard.writeText(lines.join("\n"));

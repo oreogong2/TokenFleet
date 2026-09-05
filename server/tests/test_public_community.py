@@ -906,7 +906,7 @@ def test_authenticated_device_reads_only_its_public_rank_context(harness) -> Non
     )
     assert first_upload.status_code == 200
 
-    second = _create_participant(harness, display_name="奥哥")
+    second = _create_participant(harness, display_name="示例成员")
     second_device = _enroll_participant(harness, second)
     second_upload = harness.signed_post(
         second_device,
@@ -933,7 +933,7 @@ def test_authenticated_device_reads_only_its_public_rank_context(harness) -> Non
     assert response.headers["cache-control"] == "no-store"
     assert response.json() == {
         "public_id": second["participant"]["public_id"],
-        "nickname": "奥哥",
+        "nickname": "示例成员",
         "public_profile_enabled": True,
         "period": "today",
         "metric": "tokens",

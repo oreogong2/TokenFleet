@@ -1,0 +1,27 @@
+name: Public source privacy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  public-privacy:
+    name: Public source and new commit privacy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the actual change head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Test privacy checks
+        run: python3 -m unittest -v script/test_verify_public_privacy.py
+      - name: Check public files and only newly introduced commit identities
+        env:
+          PRIVACY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 script/verify_public_privacy.py --base-ref "$PRIVACY_BASE_SHA"
