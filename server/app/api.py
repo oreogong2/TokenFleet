@@ -62,7 +62,9 @@ from .schemas import (
     PriceVisibilityUpdate,
     PublicCapabilitiesResponse,
     PublicLeaderboardResponse,
+    PublicLeaderboardResponseV2,
     PublicMemberDetailResponse,
+    PublicMemberDetailResponseV2,
     PublicMetric,
     PublicPeriod,
     TokenRequest,
@@ -350,6 +352,10 @@ def public_capabilities(
 
 
 @router.get(
+    "/api/v1/public/priced-leaderboard",
+    response_model=PublicLeaderboardResponseV2,
+)
+@router.get(
     "/api/v1/public/leaderboard",
     response_model=PublicLeaderboardResponse,
 )
@@ -399,6 +405,10 @@ def public_leaderboard(
     return cached.model_copy(update={"entries": cached.entries[:limit]})
 
 
+@router.get(
+    "/api/v1/public/priced-members/{public_id}",
+    response_model=PublicMemberDetailResponseV2,
+)
 @router.get(
     "/api/v1/public/members/{public_id}",
     response_model=PublicMemberDetailResponse,

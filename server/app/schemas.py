@@ -601,5 +601,35 @@ class PublicMemberDetailResponse(StrictModel):
     daily_trend: list[PublicDailyTrendItem]
 
 
+class PublicUsageTotalsV2(PublicUsageTotals):
+    # Only the v2 web projection exposes partial, explicitly public estimates.
+    # The frozen v1/device totals retain their all-or-nothing cost semantics.
+    priced_tokens: NonNegativeIntegerString
+    priced_costs_microunits: dict[str, NonNegativeIntegerString]
+
+
+class PublicLeaderboardEntryV2(PublicLeaderboardEntry):
+    totals: PublicUsageTotalsV2
+
+
+class PublicLeaderboardResponseV2(PublicLeaderboardResponse):
+    entries: list[PublicLeaderboardEntryV2]
+
+
+class PublicDistributionItemV2(PublicDistributionItem):
+    totals: PublicUsageTotalsV2
+
+
+class PublicDailyTrendItemV2(PublicDailyTrendItem):
+    totals: PublicUsageTotalsV2
+
+
+class PublicMemberDetailResponseV2(PublicMemberDetailResponse):
+    totals: PublicUsageTotalsV2
+    tool_distribution: list[PublicDistributionItemV2]
+    model_distribution: list[PublicDistributionItemV2]
+    daily_trend: list[PublicDailyTrendItemV2]
+
+
 class HealthResponse(StrictModel):
     status: Literal["ok", "ready"]

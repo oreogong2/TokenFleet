@@ -7,6 +7,34 @@ function jsonResponse(payload) {
   return new Response(JSON.stringify(payload), { headers: { "content-type": "application/json" } });
 }
 
+test("pricing reads fall back to frozen endpoints only on 404", async () => {
+  const paths = [];
+  const api = createCommunityApiClient({baseUrl: "", fetchImpl: async (url) => {
+    paths.push(url);
+    if (url.includes("/priced-")) return new Response('{"detail":"Not Found"}', {
+      status: 404, headers: {"content-type": "application/json"},
+    });
+    return jsonResponse({entries: []});
+  }});
+  await api.leaderboard({period: "7d"});
+  await api.member("member-1", {period: "all"});
+  assert.deepEqual(paths, [
+    "/api/v1/public/priced-leaderboard?period=7d&metric=tokens&limit=100",
+    "/api/v1/public/leaderboard?period=7d&metric=tokens&limit=100",
+    "/api/v1/public/priced-members/member-1?period=all&metric=tokens",
+    "/api/v1/public/members/member-1?period=all&metric=tokens",
+  ]);
+  for (const status of [401, 429, 500]) {
+    let requests = 0;
+    const unavailable = createCommunityApiClient({fetchImpl: async () => {
+      requests += 1;
+      return new Response('{"detail":"unavailable"}', {status, headers: {"content-type": "application/json"}});
+    }});
+    await assert.rejects(unavailable.leaderboard(), error => error.status === status);
+    assert.equal(requests, 1);
+  }
+});
+
 test("anonymous public API uses frozen paths/query and never sends credentials", async () => {
   const requests = [];
   const client = createCommunityApiClient({
@@ -34,8 +62,8 @@ test("anonymous public API uses frozen paths/query and never sends credentials",
   await client.redeemCommunityShareGrant("demo_community_share_grant_0123456789_abcdefghijklmnop");
 
   assert.equal(PUBLIC_API_PATHS.capabilities, "/api/v1/public/capabilities");
-  assert.equal(PUBLIC_API_PATHS.leaderboard, "/api/v1/public/leaderboard");
-  assert.equal(PUBLIC_API_PATHS.member, "/api/v1/public/members");
+  assert.equal(PUBLIC_API_PATHS.leaderboard, "/api/v1/public/priced-leaderboard");
+  assert.equal(PUBLIC_API_PATHS.member, "/api/v1/public/priced-members");
   assert.equal(PUBLIC_API_PATHS.batchClaim, "/api/v1/public/invitation-batches/claim");
   assert.equal(PUBLIC_API_PATHS.shareGrantRedeem, "/api/v1/public/community-share-grants/redeem");
   assert.equal(
@@ -44,11 +72,11 @@ test("anonymous public API uses frozen paths/query and never sends credentials",
   );
   assert.equal(
     requests[1].url,
-    "https://team.example/api/v1/public/leaderboard?period=90d&metric=norm&tool=Kimi+CLI&model=kimi-k2&limit=100",
+    "https://team.example/api/v1/public/priced-leaderboard?period=90d&metric=norm&tool=Kimi+CLI&model=kimi-k2&limit=100",
   );
   assert.equal(
     requests[2].url,
-    "https://team.example/api/v1/public/members/member-1?period=yesterday&metric=cost",
+    "https://team.example/api/v1/public/priced-members/member-1?period=yesterday&metric=cost",
   );
   assert.equal(requests[3].url, "https://team.example/api/v1/public/invitation-batches/claim");
   assert.equal(requests[3].options.method, "POST");

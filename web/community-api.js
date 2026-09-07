@@ -4,12 +4,12 @@ import {
   parseJsonWithLosslessIntegers,
   toQuery,
 } from "./api.js";
-import { sanitizePublicFilters } from "./community-contract.js?v=beta11-capability-ledger-2";
+import { sanitizePublicFilters } from "./community-contract.js?v=cost-coverage-1";
 
 export const PUBLIC_API_PATHS = Object.freeze({
   capabilities: "/api/v1/public/capabilities",
-  leaderboard: "/api/v1/public/leaderboard",
-  member: "/api/v1/public/members",
+  leaderboard: "/api/v1/public/priced-leaderboard",
+  member: "/api/v1/public/priced-members",
   batchClaim: "/api/v1/public/invitation-batches/claim",
   shareGrantRedeem: "/api/v1/public/community-share-grants/redeem",
 });
@@ -63,13 +63,24 @@ export function createCommunityApiClient({
     return parsePublicResponse(response);
   }
 
+  async function readPricing(path) {
+    try {
+      return await request(path);
+    } catch (error) {
+      // Keep the webpage usable during a server rollback. Never retry writes,
+      // authentication failures, rate limits, or ambiguous network failures.
+      if (error.status !== 404) throw error;
+      return request(path.replace("/priced-leaderboard", "/leaderboard").replace("/priced-members", "/members"));
+    }
+  }
+
   return {
     capabilities() {
       return request(PUBLIC_API_PATHS.capabilities);
     },
     leaderboard(rawFilters = {}) {
       const filters = sanitizePublicFilters(rawFilters);
-      return request(`${PUBLIC_API_PATHS.leaderboard}${toQuery({
+      return readPricing(`${PUBLIC_API_PATHS.leaderboard}${toQuery({
         period: filters.period,
         metric: filters.metric,
         tool: filters.tool,
@@ -79,7 +90,7 @@ export function createCommunityApiClient({
     },
     member(publicId, rawFilters = {}) {
       const filters = sanitizePublicFilters(rawFilters);
-      return request(`${PUBLIC_API_PATHS.member}/${encodeURIComponent(publicId)}${toQuery({
+      return readPricing(`${PUBLIC_API_PATHS.member}/${encodeURIComponent(publicId)}${toQuery({
         period: filters.period,
         metric: filters.metric,
         tool: filters.tool,

@@ -96,6 +96,33 @@ function normalizeTrend(values) {
 
 function normalizePublicCost(value = {}) {
   const totals = value.totals ?? value;
+  const pricedTokens = totals.priced_tokens;
+  const publicAmounts = totals.priced_costs_microunits;
+  const totalTokens = tokenTotal(totals);
+  if (
+    typeof pricedTokens === "string" && /^\d+$/.test(pricedTokens) &&
+    BigInt(pricedTokens) <= totalTokens &&
+    publicAmounts && typeof publicAmounts === "object" && !Array.isArray(publicAmounts) &&
+    Object.entries(publicAmounts).every(([currency, amount]) =>
+      CURRENCY.test(currency) && typeof amount === "string" && /^\d+$/.test(amount)
+    )
+  ) {
+    const amounts = Object.entries(publicAmounts)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([currency, microunits]) => ({ currency, microunits }));
+    const partiallyUnpriced = totals.unpriced === true || BigInt(pricedTokens) < totalTokens;
+    const mixedCurrency = totals.mixed_currency === true || amounts.length > 1;
+    return {
+      // Keep incomplete and mixed-currency estimates out of cost ranking/charts.
+      unpriced: partiallyUnpriced || mixedCurrency || amounts.length !== 1,
+      mixedCurrency,
+      partiallyUnpriced,
+      amounts,
+      coveragePercent: totalTokens > 0n
+        ? Number(BigInt(pricedTokens) * 1000n / totalTokens) / 10
+        : null,
+    };
+  }
   const currency = String(totals.cost_currency || "").toUpperCase();
   const rawMicrounits = totals.estimated_cost_microunits;
   if (
@@ -121,11 +148,15 @@ function normalizePublicCost(value = {}) {
 }
 
 export function formatPublicCost(cost) {
-  if (!cost || cost.unpriced || !cost.amounts?.length) return "未定价";
+  if (!cost || !cost.amounts?.length) return "未定价";
   const priced = cost.amounts
     .map((item) => formatMicrounitAmount(item.microunits, item.currency))
     .join(" · ");
-  return cost.partiallyUnpriced ? `${priced} · 部分未定价` : priced;
+  const coverage = cost.coveragePercent === null || cost.coveragePercent === undefined
+    ? "" : ` · 覆盖 ${cost.coveragePercent}%`;
+  if (cost.partiallyUnpriced) return `已计价部分 ${priced}${coverage}`;
+  if (cost.mixedCurrency) return `分币种 ${priced}${coverage}`;
+  return `${priced}${coverage}`;
 }
 
 export function normalizePublicParticipant(value = {}) {
