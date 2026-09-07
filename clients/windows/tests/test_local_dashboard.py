@@ -109,57 +109,60 @@ class LocalDashboardTests(unittest.TestCase):
             client.community_rank.assert_called_once_with()
 
     def test_dashboard_week_excludes_last_week_and_sorts_multi_bucket_totals(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            paths = SimpleNamespace(
-                settings=root / "settings.json",
-                credential=root / "missing-credential.dpapi",
-                cursor_usage=root / "cursor-usage.json",
-                rank_cache=root / "community-rank-cache.json",
-            )
-            today = datetime.now(timezone.utc).astimezone(
-                timezone(timedelta(hours=8))
-            ).date()
-            monday = today - timedelta(days=today.weekday())
-            previous_week = monday - timedelta(days=1)
+        # Monday is also today: both buckets must contribute to today.
+        for now in (datetime(2026, 9, 7, 4, tzinfo=timezone.utc),
+                    datetime(2026, 9, 9, 4, tzinfo=timezone.utc)):
+            with self.subTest(day=now.date()), mock.patch("tokenfleet.local_dashboard.datetime") as clock:
+                clock.now.return_value = now
+                with tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    paths = SimpleNamespace(
+                        settings=root / "settings.json",
+                        credential=root / "missing-credential.dpapi",
+                        cursor_usage=root / "cursor-usage.json",
+                        rank_cache=root / "community-rank-cache.json",
+                    )
+                    today = now.astimezone(timezone(timedelta(hours=8))).date()
+                    monday = today - timedelta(days=today.weekday())
+                    previous_week = monday - timedelta(days=1)
 
-            def bucket(day, tool, model, total):  # type: ignore[no-untyped-def]
-                return {
-                    "date": day.isoformat(),
-                    "timezone": "Asia/Shanghai",
-                    "tool": tool,
-                    "model": model,
-                    "source": "local",
-                    "input_tokens": total,
-                    "output_tokens": 0,
-                    "cache_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "completeness": "exact",
-                }
+                    def bucket(day, tool, model, total):  # type: ignore[no-untyped-def]
+                        return {
+                            "date": day.isoformat(),
+                            "timezone": "Asia/Shanghai",
+                            "tool": tool,
+                            "model": model,
+                            "source": "local",
+                            "input_tokens": total,
+                            "output_tokens": 0,
+                            "cache_read_tokens": 0,
+                            "cache_write_tokens": 0,
+                            "completeness": "exact",
+                        }
 
-            client = mock.Mock()
-            client.preview.return_value = CollectionResult(
-                [
-                    bucket(today, "Codex", "gpt-small", 10),
-                    bucket(today, "Claude Code", "claude", 30),
-                    bucket(monday, "Codex", "gpt-large", 40),
-                    bucket(previous_week, "Old", "old", 999),
-                ],
-                CollectionDiagnostics(),
-            )
+                    client = mock.Mock()
+                    client.preview.return_value = CollectionResult(
+                        [
+                            bucket(today, "Codex", "gpt-small", 10),
+                            bucket(today, "Claude Code", "claude", 30),
+                            bucket(monday, "Codex", "gpt-large", 40),
+                            bucket(previous_week, "Old", "old", 999),
+                        ],
+                        CollectionDiagnostics(),
+                    )
 
-            value = dashboard_data(paths, client)
+                    value = dashboard_data(paths, client)
 
-            self.assertEqual(value["today"]["total_tokens"], 40)
-            self.assertEqual(value["week"]["total_tokens"], 80)
-            self.assertEqual(
-                list(value["week"]["tools"]), ["Codex", "Claude Code"]
-            )
-            self.assertEqual(
-                list(value["week"]["models"]),
-                ["gpt-large", "claude", "gpt-small"],
-            )
-            self.assertNotIn("Old", value["week"]["tools"])
+                    self.assertEqual(value["today"]["total_tokens"], 80 if today.weekday() == 0 else 40)
+                    self.assertEqual(value["week"]["total_tokens"], 80)
+                    self.assertEqual(
+                        list(value["week"]["tools"]), ["Codex", "Claude Code"]
+                    )
+                    self.assertEqual(
+                        list(value["week"]["models"]),
+                        ["gpt-large", "claude", "gpt-small"],
+                    )
+                    self.assertNotIn("Old", value["week"]["tools"])
 
     def test_action_token_is_persisted_and_only_injected_in_url_fragment(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
