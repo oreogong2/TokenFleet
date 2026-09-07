@@ -777,7 +777,7 @@ dialog::backdrop { background: rgba(5,23,51,.6); backdrop-filter: blur(5px); }
 .community-primary span,.community-primary strong,.community-primary small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .community-primary span { color: var(--ink-muted); font-size: 8px; }
 .community-primary strong { margin: 2px 0; color: var(--forest); font-family: var(--font-display); font-size: 18px; }
-.community-primary small { color: var(--ink-muted); font-size: 8px; }
+.community-primary small { color: var(--ink-muted); font-size: 10px; white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
 .community-privacy { display: flex; align-items: flex-start; gap: 18px; margin-top: 15px; padding: 17px 20px; border: 1px dashed rgba(23,107,194,.25); border-radius: 17px; background: rgba(23,107,194,.045); }
 .community-privacy strong { flex: none; color: var(--forest-bright); font-size: 10px; letter-spacing: .08em; }
 .community-privacy p { margin: 0; color: var(--ink-muted); font-size: 10px; line-height: 1.65; }
@@ -808,6 +808,7 @@ dialog::backdrop { background: rgba(5,23,51,.6); backdrop-filter: blur(5px); }
 .community-extra-totals > div { min-width: 0; padding: 11px; border-left: 2px solid rgba(23,107,194,.2); }
 .community-extra-totals dt { color: var(--ink-muted); font-size: 8px; }
 .community-extra-totals dd { margin: 4px 0 0; overflow: hidden; font-family: var(--font-display); font-size: 16px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.community-extra-totals > div:last-child dd { white-space: normal; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; }
 .community-detail-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
 .community-detail-grid > article { min-width: 0; padding: 22px; }
 .community-detail-grid > .wide { grid-column: 1 / -1; }

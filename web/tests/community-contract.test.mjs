@@ -7,6 +7,7 @@ import {
   normalizePublicLeaderboard,
   normalizePublicMemberDetail,
   parseCommunityRoute,
+  publicMetricValue,
 } from "../community-contract.js";
 import { createCommunityDemoApi } from "../community-demo-data.js";
 
@@ -22,6 +23,44 @@ const exactTotals = {
   unpriced: false,
   mixed_currency: false,
 };
+
+test("partial public costs display coverage without becoming comparable totals", () => {
+  const totals = {
+    input_tokens: "1000", output_tokens: "0", cache_read_tokens: "0", cache_write_tokens: "0",
+    estimated_cost_microunits: null, cost_currency: null, unpriced: true, mixed_currency: false,
+    priced_tokens: "30", priced_costs_microunits: { USD: "190000" },
+  };
+  const person = normalizePublicMemberDetail({ public_id: "partial", nickname: "部分计价", totals });
+  assert.equal(formatPublicCost(person.cost), "已计价部分 US$0.19 · 覆盖 3%");
+  assert.equal(publicMetricValue(person, "cost"), null);
+  assert.equal(publicMetricValue(person, "tokens"), "1000");
+  const unknown = normalizePublicMemberDetail({ public_id: "unknown", totals: {
+    ...totals, priced_tokens: "0", priced_costs_microunits: {},
+  } });
+  assert.equal(formatPublicCost(unknown.cost), "未定价");
+  const free = normalizePublicMemberDetail({ public_id: "free", totals: {
+    ...totals, unpriced: false, priced_tokens: "1000", priced_costs_microunits: { USD: "0" },
+  } });
+  assert.equal(formatPublicCost(free.cost), "US$0.00 · 覆盖 100%");
+  assert.equal(publicMetricValue(free, "cost"), "0");
+  const mixed = normalizePublicMemberDetail({ public_id: "mixed", totals: {
+    ...totals, unpriced: false, mixed_currency: true, priced_tokens: "1000",
+    priced_costs_microunits: { USD: "190000", EUR: "1000000" },
+  } });
+  assert.match(formatPublicCost(mixed.cost), /^分币种 /);
+  assert.equal(publicMetricValue(mixed, "cost"), null);
+});
+
+test("coverage is token weighted, exact for large integers, and never rounds missing tokens to 100%", () => {
+  const total = 900719925474099312345n;
+  const person = normalizePublicMemberDetail({ public_id: "large", totals: {
+    input_tokens: total.toString(), output_tokens: "0", cache_read_tokens: "0", cache_write_tokens: "0",
+    unpriced: true, mixed_currency: false, priced_tokens: (total - 1n).toString(),
+    priced_costs_microunits: { USD: "1" },
+  } });
+  assert.equal(person.cost.coveragePercent, 99.9);
+  assert.equal(publicMetricValue(person, "cost"), null);
+});
 
 test("frozen public leaderboard contract stays lossless and drops private extras", () => {
   const board = normalizePublicLeaderboard({

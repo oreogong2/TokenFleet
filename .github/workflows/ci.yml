@@ -118,6 +118,7 @@ jobs:
           .ci-venv/bin/python script/verify_tokenfleet_web.py
           cd web
           ../.ci-venv/bin/python tests/community_browser.py
+          ../.ci-venv/bin/python tests/pricing_browser.py
 
       - name: Verify one-command development startup
         run: PYTHONDONTWRITEBYTECODE=1 .ci-venv/bin/python script/verify_tokenfleet_dev_start.py --venv .ci-venv

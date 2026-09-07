@@ -24,6 +24,12 @@ from .schemas import (
     PublicMetric,
     PublicPeriod,
     PublicUsageTotals,
+    PublicUsageTotalsV2,
+    PublicLeaderboardEntryV2,
+    PublicLeaderboardResponseV2,
+    PublicDistributionItemV2,
+    PublicDailyTrendItemV2,
+    PublicMemberDetailResponseV2,
     validate_public_nickname,
 )
 
@@ -114,6 +120,7 @@ class UsageAggregate:
     cache_write_tokens: int = 0
     costs: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     unpriced: bool = False
+    priced_tokens: int = 0
     first_timezone: str | None = None
     mixed_timezones: bool = False
 
@@ -146,6 +153,10 @@ class UsageAggregate:
             self.unpriced = True
         elif row.cost_currency is not None:
             self.costs[str(row.cost_currency)] += int(row.cost_microunits or 0)
+            self.priced_tokens += sum(int(value or 0) for value in (
+                row.input_tokens, row.output_tokens,
+                row.cache_read_tokens, row.cache_write_tokens,
+            ))
 
     def _add_timezone(self, raw_value: str | None) -> None:
         if raw_value is None:
@@ -178,6 +189,15 @@ class UsageAggregate:
             ),
             unpriced=self.unpriced,
             mixed_currency=self.mixed_currency,
+        )
+
+    def as_priced_response(self) -> PublicUsageTotalsV2:
+        return PublicUsageTotalsV2(
+            **self.as_response().model_dump(),
+            priced_tokens=str(self.priced_tokens),
+            priced_costs_microunits={
+                currency: str(amount) for currency, amount in sorted(self.costs.items())
+            },
         )
 
 
@@ -860,7 +880,7 @@ def build_public_leaderboard(
             ranked_position += 1
             rank = ranked_position
         entries.append(
-            PublicLeaderboardEntry(
+            PublicLeaderboardEntryV2(
                 rank=rank,
                 public_id=member.public_id,
                 nickname=member.nickname,
@@ -879,10 +899,10 @@ def build_public_leaderboard(
                     else None
                 ),
                 model_count=len(member.models),
-                totals=member.usage.as_response(),
+                totals=member.usage.as_priced_response(),
             )
         )
-    return PublicLeaderboardResponse(
+    return PublicLeaderboardResponseV2(
         period=period,
         metric=metric,
         metric_definition=METRIC_DEFINITIONS[metric],
@@ -959,7 +979,7 @@ def _ordered_distribution(
         ),
     )
     return [
-        PublicDistributionItem(name=name, totals=aggregate.as_response())
+        PublicDistributionItemV2(name=name, totals=aggregate.as_priced_response())
         for name, aggregate in ordered[:PUBLIC_DISTRIBUTION_LIMIT]
     ]
 
@@ -1031,7 +1051,7 @@ def build_public_member_detail(
     metric_currency = _metric_currency(
         (member.usage for member in ordered), metric
     )
-    return PublicMemberDetailResponse(
+    return PublicMemberDetailResponseV2(
         public_id=public_id,
         nickname=nickname,
         rank=_member_rank(ordered, metric, public_id),
@@ -1049,13 +1069,13 @@ def build_public_member_detail(
         ),
         start_date=start_date,
         end_date=end_date,
-        totals=totals.as_response(),
+        totals=totals.as_priced_response(),
         tool_distribution=_ordered_distribution(tools, metric),
         tool_distribution_total=len(tools),
         model_distribution=_ordered_distribution(models, metric),
         model_distribution_total=len(models),
         daily_trend=[
-            PublicDailyTrendItem(date=usage_date, totals=days[usage_date].as_response())
+            PublicDailyTrendItemV2(date=usage_date, totals=days[usage_date].as_priced_response())
             for usage_date in sorted(days)
         ],
     )
