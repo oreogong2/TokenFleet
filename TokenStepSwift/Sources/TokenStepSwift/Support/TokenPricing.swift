@@ -47,6 +47,7 @@ struct ServerTokenPriceCatalog: Decodable {
         let sourceUrl: String
         let sourceCheckedAt: String
         let effectiveBasis: String
+        let pricingNote: String?
 
         var rates: [Decimal?]? {
             let strings: [String?] = [inputPerMillion, outputPerMillion, cacheReadPerMillion, cacheWritePerMillion]
@@ -99,7 +100,8 @@ struct ServerTokenPriceCatalog: Decodable {
                       && Self.normalizeModel(row.model) == row.model
                       && row.currency == "USD" && row.rates != nil
                       && validDay(row.effectiveFrom) && validDay(row.sourceCheckedAt)
-                      && ["official_date", "ledger_first_seen"].contains(row.effectiveBasis)
+                      && ["official_date", "ledger_first_seen", "historical_verified", "first_observed"].contains(row.effectiveBasis)
+                      && (row.pricingNote?.count ?? 0) <= 256
                       && source.scheme == "https" && officialHosts.contains(source.host ?? "")
                       && source.user == nil && source.password == nil && source.port == nil
                       && source.query == nil && source.fragment == nil

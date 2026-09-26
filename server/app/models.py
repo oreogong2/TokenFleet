@@ -322,6 +322,7 @@ class PriceVersion(Base):
     source_url: Mapped[str | None] = mapped_column(String(512))
     source_checked_at: Mapped[date | None] = mapped_column(Date)
     effective_basis: Mapped[str | None] = mapped_column(String(32))
+    pricing_note: Mapped[str | None] = mapped_column(String(256))
     created_by_user_id: Mapped[str] = mapped_column(String(36), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow

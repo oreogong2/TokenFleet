@@ -89,7 +89,7 @@ def catalog_fingerprint(prices: Sequence[PriceVersion]) -> str:
               'input_per_million', 'output_per_million', 'cache_read_per_million',
               'cache_write_per_million', 'cache_read_price_known', 'cache_write_price_known',
               'effective_from', 'source_url',
-              'source_checked_at', 'effective_basis')
+              'source_checked_at', 'effective_basis', 'pricing_note')
     rows = [{f: str(getattr(p, f)) for f in fields} for p in sorted(prices, key=lambda p: p.id)]
     return hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 

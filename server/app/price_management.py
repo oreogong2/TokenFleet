@@ -58,7 +58,8 @@ class OfficialPriceImport(PriceCreate):
     cache_read_per_million: Annotated[Decimal | None, Field(ge=0, max_digits=20, decimal_places=8)]
     cache_write_per_million: Annotated[Decimal | None, Field(ge=0, max_digits=20, decimal_places=8)]
     effective_from: date | None = None
-    effective_basis: Literal['official_date', 'ledger_first_seen']
+    effective_basis: Literal['official_date', 'ledger_first_seen', 'historical_verified', 'first_observed']
+    pricing_note: Annotated[str | None, Field(max_length=256)] = None
     source_url: Annotated[str, Field(min_length=1, max_length=512)]
     source_checked_at: date
 
@@ -77,7 +78,7 @@ class OfficialPriceImport(PriceCreate):
     @field_validator('source_checked_at')
     @classmethod
     def checked_date_is_not_future(cls, value: date) -> date:
-        if value > utcnow().date():
+        if value > (utcnow() + timedelta(hours=14)).date():
             raise ValueError('source_checked_at cannot be in the future')
         return value
 
@@ -96,8 +97,15 @@ class OfficialPriceImport(PriceCreate):
         }.get(host, ())
         if not canonical.startswith(families) or not re.fullmatch(r'[a-z0-9][a-z0-9._-]{0,127}', canonical):
             raise ValueError('model family does not match the official price source')
-        if (self.effective_basis == 'official_date') != (self.effective_from is not None):
-            raise ValueError('official_date requires a date; ledger_first_seen is resolved by the server')
+        if (self.effective_basis != 'ledger_first_seen') != (self.effective_from is not None):
+            raise ValueError('explicit basis requires a date; ledger_first_seen is resolved by the server')
+        if self.effective_basis == 'first_observed' and self.effective_from != self.source_checked_at:
+            raise ValueError('first_observed must use the observation date')
+        if self.effective_basis == 'historical_verified' and not self.pricing_note:
+            raise ValueError('historical verification requires its retained evidence note')
+        if self.pricing_note is not None:
+            if any(ord(c) < 32 or ord(c) == 127 for c in self.pricing_note):
+                raise ValueError('pricing_note cannot contain control characters')
         return self
 
 
@@ -109,6 +117,7 @@ class PriceCredentialCreate(StrictModel):
 class PricePrincipal:
     org_id: str
     user_id: str
+    can_import_history: bool = False
 
 
 def get_price_principal(
@@ -121,7 +130,7 @@ def get_price_principal(
     if not token.startswith('tfprice_'):
         admin = get_current_user(credentials, session, settings)
         require_admin(admin)
-        return PricePrincipal(admin.org_id, admin.id)
+        return PricePrincipal(admin.org_id, admin.id, can_import_history=True)
     if not re.fullmatch(r'tfprice_[A-Za-z0-9_-]{43}', token):
         raise HTTPException(status_code=401, detail='invalid price credential')
     row = session.scalar(select(PriceManagementCredential).where(
@@ -182,6 +191,7 @@ def public_catalog(session: Session, org_id: str) -> dict:
     entries = [{k: str(getattr(p, k)) for k in fields}
                for p in sorted(prices, key=lambda p: (p.tool, p.model, p.effective_from, p.id))]
     for entry, price in zip(entries, sorted(prices, key=lambda p: (p.tool, p.model, p.effective_from, p.id))):
+        entry['pricing_note'] = price.pricing_note
         for kind in ('read', 'write'):
             if not getattr(price, f'cache_{kind}_price_known'):
                 entry[f'cache_{kind}_per_million'] = None
@@ -191,7 +201,7 @@ def public_catalog(session: Session, org_id: str) -> dict:
         raise HTTPException(status_code=404, detail='organization not found')
     body = {'schema_version': 1, 'normalization_version': 1, 'revision': org.price_catalog_revision,
             'basis': 'standard_api_equivalent', 'prices': entries}
-    body['version'] = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    body['version'] = hashlib.sha256(json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return body
 
 
@@ -271,7 +281,11 @@ def import_price(payload: OfficialPriceImport, actor: PricePrincipal = Depends(g
     org = session.scalar(select(Organization).where(Organization.id == actor.org_id).with_for_update())
     if org is None:
         raise HTTPException(status_code=404, detail='organization not found')
+    if payload.source_checked_at > utcnow().astimezone(ZoneInfo(org.default_timezone)).date():
+        raise HTTPException(status_code=422, detail='source_checked_at cannot exceed the organization date')
     model = normalize_model(payload.model)
+    if payload.effective_basis == 'historical_verified' and not actor.can_import_history:
+        raise HTTPException(status_code=403, detail='historical verification requires an administrator')
     effective = payload.effective_from
     if effective is None:
         effective = first_seen_dates(session, actor.org_id).get(model)
@@ -286,6 +300,16 @@ def import_price(payload: OfficialPriceImport, actor: PricePrincipal = Depends(g
             values[key] = Decimal(0)  # inert storage; known flag forbids charging it
     candidates = [p for p in load_prices(session, actor.org_id) if normalize_tool(p.tool) == '*'
                   and normalize_model(p.model) == model and p.effective_from == effective]
+    verified_history = [p for p in verified_prices(session, actor.org_id)
+                        if normalize_model(p.model) == model]
+    if payload.effective_basis == 'ledger_first_seen' and verified_history and not candidates:
+        raise HTTPException(status_code=409, detail='verified history exists; supply a new dated version')
+    if (verified_history and not candidates and not actor.can_import_history
+            and payload.effective_basis != 'first_observed'):
+        raise HTTPException(status_code=409, detail='weekly price changes must start on the observation date')
+    if payload.effective_basis == 'first_observed' and any(
+            p.effective_from >= effective and p not in candidates for p in verified_history):
+        raise HTTPException(status_code=409, detail='observation date cannot precede an existing version')
     if candidates:
         if len(candidates) != 1:
             raise HTTPException(status_code=409, detail='ambiguous price versions; existing values were not changed')

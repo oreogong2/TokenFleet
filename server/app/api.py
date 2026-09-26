@@ -144,6 +144,7 @@ def readiness(
                 PriceVersion.cache_read_price_known,
                 PriceVersion.cache_write_price_known,
                 PriceVersion.effective_basis,
+                PriceVersion.pricing_note,
                 InvitationBatch.claimed_count,
                 CommunityShareGrant.expires_at,
             )

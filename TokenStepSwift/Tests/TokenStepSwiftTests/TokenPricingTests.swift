@@ -19,6 +19,30 @@ final class TokenPricingTests: XCTestCase {
             date: "2025-12-31", pricingVersion: context.pricingVersion))
     }
 
+    func testPythonUnicodeHistoryCatalogAndOneHourEstimates() throws {
+        // Synthetic protocol fixture, with its UTF-8 hash generated in Python.
+        let file = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Fixtures/server-price-history-v1.json")
+        let catalog = try ServerTokenPriceCatalog.decode(Data(contentsOf: file))
+        for model in ["gpt-5.6-sol", "gpt-5.6"] {
+            for (day, expected) in [("2026-08-14", 5.0), ("2026-08-20", 5.0),
+                                    ("2026-08-21", 4.0), ("2026-09-26", 4.0)] {
+                let cost = try XCTUnwrap(catalog.estimate(tool: "Codex", model: model,
+                    usage: usage(input: 1_000_000), date: day, pricingVersion: "fixture"))
+                XCTAssertEqual(cost.costUSD, expected, accuracy: 0.000001)
+            }
+        }
+        for (day, expected) in [("2026-08-31", 4.0), ("2026-09-01", 6.0),
+                                ("2026-09-25", 6.0), ("2026-09-26", 4.0)] {
+            let cost = try XCTUnwrap(catalog.estimate(tool: "Claude Code", model: "claude-sonnet-5",
+                usage: usage(input: 0, cacheWrite: 1_000_000), date: day, pricingVersion: "fixture"))
+            XCTAssertEqual(cost.costUSD, expected, accuracy: 0.000001)
+            XCTAssertEqual(cost.pricedTokens, 1_000_000)
+        }
+        XCTAssertTrue(catalog.prices.filter { $0.model.hasPrefix("claude-") }
+            .allSatisfy { $0.pricingNote == "缓存写入按 1 小时档估算" })
+    }
+
     func testMicrounitHalfUpRoundingMatchesServer() throws {
         let context = try TokenPriceCatalogFixture.context
         for (input, expected) in [(1, 0.000002), (3, 0.000005)] {

@@ -19,6 +19,7 @@ def upgrade():
     op.add_column("price_versions", sa.Column("source_url", sa.String(512)))
     op.add_column("price_versions", sa.Column("source_checked_at", sa.Date()))
     op.add_column("price_versions", sa.Column("effective_basis", sa.String(32)))
+    op.add_column("price_versions", sa.Column("pricing_note", sa.String(256)))
     op.create_table("price_management_credentials",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("org_id", sa.String(36), nullable=False),
@@ -43,6 +44,7 @@ def downgrade():
     op.drop_index("ix_price_management_org_active", "price_management_credentials")
     op.drop_index("uq_price_management_token_hash", "price_management_credentials")
     op.drop_table("price_management_credentials")
+    op.drop_column("price_versions", "pricing_note")
     op.drop_column("price_versions", "effective_basis")
     op.drop_column("price_versions", "source_checked_at")
     op.drop_column("price_versions", "source_url")

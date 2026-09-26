@@ -457,6 +457,7 @@ class PriceResponse(StrictModel):
     cache_write_per_million: Decimal | None
     cache_read_price_known: bool
     cache_write_price_known: bool
+    pricing_note: str | None = None
     effective_from: date
     created_at: datetime
 

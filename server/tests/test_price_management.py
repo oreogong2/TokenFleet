@@ -343,3 +343,91 @@ def test_full_correction_removes_legacy_estimate_for_unlisted_model_only(harness
         if key not in ('price_version_id', 'cost_microunits', 'cost_currency', 'updated_at'):
             assert after[rid][key] == before[rid][key]
     assert preview(harness, day, unpriced_only=False)['changed_rows'] == 0
+
+
+@pytest.mark.parametrize('model', ['gpt-5.6-sol', 'gpt-5.6'])
+def test_verified_historical_prices_and_official_promotion_boundary(harness, model):
+    from decimal import Decimal
+    from app.pricing import find_price
+    admin = harness.auth('a_admin')
+    old_request = payload(model=model, input_per_million='5', output_per_million='30',
+        cache_read_per_million='0.5', cache_write_per_million='6.25',
+        effective_basis='historical_verified', effective_from='2026-02-01',
+        source_checked_at='2026-08-14', pricing_note='2026-08-14 官方页已核对的历史价格')
+    old = harness.client.post('/api/v1/price-management/versions', headers=admin, json=old_request)
+    assert old.status_code == 200, old.text
+    promo = harness.client.post('/api/v1/price-management/versions', headers=admin,
+        json=payload(model=model, input_per_million='4', output_per_million='20',
+            cache_read_per_million='0.4', cache_write_per_million='5',
+            effective_basis='official_date', effective_from='2026-08-21'))
+    assert promo.status_code == 200, promo.text
+    with harness.session_factory() as session:
+        for day, rate in [('2026-08-14', '5'), ('2026-08-20', '5'), ('2026-08-21', '4'), ('2026-09-26', '4')]:
+            price = find_price(session, org_id=harness.users['a_admin'].org_id,
+                tool='Codex', model=model, usage_date=date.fromisoformat(day))
+            assert price.input_per_million == Decimal(rate)
+        previous = session.get(PriceVersion, old.json()['price_version_id'])
+        assert previous.effective_from == date(2026, 2, 1)
+        assert previous.input_per_million == Decimal('5')
+        assert previous.output_per_million == Decimal('30')
+        assert previous.source_checked_at == date(2026, 8, 14)
+    # Replaying the historical version is safe after a newer promotion exists.
+    again = harness.client.post('/api/v1/price-management/versions', headers=admin, json=old_request)
+    assert again.status_code == 200 and not again.json()['created']
+
+
+def test_weekly_credential_cannot_retroactively_replace_verified_history(harness):
+    _, day = uploaded_row(harness, model='gpt-6-astra')
+    original = payload(effective_basis='official_date', effective_from=(day - timedelta(days=2)).isoformat())
+    assert harness.client.post('/api/v1/price-management/versions',
+        headers=harness.auth('a_admin'), json=original).status_code == 200
+    _, headers, _ = issue(harness)
+    before = state(harness)
+    for changed in [payload(input_per_million='11'),
+                    dict(original, input_per_million='11', effective_from=day.isoformat())]:
+        assert harness.client.post('/api/v1/price-management/versions', headers=headers, json=changed).status_code == 409
+    historical = dict(original, effective_basis='historical_verified', pricing_note='retained evidence')
+    assert harness.client.post('/api/v1/price-management/versions', headers=headers, json=historical).status_code == 403
+    changed = payload(input_per_million='11', effective_basis='first_observed',
+        effective_from=date.today().isoformat(), source_checked_at=date.today().isoformat())
+    result = harness.client.post('/api/v1/price-management/versions', headers=headers, json=changed)
+    assert result.status_code == 200 and result.json()['backfill']['changed_rows'] == 0
+    assert state(harness) == before
+    from app.pricing import find_price
+    from decimal import Decimal
+    with harness.session_factory() as session:
+        previous = find_price(session, org_id=harness.users['a_admin'].org_id, tool='Codex',
+            model='gpt-6-astra', usage_date=date.today() - timedelta(days=1))
+        current = find_price(session, org_id=harness.users['a_admin'].org_id, tool='Codex',
+            model='gpt-6-astra', usage_date=date.today())
+        assert previous.input_per_million == Decimal('10')
+        assert current.input_per_million == Decimal('11')
+
+
+def test_one_hour_claude_estimate_prices_old_unsplit_writes_and_records_note(harness):
+    from decimal import Decimal
+    from app.services import derived_cost_microunits
+    from app.schemas import UsageBucket
+    from app.pricing import find_price
+    import json, hashlib
+    harness.app.state.settings = replace(harness.app.state.settings, public_org_slug='alpha')
+    request = payload(model='claude-sonnet-5', input_per_million='2', output_per_million='10',
+        cache_read_per_million='0.2', cache_write_per_million='4',
+        effective_basis='historical_verified', effective_from='2026-02-01',
+        source_checked_at='2026-08-14', source_url='https://platform.claude.com/docs/en/about-claude/pricing',
+        pricing_note='缓存写入按 1 小时档估算')
+    response = harness.client.post('/api/v1/price-management/versions', headers=harness.auth('a_admin'), json=request)
+    assert response.status_code == 200, response.text
+    with harness.session_factory() as session:
+        price = find_price(session, org_id=harness.users['a_admin'].org_id, tool='Claude Code',
+            model='claude-sonnet-5', usage_date=date(2026, 8, 20))
+        assert price.cache_write_per_million == Decimal('4')
+        bucket = harness.usage_payload()['buckets'][0]
+        bucket.update(model='claude-sonnet-5', input_tokens=0, output_tokens=0,
+            cache_read_tokens=0, cache_write_tokens=1_000_000)
+        assert derived_cost_microunits(UsageBucket.model_validate(bucket), price) == 4_000_000
+    body = harness.client.get('/api/v1/public/price-catalog').json()
+    assert body['prices'][0]['pricing_note'] == '缓存写入按 1 小时档估算'
+    claimed = body.pop('version')
+    canonical = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
+    assert hashlib.sha256(canonical).hexdigest() == claimed
