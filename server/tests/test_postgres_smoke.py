@@ -346,7 +346,7 @@ def test_postgres_migration_starts_from_fresh_database(
             # rejects this destructive downgrade, so Alembic rolls the whole
             # chain back to the original current head rather than leaving an
             # empty intermediate schema behind.
-            "9a342e52bb08"
+            "d8e6f3a19b25"
         )
         connection.execute(
             text("DELETE FROM organizations WHERE slug = 'downgrade-guard'")

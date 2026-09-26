@@ -20,6 +20,7 @@ enum AppPaths {
     static let claudeQuotaCacheJSON = appSupportRoot.appendingPathComponent("cache/claude-quota-cache.json")
     static let cursorUsageImportJSON = appSupportRoot.appendingPathComponent("imports/cursor-usage.json")
     static let settingsJSON = appSupportRoot.appendingPathComponent("config/settings.json")
+    static let priceCatalogJSON = appSupportRoot.appendingPathComponent("config/price-catalog.json")
     static let teamSyncStateJSON = appSupportRoot.appendingPathComponent("config/team-sync-state.json")
     static let autostartDefaultMarker = appSupportRoot.appendingPathComponent("config/autostart-default-applied")
     static let usageRecalibrationNoticeMarker = appSupportRoot.appendingPathComponent("config/usage-recalibration-v6-pending")

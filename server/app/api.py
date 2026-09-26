@@ -28,6 +28,7 @@ from .models import (
     InvitationBatch,
     Organization,
     PriceVersion,
+    PriceManagementCredential,
     User,
     UserRole,
     utcnow,
@@ -60,6 +61,7 @@ from .schemas import (
     PriceCreate,
     PriceResponse,
     PriceVisibilityUpdate,
+    RepriceRequest,
     PublicCapabilitiesResponse,
     PublicLeaderboardResponse,
     PublicLeaderboardResponseV2,
@@ -100,6 +102,7 @@ from .security import (
     verify_password,
 )
 from .services import ingest_daily_usage
+from .pricing import reprice_usage
 
 router = APIRouter()
 
@@ -122,11 +125,13 @@ def readiness(
                 Organization.default_timezone,
                 Organization.retention_days,
                 Organization.ledger_version,
+                Organization.price_catalog_revision,
             ).limit(1)
         )
         # Touch the column introduced by the current Alembic head. Merely
         # checking the initial organization table would let a database that is
         # one migration behind advertise readiness and then fail on usage I/O.
+        session.execute(select(PriceManagementCredential.id, PriceManagementCredential.expires_at).limit(1))
         session.execute(
             select(
                 DailyUsage.is_deleted,
@@ -134,6 +139,12 @@ def readiness(
                 User.public_profile_enabled,
                 User.normalized_display_name,
                 PriceVersion.public_estimate,
+                PriceVersion.source_url,
+                PriceVersion.source_checked_at,
+                PriceVersion.cache_read_price_known,
+                PriceVersion.cache_write_price_known,
+                PriceVersion.effective_basis,
+                PriceVersion.pricing_note,
                 InvitationBatch.claimed_count,
                 CommunityShareGrant.expires_at,
             )
@@ -1387,6 +1398,7 @@ def create_price(
     session: Session = Depends(get_session),
 ) -> PriceVersion:
     require_admin(admin)
+    session.scalar(select(Organization).where(Organization.id == admin.org_id).with_for_update())
     price = PriceVersion(
         org_id=admin.org_id,
         tool=payload.tool,
@@ -1408,6 +1420,21 @@ def create_price(
         raise HTTPException(status_code=409, detail="price version already exists") from exc
     session.refresh(price)
     return price
+
+
+@router.post("/api/v1/prices/reprice")
+def reprice_history(
+    payload: RepriceRequest,
+    admin: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict[str, object]:
+    require_admin(admin)
+    result = reprice_usage(session, org_id=admin.org_id, **payload.model_dump())
+    if payload.apply:
+        session.commit()
+    else:
+        session.rollback()
+    return result
 
 
 @router.get("/api/v1/pricing", response_model=list[PriceResponse], include_in_schema=False)
@@ -1433,6 +1460,7 @@ def update_price_visibility(
     session: Session = Depends(get_session),
 ) -> PriceVersion:
     require_admin(admin)
+    session.scalar(select(Organization).where(Organization.id == admin.org_id).with_for_update())
     price = session.scalar(
         select(PriceVersion).where(
             PriceVersion.id == str(price_id),
@@ -1444,6 +1472,8 @@ def update_price_visibility(
     visibility_changed = price.public_estimate != payload.public_estimate
     price.public_estimate = payload.public_estimate
     if visibility_changed:
+        session.execute(update(Organization).where(Organization.id == price.org_id).values(
+            price_catalog_revision=Organization.price_catalog_revision + 1))
         _advance_public_projection_version(session, price.org_id)
     session.commit()
     session.refresh(price)

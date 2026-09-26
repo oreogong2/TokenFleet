@@ -101,7 +101,7 @@ def main():
             assert [row.locator(".community-rank b").inner_text() for row in rows.all()] == ["01", "02", "03"]
             assert "US$0.30" in rows.nth(0).inner_text()
             assert "已计价部分 US$0.19" in rows.nth(1).inner_text()
-            assert "已计价部分为 0 · 覆盖 0%" in rows.nth(2).inner_text()
+            assert rows.nth(2).locator(".community-primary small").inner_text() == "未定价"
             assert "费用榜只比较完整计价" not in page.locator(".community-privacy").inner_text()
             for row in rows.all():
                 assert row.locator(".community-primary strong").evaluate(

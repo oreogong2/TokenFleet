@@ -329,6 +329,9 @@ final class AppState: ObservableObject {
         Task {
             var outcome: CollectionRunOutcome = .unchanged
             var collectionSucceeded = false
+            if let fixedCommunityServerOrigin {
+                await TokenPriceCatalogRefresh.shared.refresh(origin: fixedCommunityServerOrigin)
+            }
             do {
                 outcome = try await Task.detached(priority: .utility) {
                     try DataService.runCollectorInHelper(

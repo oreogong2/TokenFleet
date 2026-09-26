@@ -404,7 +404,8 @@ struct TokenStepLogicHarness {
         )
         expect(cursorSnapshot.sources["Cursor"]?.status == "ok", "Cursor import source status mismatch")
         expect(cursorSnapshot.totals.tokens == 262_372, "Cursor imported exact token total mismatch")
-        expect(abs(cursorSnapshot.totals.cost - 0.43) < 0.0001, "Cursor imported cost mismatch")
+        expect(cursorSnapshot.totals.cost == 0, "Missing official catalog must not use reported cost")
+        expect(cursorSnapshot.totals.unpricedTokens == 262_372, "Missing-catalog coverage mismatch")
 
         let dirtyCursorModel = String(repeating: "e\u{301}", count: 140) + "\u{1F}invalid"
         let legacyCursorCSV = """
@@ -747,10 +748,11 @@ struct TokenStepLogicHarness {
         )
         expect(grokSnapshot.sources["Grok"]?.records == 1, "Grok turn usage dedupe mismatch")
         expect(grokSnapshot.totals.tokens == 130, "Grok exact usage total mismatch")
-        expect(abs(grokSnapshot.totals.cost - 0.01) < 0.000_001, "Grok rounded total cost mismatch")
+        expect(grokSnapshot.totals.cost == 0, "Missing official catalog must not use reported cost")
+        expect(grokSnapshot.totals.unpricedTokens == 130, "Missing-catalog coverage mismatch")
         expect(
-            abs((grokSnapshot.daily.first?.cost ?? 0) - 0.0123) < 0.000_001,
-            "Grok reported daily cost mismatch"
+            grokSnapshot.daily.first?.cost == 0,
+            "Grok reported cost must not become the official estimate"
         )
         expect(grokSnapshot.daily.first?.models["grok-build-free"] == 130, "Grok free model canonicalization mismatch")
 
@@ -806,7 +808,8 @@ struct TokenStepLogicHarness {
         )
         expect(clineSnapshot.sources["Cline"]?.records == 3, "Cline exact usage record count mismatch")
         expect(clineSnapshot.totals.tokens == 54, "Cline exact usage total mismatch")
-        expect(abs(clineSnapshot.totals.cost - 0.16) < 0.000_001, "Cline exact cost mismatch")
+        expect(clineSnapshot.totals.cost == 0, "Missing official catalog must not use reported cost")
+        expect(clineSnapshot.totals.unpricedTokens == 54, "Missing-catalog coverage mismatch")
         expect(clineSnapshot.daily.first?.models["claude-sonnet-4"] == 29, "Cline v1 model usage mismatch")
         expect(clineSnapshot.daily.first?.models["gpt-5.4"] == 20, "Cline legacy merged usage mismatch")
         expect(clineSnapshot.daily.first?.models["must-not-count"] == nil, "Cline migration was double-counted")
@@ -924,7 +927,8 @@ struct TokenStepLogicHarness {
         )
         expect(openClawSnapshot.sources["OpenClaw"]?.records == 2, "OpenClaw SQLite/JSONL dedupe mismatch")
         expect(openClawSnapshot.totals.tokens == 40, "OpenClaw exact usage total mismatch")
-        expect(abs(openClawSnapshot.totals.cost - 0.05) < 0.000_001, "OpenClaw exact cost mismatch")
+        expect(openClawSnapshot.totals.cost == 0, "Missing official catalog must not use reported cost")
+        expect(openClawSnapshot.totals.unpricedTokens == 40, "Missing-catalog coverage mismatch")
         expect(openClawSnapshot.daily.first?.models["MiniMax-M3"] == 30, "OpenClaw model usage mismatch")
 
         func assistantLine(

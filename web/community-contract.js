@@ -148,8 +148,7 @@ function normalizePublicCost(value = {}) {
 }
 
 export function formatPublicCost(cost) {
-  if (!cost || !cost.amounts?.length) return cost?.coveragePercent === 0
-    ? "未定价 · 部分模型无公开价 · 已计价部分为 0 · 覆盖 0%" : "未定价";
+  if (!cost || !cost.amounts?.length) return "未定价";
   const priced = cost.amounts
     .map((item) => formatMicrounitAmount(item.microunits, item.currency))
     .join(" · ");

@@ -100,7 +100,7 @@ struct UsageRecalibrationMigrationFixtureCheck {
         let futurePricing = snapshot(
             accountingRevision: currentRevision,
             records: 1,
-            pricingVersion: "public-usd-2026-08-15"
+            pricingVersion: "server-usd-v2:future"
         )
         let reestimatedPricing = snapshot(
             accountingRevision: currentRevision,
@@ -267,40 +267,10 @@ struct UsageRecalibrationMigrationFixtureCheck {
     }
 
     private static func checkPricingCatalog() throws {
-        let usage = TokenPricingUsage(
-            inputTokens: 1_000_000,
-            outputTokens: 1_000_000,
-            cacheReadTokens: 1_000_000,
-            cacheWriteTokens: 1_000_000,
-            totalTokens: 4_000_000,
-            breakdownComplete: true
-        )
-        let rows: [(model: String, expected: Double)] = [
-            ("gpt-5.6-sol", 41.75),
-            ("gpt-5.6-terra", 16.7),
-            ("gpt-5.6-luna", 1.67),
-            ("gpt-5.3-chat-latest", 17.675),
-            ("gpt-5.1-chat-latest", 12.625)
-        ]
-        for row in rows {
-            guard let estimate = TokenPricingCatalog.estimate(
-                tool: "Codex",
-                model: row.model,
-                usage: usage,
-                date: TokenPricingCatalog.verifiedDate
-            ) else {
-                try expect(false, "missing verified price for \(row.model)")
-                continue
-            }
-            try expect(
-                abs(estimate.costUSD - row.expected) < 0.000_001,
-                "unexpected verified price for \(row.model)"
-            )
-            try expect(
-                estimate.pricingVersion == TokenPricingCatalog.version,
-                "unexpected catalog version for \(row.model)"
-            )
-        }
+        let usage = TokenPricingUsage(inputTokens: 1_000_000, outputTokens: 1_000_000,
+            cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 2_000_000, breakdownComplete: true)
+        try expect(TokenPricingCatalog.estimate(tool: "Codex", model: "gpt-6-sol", usage: usage,
+            date: "2026-09-26") == nil, "a missing server catalog must not use built-in prices")
     }
 
     private static func checkCollectionCheckpointPolicy() throws {

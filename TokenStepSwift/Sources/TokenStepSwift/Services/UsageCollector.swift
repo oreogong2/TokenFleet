@@ -610,26 +610,28 @@ enum UsageCollector {
         )
     }
 
-    static func collectCCSwitchProxyUsageSnapshot(databaseURL: URL) -> UsageSnapshot {
+    static func collectCCSwitchProxyUsageSnapshot(databaseURL: URL, pricing: TokenPriceCatalogCache.Context? = nil) -> UsageSnapshot {
         let result = collectCCSwitchProxyUsage(databaseURL: databaseURL)
         return aggregate(
             records: result.records,
-            sources: [ccSwitchSourceName: result.source]
+            sources: [ccSwitchSourceName: result.source],
+            pricing: pricing
         )
     }
 
-    static func collectClaudeCodeUsageSnapshot(rootURL: URL) -> UsageSnapshot {
+    static func collectClaudeCodeUsageSnapshot(rootURL: URL, pricing: TokenPriceCatalogCache.Context? = nil) -> UsageSnapshot {
         var cache = CollectorCache()
         var livePaths = Set<String>()
         let result = collectClaudeCode(cache: &cache, livePaths: &livePaths, rootURL: rootURL, modifiedSince: nil)
-        return aggregate(records: result.records, sources: ["Claude Code": result.source])
+        return aggregate(records: result.records, sources: ["Claude Code": result.source], pricing: pricing)
     }
 
     static func collectCodexUsageSnapshotForTests(
         homeURL: URL,
         cacheURL: URL? = nil,
         forceFullValidation: Bool = false,
-        requiresDetailedRecords: Bool = false
+        requiresDetailedRecords: Bool = false,
+        pricing: TokenPriceCatalogCache.Context? = nil
     ) -> UsageSnapshot {
         if let cacheURL {
             do {
@@ -640,11 +642,12 @@ enum UsageCollector {
                 homeURL: homeURL,
                 requiresDetailedRecords: requiresDetailedRecords
                 )
-                return aggregate(records: result.records, sources: ["Codex": result.source])
+                return aggregate(records: result.records, sources: ["Codex": result.source], pricing: pricing)
             } catch {
                 return aggregate(
                     records: [],
-                    sources: ["Codex": SourceInfo(status: "incremental_cache_error", files: 0, records: 0)]
+                    sources: ["Codex": SourceInfo(status: "incremental_cache_error", files: 0, records: 0)],
+                    pricing: pricing
                 )
             }
         }
@@ -656,7 +659,7 @@ enum UsageCollector {
             modifiedSince: nil,
             homeURL: homeURL
         )
-        return aggregate(records: result.records, sources: ["Codex": result.source])
+        return aggregate(records: result.records, sources: ["Codex": result.source], pricing: pricing)
     }
 
     static func collectIncrementalCodexAndProxySnapshotForTests(
@@ -745,7 +748,8 @@ enum UsageCollector {
         openClawRootURLs: [URL]? = nil,
         includeExperimentalAgentSources: Bool = false,
         historyDays: Int? = nil,
-        now: Date = Date()
+        now: Date = Date(),
+        pricing: TokenPriceCatalogCache.Context? = nil
     ) -> UsageSnapshot {
         let sourceCutoff = historyDays.flatMap {
             sourceFileCutoffDate(historyDays: $0, now: now)
@@ -872,7 +876,8 @@ enum UsageCollector {
                 "dsh": dsh.source,
                 "Pi": pi.source,
                 "OpenClaw": openClaw.source
-            ]
+            ],
+            pricing: pricing
         )
     }
 
@@ -5249,7 +5254,8 @@ enum UsageCollector {
         return abs(lhs - rhs) <= tolerance
     }
 
-    private static func aggregate(records: [UsageRecord], sources: [String: SourceInfo]) -> UsageSnapshot {
+    private static func aggregate(records: [UsageRecord], sources: [String: SourceInfo], pricing: TokenPriceCatalogCache.Context? = TokenPricingCatalog.context) -> UsageSnapshot {
+        let pricingVersion = pricing?.pricingVersion ?? "server-usd-v1:unavailable"
         var daily = [String: DailyAccumulator]()
         var rhythms = [String: RhythmAccumulator]()
         var agentWork = [String: AgentWorkAccumulator]()
@@ -5262,9 +5268,8 @@ enum UsageCollector {
             // from an older CollectorCache cannot bypass current natural-key
             // safety rules.
             record.model = modelKey(record.model)
-            let resolvedCost = resolveCost(for: record)
             daily[record.date, default: DailyAccumulator(date: record.date)]
-                .add(record: record, resolvedCost: resolvedCost)
+                .add(record: record)
             let recordHour = record.timestampEpoch.map(hour(fromEpoch:))
                 ?? hour(fromISO: record.timestamp)
             if let hour = recordHour {
@@ -5275,20 +5280,26 @@ enum UsageCollector {
                 agentWork[record.date, default: AgentWorkAccumulator(date: record.date)]
                     .add(record: record, hour: recordHour)
             }
-            tools[record.tool, default: UsageAccumulator()].add(record.usage, cost: resolvedCost.costUSD)
+            tools[record.tool, default: UsageAccumulator()].add(record.usage, cost: 0)
             models[ModelKey(tool: record.tool, model: record.model), default: UsageAccumulator()]
-                .add(record.usage, cost: resolvedCost.costUSD)
+                .add(record.usage, cost: 0)
         }
 
         let totalTokens = tools.values.map(\.usage.totalTokens).reduce(0, +)
-        let totalCost = tools.values.map(\.cost).reduce(0, +)
-        let totalPricedTokens = daily.values.map(\.pricedTokens).reduce(0, +)
-        let totalUnpricedTokens = daily.values.map(\.unpricedTokens).reduce(0, +)
-
         let dailyRows = daily.values
             .sorted { $0.date < $1.date }
             .map { item in
-                DailyUsage(
+                // Price the same complete day/tool/model buckets submitted to the server.
+                // Source invoice values remain in raw records but are not estimate inputs.
+                let estimates = item.atomicUsage.compactMap { row in
+                    pricing?.catalog.estimate(tool: row.tool, model: row.model,
+                        usage: TokenPricingUsage(inputTokens: row.inputTokens, outputTokens: row.outputTokens,
+                            cacheReadTokens: row.cacheReadTokens, cacheWriteTokens: row.cacheWriteTokens,
+                            totalTokens: row.totalTokens, breakdownComplete: row.breakdownComplete),
+                        date: item.date, pricingVersion: pricingVersion)
+                }
+                let pricedTokens = estimates.map(\.pricedTokens).reduce(0, +)
+                return DailyUsage(
                     date: item.date,
                     tools: item.tools,
                     models: item.models,
@@ -5296,10 +5307,10 @@ enum UsageCollector {
                     omittedIncompleteTokens: item.omittedIncompleteTokens,
                     omittedIncompleteBucketCount: item.omittedIncompleteBucketCount,
                     totalTokens: item.totalTokens,
-                    cost: rounded(item.cost, digits: 4),
-                    pricedTokens: item.pricedTokens,
-                    unpricedTokens: item.unpricedTokens,
-                    pricingVersion: TokenPricingCatalog.version
+                    cost: estimates.map(\.costUSD).reduce(0, +),
+                    pricedTokens: pricedTokens,
+                    unpricedTokens: item.totalTokens - pricedTokens,
+                    pricingVersion: pricingVersion
                 )
             }
 
@@ -5339,11 +5350,11 @@ enum UsageCollector {
             timezone: "Asia/Shanghai",
             totals: UsageTotals(
                 tokens: totalTokens,
-                cost: rounded(totalCost, digits: 2),
+                cost: rounded(dailyRows.map(\.cost).reduce(0, +), digits: 2),
                 activeDays: dailyRows.filter { $0.totalTokens > 0 }.count,
-                pricedTokens: totalTokens > 0 ? totalPricedTokens : nil,
-                unpricedTokens: totalTokens > 0 ? totalUnpricedTokens : nil,
-                pricingVersion: TokenPricingCatalog.version
+                pricedTokens: totalTokens > 0 ? dailyRows.compactMap(\.pricedTokens).reduce(0, +) : nil,
+                unpricedTokens: totalTokens > 0 ? dailyRows.compactMap(\.unpricedTokens).reduce(0, +) : nil,
+                pricingVersion: pricingVersion
             ),
             daily: dailyRows,
             rhythms: rhythmRows,
@@ -6150,50 +6161,6 @@ enum UsageCollector {
             database: URL(fileURLWithPath: "/tmp/tokenfleet-qos-test.sqlite"),
             query: "select 1"
         ).qualityOfService
-    }
-
-    private static func resolveCost(for record: UsageRecord) -> ResolvedRecordCost {
-        if let sourceCost = record.costUSD,
-           sourceCost.isFinite,
-           sourceCost > 0 {
-            return ResolvedRecordCost(
-                costUSD: sourceCost,
-                pricedTokens: record.usage.totalTokens,
-                unpricedTokens: 0
-            )
-        }
-
-        let usage = record.usage
-        let normalizedUsage = TokenPricingUsage(
-            inputTokens: max(
-                0,
-                usage.inputTokens
-                    - usage.cacheCreationInputTokens
-                    - usage.cacheReadInputTokens
-            ),
-            outputTokens: usage.outputTokens,
-            cacheReadTokens: usage.cacheReadInputTokens,
-            cacheWriteTokens: usage.cacheCreationInputTokens,
-            totalTokens: usage.totalTokens,
-            breakdownComplete: usage.cacheCoverageComplete
-        )
-        guard let estimate = TokenPricingCatalog.estimate(
-            tool: record.tool,
-            model: record.model,
-            usage: normalizedUsage,
-            date: record.date
-        ) else {
-            return ResolvedRecordCost(
-                costUSD: 0,
-                pricedTokens: 0,
-                unpricedTokens: record.usage.totalTokens
-            )
-        }
-        return ResolvedRecordCost(
-            costUSD: estimate.costUSD,
-            pricedTokens: estimate.pricedTokens,
-            unpricedTokens: estimate.unpricedTokens
-        )
     }
 
     private static func percent(_ value: Int, of total: Int) -> Double {
@@ -7432,12 +7399,6 @@ private struct UsageAccumulator {
     }
 }
 
-private struct ResolvedRecordCost {
-    var costUSD: Double
-    var pricedTokens: Int
-    var unpricedTokens: Int
-}
-
 private struct DailyAccumulator {
     var date: String
     var tools: [String: Int] = [:]
@@ -7448,15 +7409,12 @@ private struct DailyAccumulator {
     var pricedTokens = 0
     var unpricedTokens = 0
 
-    mutating func add(record: UsageRecord, resolvedCost: ResolvedRecordCost) {
+    mutating func add(record: UsageRecord) {
         tools[record.tool, default: 0] += record.usage.totalTokens
         models[record.model, default: 0] += record.usage.totalTokens
         atomic[ModelKey(tool: record.tool, model: record.model), default: DailyAtomicAccumulator()]
             .add(record.usage)
         totalTokens += record.usage.totalTokens
-        cost += resolvedCost.costUSD
-        pricedTokens += resolvedCost.pricedTokens
-        unpricedTokens += resolvedCost.unpricedTokens
     }
 
     var omittedIncompleteTokens: Int {

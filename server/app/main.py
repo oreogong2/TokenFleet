@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.engine import Engine
 
 from .api import router
+from .price_management import router as price_management_router
 from .config import Settings
 from .database import build_engine, build_session_factory
 from .middleware import (
@@ -202,6 +203,7 @@ def create_app(*, settings: Settings | None = None, engine: Engine | None = None
         return JSONResponse(status_code=422, content={"detail": sanitized})
 
     application.include_router(router)
+    application.include_router(price_management_router)
 
     # Keep this catch-all before the root SPA mount. Known API routes registered
     # above still win by route order; unknown API paths remain machine-readable

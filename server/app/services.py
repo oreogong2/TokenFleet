@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from .models import DailyUsage, Device, Organization, PriceVersion, new_id, utcnow
 from .schemas import DailyUsageReport, UsageBucket
+from .pricing import find_price, load_prices
 
 USAGE_NATURAL_KEY_COLUMNS = [
     "org_id",
@@ -33,23 +34,12 @@ COST_DECIMAL_PRECISION = 64
 COST_OVERFLOW_DETAIL = "derived cost exceeds the supported signed 64-bit range"
 
 
-def find_price(
-    session: Session, *, org_id: str, tool: str, model: str, usage_date
-) -> PriceVersion | None:
-    return session.scalar(
-        select(PriceVersion)
-        .where(
-            PriceVersion.org_id == org_id,
-            PriceVersion.tool == tool,
-            PriceVersion.model == model,
-            PriceVersion.effective_from <= usage_date,
-        )
-        .order_by(PriceVersion.effective_from.desc(), PriceVersion.created_at.desc())
-        .limit(1)
-    )
-
-
-def derived_cost_microunits(bucket: UsageBucket, price: PriceVersion) -> int:
+def derived_cost_microunits(bucket: UsageBucket, price: PriceVersion) -> int | None:
+    # A missing rate is harmless only when the corresponding counter is zero.
+    # Transient legacy test objects may not have SQL defaults applied yet.
+    if (bucket.cache_read_tokens and price.cache_read_price_known is False
+            or bucket.cache_write_tokens and price.cache_write_price_known is False):
+        return None
     # A rate expressed in currency units per million tokens has the same numeric
     # multiplier when the result is expressed in micro-currency units.
     # The schema permits 16-digit token counters and 20-digit rates. Four exact
@@ -156,6 +146,7 @@ def _values_for_bucket(
     price: PriceVersion | None,
     now: datetime,
 ) -> dict[str, object]:
+    cost = derived_cost_microunits(bucket, price) if price is not None and not bucket.deleted else None
     return {
         "id": new_id(),
         "org_id": device.org_id,
@@ -175,15 +166,9 @@ def _values_for_bucket(
         "report_schema_version": report.schema_version,
         "collector_version": report.collector_version,
         "reported_generated_at": _utc(report.generated_at),
-        "price_version_id": price.id if price else None,
-        "cost_microunits": (
-            derived_cost_microunits(bucket, price)
-            if price is not None and not bucket.deleted
-            else None
-        ),
-        "cost_currency": (
-            price.currency if price is not None and not bucket.deleted else None
-        ),
+        "price_version_id": price.id if price is not None and (bucket.deleted or cost is not None) else None,
+        "cost_microunits": cost,
+        "cost_currency": price.currency if price is not None and cost is not None else None,
         "created_at": now,
         "updated_at": now,
     }
@@ -273,6 +258,7 @@ def ingest_daily_usage(
             bucket.source,
         ),
     )
+    price_catalog = load_prices(session, device.org_id)
     for bucket in buckets:
         if bucket.date < retention_cutoff:
             # Retention is enforced at write time as well as by the purge job.
@@ -286,6 +272,7 @@ def ingest_daily_usage(
                 tool=bucket.tool,
                 model=bucket.model,
                 usage_date=bucket.date,
+                catalog=price_catalog,
             )
             if bucket.completeness == "exact" and not bucket.deleted
             else None

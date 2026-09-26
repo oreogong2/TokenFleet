@@ -103,6 +103,7 @@ final class CursorUsageCSVParserTests: XCTestCase {
         XCTAssertEqual(snapshot.sources["Cursor"]?.records, 2)
         XCTAssertEqual(snapshot.totals.tokens, 262_372)
         XCTAssertEqual(snapshot.tools.first(where: { $0.tool == "Cursor" })?.tokens, 262_372)
-        XCTAssertEqual(snapshot.totals.cost, 0.43, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.totals.cost, 0, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.totals.unpricedTokens, 262_372)
     }
 }
