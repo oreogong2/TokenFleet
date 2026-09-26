@@ -57,6 +57,7 @@ actor TeamSyncService {
     private let httpClient: TeamSyncHTTPClient
     private let credentialStore: TeamSyncCredentialStoring
     private let stateStore: TeamSyncStateStoring
+    private let machineFingerprint: @Sendable () throws -> String
     private let requestClock: @Sendable () -> Date
     private var operationEpoch: UInt64 = 0
     private var activeOperationID: UUID?
@@ -65,16 +66,26 @@ actor TeamSyncService {
         httpClient: TeamSyncHTTPClient,
         credentialStore: TeamSyncCredentialStoring,
         stateStore: TeamSyncStateStoring,
-        requestClock: @escaping @Sendable () -> Date = { Date() }
+        requestClock: @escaping @Sendable () -> Date = { Date() },
+        machineFingerprint: @escaping @Sendable () throws -> String = { try TeamSyncMachineIdentity.current() }
     ) {
         self.httpClient = httpClient
         self.credentialStore = credentialStore
         self.stateStore = stateStore
         self.requestClock = requestClock
+        self.machineFingerprint = machineFingerprint
     }
 
     func loadState() -> TeamSyncPersistentState? {
         guard var state = stateStore.load() else { return nil }
+        do { state = try machineState() ?? state }
+        catch {
+            var stopped = stateStore.load() ?? state
+            stopped.lastError = safeProtocolError(error).localizedDescription
+            stopped.automaticRetryStopped = true
+            stopped.terminalReason = .credentials
+            return stopped
+        }
         if state.retryPolicyVersion < 1 {
             // Old clients classified clock skew and HTML as terminal. Permit
             // ONE upgrade recovery attempt; a confirmed revocation stays stopped.
@@ -106,7 +117,7 @@ actor TeamSyncService {
         let operation = try beginOperation()
         defer { finishOperation(operation) }
         let normalizedServerURL = try TeamSyncProtocol.normalizedServerURL(rawServerURL).absoluteString
-        let previousState = stateStore.load()
+        let previousState = try machineState()
         let devicePublicID = previousState.flatMap {
             TeamSyncCredentialValidation.canonicalDevicePublicID($0.devicePublicID)
         } ?? UUID().uuidString.lowercased()
@@ -114,7 +125,8 @@ actor TeamSyncService {
             serverURL: normalizedServerURL,
             enrollmentToken: enrollmentToken,
             devicePublicID: devicePublicID,
-            appVersion: appVersion
+            appVersion: appVersion,
+            machineFingerprint: try currentMachineFingerprint()
         )
         let response: TeamSyncHTTPResponse
         do {
@@ -125,6 +137,7 @@ actor TeamSyncService {
             throw TeamSyncProtocolError.networkUnavailable
         }
         try ensureOperation(operation)
+        try handleMachineResponse(response)
         guard (200...299).contains(response.statusCode) else {
             throw TeamSyncProtocolError.httpStatus(response.statusCode)
         }
@@ -159,6 +172,7 @@ actor TeamSyncService {
             let state = TeamSyncPersistentState(
                 serverURL: normalizedServerURL,
                 devicePublicID: devicePublicID,
+                machineFingerprint: try currentMachineFingerprint(),
                 deviceID: serverDeviceID,
                 enrolledAt: now
             )
@@ -200,7 +214,7 @@ actor TeamSyncService {
         guard credentialStore.isAvailable else {
             throw TeamSyncProtocolError.secureCredentialStorageUnavailable
         }
-        guard let state = stateStore.load(),
+        guard let state = try machineState(),
               state.isEnrolled,
               let deviceID = state.deviceID
         else {
@@ -231,7 +245,8 @@ actor TeamSyncService {
             deviceID: deviceID,
             deviceSecret: deviceSecret,
             timestamp: Int(now.timeIntervalSince1970),
-            nonce: UUID().uuidString.lowercased()
+            nonce: UUID().uuidString.lowercased(),
+            machineFingerprint: state.machineFingerprint
         )
         let response: TeamSyncHTTPResponse
         do {
@@ -248,6 +263,7 @@ actor TeamSyncService {
         else {
             throw TeamSyncProtocolError.operationCancelled
         }
+        try handleMachineResponse(response)
         guard (200...299).contains(response.statusCode) else {
             throw TeamSyncProtocolError.httpStatus(response.statusCode)
         }
@@ -258,6 +274,69 @@ actor TeamSyncService {
             throw TeamSyncProtocolError.invalidCommunityRankResponse
         }
         return rank
+    }
+
+    func additionalDeviceCode(
+        serverURL rawServerURL: String,
+        now: Date = Date()
+    ) async throws -> TeamSyncAdditionalDeviceCode {
+        guard credentialStore.isAvailable else {
+            throw TeamSyncProtocolError.secureCredentialStorageUnavailable
+        }
+        guard let state = try machineState(),
+              state.isEnrolled,
+              let deviceID = state.deviceID
+        else {
+            throw TeamSyncProtocolError.notEnrolled
+        }
+        let normalizedServerURL = try TeamSyncProtocol.normalizedServerURL(
+            rawServerURL
+        ).absoluteString
+        guard state.serverURL == normalizedServerURL else {
+            throw TeamSyncProtocolError.reconnectRequired
+        }
+        let deviceSecret: String
+        do {
+            guard let storedSecret = try credentialStore.loadDeviceSecret(
+                serverURL: normalizedServerURL,
+                deviceID: deviceID
+            ) else {
+                throw TeamSyncProtocolError.credentialsUnavailable
+            }
+            deviceSecret = storedSecret
+        } catch let error as TeamSyncProtocolError {
+            throw error
+        } catch {
+            throw TeamSyncProtocolError.credentialStoreTemporarilyUnavailable
+        }
+        let request = try TeamSyncProtocol.additionalDeviceURLRequest(
+            serverURL: normalizedServerURL,
+            deviceID: deviceID,
+            deviceSecret: deviceSecret,
+            timestamp: Int(now.timeIntervalSince1970),
+            nonce: UUID().uuidString.lowercased(),
+            machineFingerprint: state.machineFingerprint
+        )
+        let response: TeamSyncHTTPResponse
+        do {
+            response = try await httpClient.send(request)
+        } catch let error as TeamSyncProtocolError {
+            throw error
+        } catch {
+            throw TeamSyncProtocolError.networkUnavailable
+        }
+        guard let currentState = stateStore.load(),
+              currentState.serverURL == normalizedServerURL,
+              currentState.deviceID == deviceID,
+              currentState.isEnrolled
+        else {
+            throw TeamSyncProtocolError.operationCancelled
+        }
+        try handleMachineResponse(response)
+        guard (200...299).contains(response.statusCode) else {
+            throw TeamSyncProtocolError.httpStatus(response.statusCode)
+        }
+        return try TeamSyncAdditionalDeviceCode.decode(response.data, now: now)
     }
 
     func fetchPublicLeaderboard(
@@ -303,7 +382,7 @@ actor TeamSyncService {
         guard credentialStore.isAvailable else {
             throw TeamSyncProtocolError.secureCredentialStorageUnavailable
         }
-        guard let state = stateStore.load(),
+        guard let state = try machineState(),
               state.isEnrolled,
               let deviceID = state.deviceID
         else {
@@ -334,7 +413,8 @@ actor TeamSyncService {
             deviceID: deviceID,
             deviceSecret: deviceSecret,
             timestamp: Int(now.timeIntervalSince1970),
-            nonce: UUID().uuidString.lowercased()
+            nonce: UUID().uuidString.lowercased(),
+            machineFingerprint: state.machineFingerprint
         )
         let response: TeamSyncHTTPResponse
         do {
@@ -351,6 +431,7 @@ actor TeamSyncService {
         else {
             throw TeamSyncProtocolError.operationCancelled
         }
+        try handleMachineResponse(response)
         guard (200...299).contains(response.statusCode) else {
             throw TeamSyncProtocolError.httpStatus(response.statusCode)
         }
@@ -371,7 +452,8 @@ actor TeamSyncService {
     ) async throws -> TeamSyncPersistentState {
         let operation = try beginOperation()
         defer { finishOperation(operation) }
-        guard var state = loadState(),
+        _ = loadState()
+        guard var state = try machineState(),
               state.isEnrolled,
               let deviceID = state.deviceID
         else {
@@ -456,7 +538,8 @@ actor TeamSyncService {
                         deviceSecret: deviceSecret,
                         payload: payload,
                         timestamp: Int(signedAt.timeIntervalSince1970),
-                        nonce: UUID().uuidString.lowercased()
+                        nonce: UUID().uuidString.lowercased(),
+                        machineFingerprint: state.machineFingerprint
                     )
                     let response: TeamSyncHTTPResponse
                     do {
@@ -487,6 +570,7 @@ actor TeamSyncService {
                             continue
                         }
                     }
+                    try handleMachineResponse(response)
                     guard (200...299).contains(response.statusCode) else {
                         throw TeamSyncProtocolError.httpStatus(response.statusCode)
                     }
@@ -523,6 +607,7 @@ actor TeamSyncService {
             return state
         } catch {
             let protocolError = safeProtocolError(error)
+            if protocolError == .machineChanged { throw protocolError }
             if protocolError == .operationCancelled {
                 throw protocolError
             }
@@ -572,7 +657,8 @@ actor TeamSyncService {
                 try stateStore.save(
                     TeamSyncPersistentState(
                         serverURL: "",
-                        devicePublicID: devicePublicID
+                        devicePublicID: devicePublicID,
+                        machineFingerprint: previousState?.machineFingerprint
                     )
                 )
             } else {
@@ -581,6 +667,50 @@ actor TeamSyncService {
         } catch {
             throw TeamSyncProtocolError.stateUnavailable
         }
+    }
+
+    private func currentMachineFingerprint() throws -> String {
+        let fingerprint: String
+        do { fingerprint = try machineFingerprint() }
+        catch { throw TeamSyncProtocolError.machineIdentityUnavailable }
+        guard fingerprint.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else {
+            throw TeamSyncProtocolError.machineIdentityUnavailable
+        }
+        return fingerprint
+    }
+
+    private func machineState() throws -> TeamSyncPersistentState? {
+        let fingerprint = try currentMachineFingerprint()
+        guard var state = stateStore.load() else { return nil }
+        if let previous = state.machineFingerprint, previous != fingerprint {
+            try resetMachineBinding(fingerprint: fingerprint)
+            throw TeamSyncProtocolError.machineChanged
+        }
+        if state.machineFingerprint == nil {
+            state.machineFingerprint = fingerprint
+            do { try stateStore.save(state) }
+            catch { throw TeamSyncProtocolError.stateUnavailable }
+        }
+        return state
+    }
+
+    private func resetMachineBinding(fingerprint: String) throws {
+        let previous = stateStore.load()
+        try credentialStore.clearDeviceSecret(deviceID: previous?.deviceID)
+        var replacement = TeamSyncPersistentState(serverURL: previous?.serverURL ?? "", machineFingerprint: fingerprint)
+        replacement.lastError = TeamSyncProtocolError.machineChanged.localizedDescription
+        replacement.automaticRetryStopped = true
+        replacement.terminalReason = .credentials
+        try stateStore.save(replacement)
+    }
+
+    private func handleMachineResponse(_ response: TeamSyncHTTPResponse) throws {
+        guard response.statusCode == 409,
+              let object = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any],
+              let detail = object["detail"] as? [String: Any],
+              detail["code"] as? String == "machine_mismatch" else { return }
+        try resetMachineBinding(fingerprint: currentMachineFingerprint())
+        throw TeamSyncProtocolError.machineChanged
     }
 
     private func safeProtocolError(_ error: Error) -> TeamSyncProtocolError {

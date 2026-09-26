@@ -21,7 +21,7 @@ class BatchOneRegressions(unittest.TestCase):
         credential = DeviceCredential('https://community.example.com',
             '11111111-1111-4111-8111-111111111111',
             '22222222-2222-4222-8222-222222222222', 'fixture_device_value_1234567890')
-        return TokenFleetClient(credential_store=test_client.MemoryDeviceStore(credential),
+        return TokenFleetClient(machine_fingerprint=lambda: "a" * 64, credential_store=test_client.MemoryDeviceStore(credential),
             state_store=StateStore(root / 'state.json'), source_home=root,
             community_origin=credential.server_origin, transport=transport,
             collector=lambda *args, **kwargs: CollectionResult(

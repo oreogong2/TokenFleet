@@ -128,11 +128,13 @@ def body_sha256(body: bytes) -> str:
 
 
 def canonical_request(
-    *, timestamp_text: str, nonce: str, method: str, path: str, body: bytes
+    *, timestamp_text: str, nonce: str, method: str, path: str, body: bytes,
+    machine_fingerprint: str | None = None,
 ) -> bytes:
-    return (
-        f"{timestamp_text}\n{nonce}\n{method.upper()}\n{path}\n{body_sha256(body)}"
-    ).encode("utf-8")
+    canonical = f"{timestamp_text}\n{nonce}\n{method.upper()}\n{path}\n{body_sha256(body)}"
+    if machine_fingerprint is not None:
+        canonical += "\nmachine-fingerprint-v1:" + machine_fingerprint
+    return canonical.encode("utf-8")
 
 
 def sign_device_request(
@@ -143,6 +145,7 @@ def sign_device_request(
     method: str,
     path: str,
     body: bytes,
+    machine_fingerprint: str | None = None,
 ) -> str:
     signing_key = derive_device_signing_key(device_secret)
     canonical = canonical_request(
@@ -151,6 +154,7 @@ def sign_device_request(
         method=method,
         path=path,
         body=body,
+        machine_fingerprint=machine_fingerprint,
     )
     return hmac.new(signing_key, canonical, hashlib.sha256).hexdigest()
 
@@ -170,6 +174,9 @@ async def authenticate_device_request(
     timestamp_text = request.headers.get("X-Timestamp")
     nonce = request.headers.get("X-Nonce")
     signature = request.headers.get("X-Signature")
+    machine_fingerprint = request.headers.get("X-Machine-Fingerprint")
+    if machine_fingerprint is not None and not re.fullmatch(r"[0-9a-f]{64}", machine_fingerprint):
+        raise HTTPException(status_code=401, detail="invalid machine fingerprint")
     if not all((device_id, timestamp_text, nonce, signature)):
         raise HTTPException(status_code=401, detail="missing device authentication headers")
     assert timestamp_text is not None and nonce is not None and signature is not None
@@ -222,6 +229,7 @@ async def authenticate_device_request(
             method=request.method,
             path=request.url.path,
             body=body,
+            machine_fingerprint=machine_fingerprint,
         ),
         hashlib.sha256,
     ).hexdigest()
@@ -258,6 +266,7 @@ async def authenticate_device_request(
             method=request.method,
             path=request.url.path,
             body=body,
+            machine_fingerprint=machine_fingerprint,
         ),
         hashlib.sha256,
     ).hexdigest()
@@ -267,6 +276,18 @@ async def authenticate_device_request(
     if not locked_device.is_active:
         session.rollback()
         raise HTTPException(status_code=403, detail="device or member is disabled")
+
+    if locked_device.machine_fingerprint is not None:
+        if machine_fingerprint is None:
+            session.rollback()
+            raise HTTPException(status_code=409, detail={"code": "machine_binding_required"})
+        if not hmac.compare_digest(locked_device.machine_fingerprint, machine_fingerprint):
+            session.rollback()
+            raise HTTPException(status_code=409, detail={"code": "machine_mismatch"})
+    elif machine_fingerprint is not None:
+        # The signature covers the fingerprint. A migrated legacy state cannot
+        # overwrite the first machine's binding; check again under org/device locks.
+        locked_device.machine_fingerprint = machine_fingerprint
 
     now = utcnow()
     rate_cutoff = now - timedelta(

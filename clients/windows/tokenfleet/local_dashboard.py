@@ -291,6 +291,17 @@ def dashboard_handler_class(
             if length < 0:
                 self._send_json(400, {"error": "请求长度无效"})
                 return
+            if self.path == "/api/devices/add-code":
+                if length != 2 or self.rfile.read(length) != b"{}":
+                    self._send_json(400, {"error": "请求字段无效"})
+                    return
+                try:
+                    code = client_factory(paths).additional_device_code()
+                except RuntimeError:
+                    self._send_json(400, {"error": "无法生成设备码，请检查本机连接状态"})
+                    return
+                self._send_json(201, code)
+                return
             if self.path == "/api/settings/experimental":
                 if length > 1024:
                     self._send_json(413, {"error": "请求过大"})

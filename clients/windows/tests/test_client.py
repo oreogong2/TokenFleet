@@ -138,6 +138,7 @@ class ClientTests(unittest.TestCase):
                 return CollectionResult([], CollectionDiagnostics())
 
             client = TokenFleetClient(
+                machine_fingerprint=lambda: "a" * 64,
                 credential_store=MemoryDeviceStore(),  # type: ignore[arg-type]
                 state_store=StateStore(Path(temporary) / "state.json"),
                 source_home=Path(temporary),
@@ -157,6 +158,7 @@ class ClientTests(unittest.TestCase):
             transport = FixtureTransport(state.device_public_id)
             device_store = MemoryDeviceStore()
             client = TokenFleetClient(
+                machine_fingerprint=lambda: "a" * 64,
                 credential_store=device_store,  # type: ignore[arg-type]
                 state_store=state_store,
                 source_home=Path(temporary),
@@ -193,6 +195,7 @@ class ClientTests(unittest.TestCase):
             state_store = StateStore(paths.state)
             transport = FixtureTransport(existing.device_public_id)
             client = TokenFleetClient(
+                machine_fingerprint=lambda: "a" * 64,
                 credential_store=device_store,  # type: ignore[arg-type]
                 state_store=state_store,
                 source_home=Path(temporary),
@@ -220,6 +223,7 @@ class ClientTests(unittest.TestCase):
             transport = FixtureTransport(value.device_public_id)
             collection = CollectionResult([dict(self.bucket)], CollectionDiagnostics())
             client = TokenFleetClient(
+                machine_fingerprint=lambda: "a" * 64,
                 credential_store=device_store,  # type: ignore[arg-type]
                 state_store=state_store,
                 source_home=Path(temporary),
@@ -243,6 +247,7 @@ class ClientTests(unittest.TestCase):
                 timestamp=int(headers["X-Timestamp"]),
                 nonce=headers["X-Nonce"],
                 path=DAILY_USAGE_PATH,
+                machine_fingerprint="a" * 64,
             )
             self.assertEqual(headers, expected)
             wire_text = body.decode("utf-8")
@@ -261,6 +266,7 @@ class ClientTests(unittest.TestCase):
             state_store = StateStore(Path(temporary) / "state.json")
             state_store.save(state_store.load())
             client = TokenFleetClient(
+                machine_fingerprint=lambda: "a" * 64,
                 credential_store=MemoryDeviceStore(value),  # type: ignore[arg-type]
                 state_store=state_store,
                 source_home=Path(temporary),
@@ -284,6 +290,7 @@ class ClientTests(unittest.TestCase):
             )
             state_store = StateStore(Path(temporary) / "state.json")
             client = TokenFleetClient(
+                machine_fingerprint=lambda: "a" * 64,
                 credential_store=MemoryDeviceStore(value),  # type: ignore[arg-type]
                 state_store=state_store,
                 source_home=Path(temporary),
@@ -306,6 +313,7 @@ class ClientTests(unittest.TestCase):
             )
             transport = FixtureTransport(credential.device_public_id)
             client = TokenFleetClient(
+                machine_fingerprint=lambda: "a" * 64,
                 credential_store=MemoryDeviceStore(credential),  # type: ignore[arg-type]
                 state_store=StateStore(Path(temporary) / "state.json"),
                 source_home=Path(temporary),
@@ -328,6 +336,7 @@ class ClientTests(unittest.TestCase):
                 nonce=headers["X-Nonce"],
                 method="GET",
                 path=COMMUNITY_RANK_PATH,
+                machine_fingerprint="a" * 64,
             )
             expected.pop("Content-Type")
             self.assertEqual(headers, expected)

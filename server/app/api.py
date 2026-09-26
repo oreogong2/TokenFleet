@@ -46,6 +46,7 @@ from .schemas import (
     DeviceEnrollResponse,
     DeviceResponse,
     DeviceStatusUpdate,
+    DeviceEnrollmentTokenRequest,
     EnrollmentTokenCreate,
     EnrollmentTokenResponse,
     HealthResponse,
@@ -131,6 +132,7 @@ def readiness(
         # Touch the column introduced by the current Alembic head. Merely
         # checking the initial organization table would let a database that is
         # one migration behind advertise readiness and then fail on usage I/O.
+        session.execute(select(Device.machine_fingerprint).limit(1))
         session.execute(select(PriceManagementCredential.id, PriceManagementCredential.expires_at).limit(1))
         session.execute(
             select(
@@ -1093,6 +1095,11 @@ def enroll_device(
                 status_code=409,
                 detail="device identifier is already owned by another member",
             )
+        if device.machine_fingerprint is not None and payload.machine_fingerprint != device.machine_fingerprint:
+            session.rollback()
+            raise HTTPException(status_code=409, detail={"code": "machine_mismatch"})
+        if payload.machine_fingerprint is not None:
+            device.machine_fingerprint = payload.machine_fingerprint
         # Re-enrollment preserves the stable device identity and usage foreign
         # keys while invalidating the previous credential immediately.
         device.platform = payload.platform
@@ -1106,6 +1113,7 @@ def enroll_device(
             org_id=token.org_id,
             user_id=token.user_id,
             device_public_id=str(payload.device_public_id),
+            machine_fingerprint=payload.machine_fingerprint,
             platform=payload.platform,
             app_version=payload.app_version,
             collector_version=payload.collector_version,
@@ -1123,6 +1131,41 @@ def enroll_device(
         device_public_id=device.device_public_id,
         device_secret=device_secret,
     )
+
+
+@router.post("/api/v1/devices/me/enrollment-tokens", response_model=EnrollmentTokenResponse, status_code=201)
+def create_additional_device_token(
+    payload: DeviceEnrollmentTokenRequest,
+    response: Response,
+    principal: DevicePrincipal = Depends(get_device_principal),
+    session: Session = Depends(get_session),
+) -> EnrollmentTokenResponse:
+    user = session.scalar(select(User).where(
+        User.id == principal.user.id, User.org_id == principal.device.org_id,
+    ).with_for_update().execution_options(populate_existing=True))
+    if user is None or not user.is_active or user.role != UserRole.MEMBER:
+        session.rollback()
+        raise HTTPException(status_code=403, detail="active member required")
+    device = session.scalar(select(Device).where(
+        Device.id == principal.device.id, Device.org_id == user.org_id,
+        Device.user_id == user.id,
+    ).with_for_update().execution_options(populate_existing=True))
+    if device is None or not device.is_active:
+        session.rollback()
+        raise HTTPException(status_code=403, detail="active device required")
+    now = utcnow()
+    session.execute(update(EnrollmentToken).where(
+        EnrollmentToken.org_id == user.org_id, EnrollmentToken.user_id == user.id,
+        EnrollmentToken.created_by_user_id == user.id,
+        EnrollmentToken.used_at.is_(None), EnrollmentToken.expires_at > now,
+    ).values(expires_at=now))
+    raw_token = generate_enrollment_token()
+    expires_at = now + timedelta(minutes=15)
+    session.add(EnrollmentToken(org_id=user.org_id, user_id=user.id,
+        created_by_user_id=user.id, token_hash=opaque_token_hash(raw_token), expires_at=expires_at))
+    session.commit()
+    response.headers["Cache-Control"] = "no-store"
+    return EnrollmentTokenResponse(enrollment_token=raw_token, expires_at=expires_at)
 
 
 @router.get("/api/v1/devices", response_model=list[DeviceResponse])

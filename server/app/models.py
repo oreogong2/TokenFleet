@@ -206,6 +206,7 @@ class Device(Base):
     )
     user_id: Mapped[str] = mapped_column(String(36), nullable=False)
     device_public_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    machine_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     platform: Mapped[str] = mapped_column(String(32), nullable=False)
     app_version: Mapped[str] = mapped_column(String(64), nullable=False)
     collector_version: Mapped[str] = mapped_column(String(64), nullable=False)

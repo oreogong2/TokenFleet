@@ -86,6 +86,7 @@ def signed_headers(
     nonce: str | None = None,
     method: str = "POST",
     path: str = DAILY_USAGE_PATH,
+    machine_fingerprint: str | None = None,
 ) -> dict[str, str]:
     timestamp_text = str(int(time.time()) if timestamp is None else timestamp)
     nonce_value = nonce or str(uuid.uuid4())
@@ -94,18 +95,26 @@ def signed_headers(
     body_hash = hashlib.sha256(body).hexdigest()
     canonical = "\n".join(
         [timestamp_text, nonce_value, method.upper(), path, body_hash]
-    ).encode("utf-8")
+    )
+    if machine_fingerprint is not None:
+        if not re.fullmatch(r"[0-9a-f]{64}", machine_fingerprint):
+            raise ProtocolError("invalid machine fingerprint")
+        canonical += "\nmachine-fingerprint-v1:" + machine_fingerprint
+    canonical = canonical.encode("utf-8")
     signing_key = hashlib.sha256(
         SIGNING_KEY_CONTEXT + device_secret.encode("utf-8")
     ).digest()
     signature = hmac.new(signing_key, canonical, hashlib.sha256).hexdigest()
-    return {
+    headers = {
         "Content-Type": "application/json",
         "X-Device-ID": device_id,
         "X-Timestamp": timestamp_text,
         "X-Nonce": nonce_value,
         "X-Signature": signature,
     }
+    if machine_fingerprint is not None:
+        headers["X-Machine-Fingerprint"] = machine_fingerprint
+    return headers
 
 
 def validate_label(value: str) -> str:

@@ -16,6 +16,11 @@
       <article><span>我的社群名次</span><strong id="rank">—</strong><small id="rank-detail">连接后可查询</small></article>
     </section>
     <section class="panel" aria-live="polite"><h2>社群同步</h2><p id="sync-success">尚未同步</p><p id="sync-error"></p><p id="sync-skipped"></p></section>
+    <section class="panel"><h2>添加另一台设备</h2>
+      <p>在已连接的设备生成单次码，另一台设备用它连接后归入同一昵称。15 分钟有效、仅用一次；重新生成会使旧码失效。</p>
+      <div class="actions"><button id="add-device">生成设备码</button><input id="device-code" type="password" readonly autocomplete="off" aria-label="添加设备码"><button id="copy-device-code" disabled>复制设备码</button></div>
+      <p id="device-code-expiry"></p><small>只交给自己的另一台设备。请勿复制 AI 日志或 TokenFleet 连接文件，以免重复计数。</small>
+    </section>
     <section class="split">
       <article class="panel"><div class="panel-head"><div><p>BY TOOL</p><h2>本周工具分布</h2></div></div><div id="tools" class="bars"></div></article>
       <article class="panel"><div class="panel-head"><div><p>BY MODEL</p><h2>本周模型分布</h2></div></div><div id="models" class="bars"></div></article>

@@ -23,6 +23,8 @@ final class AppState: ObservableObject {
     @Published private(set) var showsPricingReestimationNotice = false
     @Published private(set) var teamSyncState: TeamSyncPersistentState?
     @Published private(set) var isTeamSyncing = false
+    @Published var additionalDeviceCode: TeamSyncAdditionalDeviceCode?
+    @Published var isCreatingDeviceCode = false
     @Published private(set) var teamSyncActionError: String?
     @Published private(set) var communityRank: TeamSyncCommunityRank?
     @Published private(set) var isRefreshingCommunityRank = false
@@ -590,6 +592,23 @@ final class AppState: ObservableObject {
         }
     }
 
+    func createAdditionalDeviceCode() {
+        guard !isCreatingDeviceCode, !isTeamSyncing,
+              isCommunitySyncEnrollmentCompatible, let origin = fixedCommunityServerOrigin else { return }
+        isCreatingDeviceCode = true
+        additionalDeviceCode = nil
+        teamSyncActionError = nil
+        Task {
+            defer { isCreatingDeviceCode = false }
+            do {
+                additionalDeviceCode = try await TeamSyncService.live.additionalDeviceCode(serverURL: origin.absoluteString)
+            } catch {
+                teamSyncState = await TeamSyncService.live.loadState()
+                teamSyncActionError = error.localizedDescription
+            }
+        }
+    }
+
     func enrollTeamSync(enrollmentToken: String) {
         guard !isTeamSyncing else { return }
         guard let fixedCommunityServerOrigin else {
@@ -612,6 +631,7 @@ final class AppState: ObservableObject {
                 configureTeamSyncTimer()
                 syncTeamUsage(force: true)
             } catch {
+                teamSyncState = await TeamSyncService.live.loadState()
                 teamSyncActionError = error.localizedDescription
                 isTeamSyncing = false
                 configureTeamSyncTimer()
@@ -675,6 +695,7 @@ final class AppState: ObservableObject {
     }
 
     func clearTeamSync() {
+        additionalDeviceCode = nil
         guard !isTeamSyncing else { return }
         // Stop every automatic path before touching the Keychain. If deletion
         // fails, keep the binding visible for an explicit retry but never

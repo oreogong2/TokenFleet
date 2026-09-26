@@ -51,6 +51,21 @@ def _request(handler: type, raw_request: bytes) -> tuple[int, bytes]:
 
 
 class LocalDashboardTests(unittest.TestCase):
+    def test_add_device_code_requires_local_authorization_and_no_store(self) -> None:
+        paths = SimpleNamespace()
+        client = mock.Mock()
+        client.additional_device_code.return_value = {"enrollment_token": "T" * 43, "expires_at": "fixture"}
+        token = "A" * 43
+        handler = dashboard_handler_class(paths, port=8765, client_factory=lambda _: client, action_token=token)
+        base = b"POST /api/devices/add-code HTTP/1.1\r\nHost: 127.0.0.1:8765\r\nOrigin: http://127.0.0.1:8765\r\nX-TokenFleet-Action: 1\r\n"
+        status, _ = _request(handler, base + b"Content-Length: 2\r\n\r\n{}")
+        self.assertEqual(status, 403)
+        client.additional_device_code.assert_not_called()
+        status, response = _request(handler, base + f"{ACTION_TOKEN_HEADER}: {token}\r\n".encode() + b"Content-Length: 2\r\n\r\n{}")
+        self.assertEqual(status, 201)
+        self.assertIn(b"Cache-Control: no-store", response)
+        client.additional_device_code.assert_called_once()
+
     def test_dashboard_summarizes_today_week_tool_model_and_rank(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

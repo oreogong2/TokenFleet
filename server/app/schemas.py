@@ -240,9 +240,14 @@ class EnrollmentTokenResponse(StrictModel):
     expires_at: datetime
 
 
+class DeviceEnrollmentTokenRequest(StrictModel):
+    """The signed device chooses neither a member nor a tenant."""
+
+
 class DeviceEnrollRequest(StrictModel):
     enrollment_token: Annotated[str, Field(min_length=32, max_length=256)]
     device_public_id: UUID
+    machine_fingerprint: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
     platform: Annotated[str, Field(min_length=1, max_length=32)]
     app_version: VersionString
     collector_version: VersionString

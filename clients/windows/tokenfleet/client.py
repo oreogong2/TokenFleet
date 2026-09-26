@@ -36,7 +36,9 @@ from .protocol import (
     signed_headers,
     validate_ingest_response,
 )
-from .state import StateStore
+from .state import ClientState, StateStore
+from .machine_identity import current_machine_fingerprint
+from datetime import datetime, timezone
 from .settings import ClientSettings, SettingsStore
 
 
@@ -92,6 +94,7 @@ class TokenFleetClient:
         sleeper: Callable[[float], None] = time.sleep,
         settings_store: SettingsStore | None = None,
         cursor_archive: Path | None = None,
+        machine_fingerprint: Callable[[], str] = current_machine_fingerprint,
     ) -> None:
         self.credential_store = credential_store
         self.state_store = state_store
@@ -102,8 +105,10 @@ class TokenFleetClient:
         self.sleeper = sleeper
         self.settings_store = settings_store
         self.cursor_archive = cursor_archive
+        self.machine_fingerprint = machine_fingerprint
 
     def connect(self, *, enrollment_token: str) -> DeviceCredential:
+        state = self._machine_state()
         origin = self.community_origin
         token = enrollment_token.strip()
         if token != enrollment_token or not re.fullmatch(r"[A-Za-z0-9_-]{32,256}", token):
@@ -126,16 +131,20 @@ class TokenFleetClient:
             "platform": "windows",
             "app_version": APP_VERSION,
             "collector_version": COLLECTOR_VERSION,
+            "machine_fingerprint": state.machine_fingerprint,
         }
-        response = self.transport.post(
+        response = self._machine_request(lambda: self.transport.post(
             enrollment_endpoint(origin),
             request,
             expected_status=201,
-        )
+        ))
         credential = self._enrollment_credential(
             response, expected_public_id=state.device_public_id, origin=origin
         )
         self.credential_store.save(credential)
+        state.reconnect_required = False
+        state.last_sync_error = None
+        self.state_store.save(state)
         return credential
 
     def preview(self, *, history_days: int = 366) -> CollectionResult:
@@ -159,7 +168,7 @@ class TokenFleetClient:
             state.last_sync_attempt_at = generated_at()
             state.consecutive_sync_failures += 1
             status = error.status if isinstance(error, NetworkError) else None
-            state.last_sync_error = (
+            state.last_sync_error = state.last_sync_error if state.reconnect_required else (
                 f"同步失败（HTTP {status}），请检查连接状态" if status in (401, 403)
                 else "同步暂未成功，计划任务会重试；可运行 tokenfleet sync"
             )
@@ -204,11 +213,12 @@ class TokenFleetClient:
                 headers = signed_headers(
                     device_id=credential.device_id, device_secret=credential.device_secret,
                     body=body, path=DAILY_USAGE_PATH, timestamp=int(time.time()) + clock_offset,
+                    machine_fingerprint=self.state_store.load().machine_fingerprint,
                 )
                 try:
-                    response = self.transport.post_bytes(
+                    response = self._machine_request(lambda: self.transport.post_bytes(
                         usage_endpoint(credential.server_origin), body, headers=headers, expected_status=200,
-                    )
+                    ))
                 except NetworkError as error:
                     if error.status == 401 and authentication_retries == 0:
                         authentication_retries += 1
@@ -297,14 +307,67 @@ class TokenFleetClient:
             body=b"",
             method="GET",
             path=COMMUNITY_RANK_PATH,
+            machine_fingerprint=self.state_store.load().machine_fingerprint,
         )
         headers.pop("Content-Type", None)
-        value = self.transport.get(
+        value = self._machine_request(lambda: self.transport.get(
             community_rank_endpoint(credential.server_origin),
             headers=headers,
             expected_status=200,
-        )
+        ))
         return self._validate_community_rank(value)
+
+    def additional_device_code(self) -> dict[str, str]:
+        credential = self._credential_for_pinned_origin()
+        path = "/api/v1/devices/me/enrollment-tokens"
+        body = b"{}"
+        headers = signed_headers(device_id=credential.device_id, device_secret=credential.device_secret,
+                                 body=body, path=path, machine_fingerprint=self.state_store.load().machine_fingerprint)
+        value = self._machine_request(lambda: self.transport.post_bytes(
+            credential.server_origin + path, body, headers=headers, expected_status=201))
+        if (not isinstance(value, dict) or set(value) != {"enrollment_token", "expires_at"}
+            or not isinstance(value["enrollment_token"], str) or not re.fullmatch(r"[A-Za-z0-9_-]{32,256}", value["enrollment_token"])
+            or not isinstance(value["expires_at"], str)):
+            raise ProtocolError("服务器返回的添加设备码无效")
+        try:
+            expires = datetime.fromisoformat(value["expires_at"].replace("Z", "+00:00"))
+            seconds = (expires - datetime.now(timezone.utc)).total_seconds()
+            if not 0 < seconds <= 960:
+                raise ValueError("invalid expiry")
+        except (ValueError, TypeError) as error:
+            raise ProtocolError("服务器返回的添加设备码无效") from error
+        return value
+
+    def _machine_state(self) -> ClientState:
+        fingerprint = self.machine_fingerprint()
+        if not isinstance(fingerprint, str) or not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+            raise ProtocolError("无法确认当前机器身份，尚未发送数据")
+        state = self.state_store.load()
+        if state.machine_fingerprint is not None and state.machine_fingerprint != fingerprint:
+            self._reset_machine_binding(fingerprint)
+            raise ProtocolError("这是一台新设备，请用原设备的添加设备码重新连接")
+        if state.machine_fingerprint is None:
+            state.machine_fingerprint = fingerprint
+            self.state_store.save(state)
+        return state
+
+    def _reset_machine_binding(self, fingerprint: str) -> None:
+        # Only this app's local device credential is removed; raw usage remains.
+        self.credential_store.clear()
+        state = ClientState.new()
+        state.machine_fingerprint = fingerprint
+        state.reconnect_required = True
+        state.last_sync_error = "这是一台新设备，请用原设备的添加设备码重新连接"
+        self.state_store.save(state)
+
+    def _machine_request(self, request: Callable[[], Any]) -> Any:
+        try:
+            return request()
+        except NetworkError as error:
+            if error.machine_mismatch:
+                self._reset_machine_binding(self._machine_state().machine_fingerprint)
+                raise ProtocolError("这是一台新设备，请用原设备的添加设备码重新连接") from None
+            raise
 
     @staticmethod
     def _validate_community_rank(value: Any) -> dict[str, Any]:
@@ -407,6 +470,7 @@ class TokenFleetClient:
         return value
 
     def _credential_for_pinned_origin(self) -> DeviceCredential:
+        self._machine_state()
         credential = self.credential_store.load()
         try:
             stored_origin = canonical_community_origin(credential.server_origin)

@@ -3,6 +3,79 @@ import XCTest
 @testable import TokenStepSwift
 
 final class TeamSyncServiceTests: XCTestCase {
+    func testMachineMigrationClearsOnlyBindingBeforeNetwork() async throws {
+        let state = TeamSyncPersistentState(serverURL: "https://team.example.com", machineFingerprint: String(repeating: "a", count: 64), deviceID: "device-one", syncedBucketHashes: ["old": "hash"])
+        let store = MemoryTeamSyncStateStore(state: state)
+        let credentials = MemoryTeamSyncCredentialStore(values: ["device-one": "fixture_device_secret"])
+        let http = RecordingTeamSyncHTTPClient(responses: [])
+        let service = TeamSyncService(httpClient: http, credentialStore: credentials, stateStore: store, machineFingerprint: { String(repeating: "b", count: 64) })
+        do {
+            _ = try await service.fetchCommunityRank(serverURL: state.serverURL)
+            XCTFail("migration should require reconnect")
+        } catch { XCTAssertEqual(error as? TeamSyncProtocolError, .machineChanged) }
+        let requests = await http.requests
+        XCTAssertTrue(requests.isEmpty)
+        XCTAssertTrue(credentials.values.isEmpty)
+        XCTAssertNil(store.state?.deviceID)
+        XCTAssertNotEqual(store.state?.devicePublicID, state.devicePublicID)
+        XCTAssertEqual(store.state?.machineFingerprint, String(repeating: "b", count: 64))
+        XCTAssertEqual(store.state?.syncedBucketHashes, [:])
+    }
+
+    func testUnavailableMachineDoesNotDeleteBindingOrSendRequest() async throws {
+        let state = TeamSyncPersistentState(serverURL: "https://team.example.com", deviceID: "device-one")
+        let store = MemoryTeamSyncStateStore(state: state)
+        let credentials = MemoryTeamSyncCredentialStore(values: ["device-one": "fixture_device_secret"])
+        let http = RecordingTeamSyncHTTPClient(responses: [])
+        let service = TeamSyncService(httpClient: http, credentialStore: credentials, stateStore: store, machineFingerprint: { throw TeamSyncProtocolError.machineIdentityUnavailable })
+        do { _ = try await service.fetchCommunityRank(serverURL: state.serverURL); XCTFail("should stop") }
+        catch { XCTAssertEqual(error as? TeamSyncProtocolError, .machineIdentityUnavailable) }
+        let requests = await http.requests
+        XCTAssertTrue(requests.isEmpty)
+        XCTAssertEqual(store.state, state)
+        XCTAssertNotNil(credentials.values["device-one"])
+    }
+
+    func testLegacyCloneConflictResetsAndAdditionalCodeIsNotPersisted() async throws {
+        let origin = "https://team.example.com"
+        let store = MemoryTeamSyncStateStore(state: TeamSyncPersistentState(serverURL: origin, deviceID: "device-one"))
+        let credentials = MemoryTeamSyncCredentialStore(values: ["device-one": "fixture_device_secret"])
+        let http = RecordingTeamSyncHTTPClient(responses: [TeamSyncHTTPResponse(data: Data(#"{"detail":{"code":"machine_mismatch"}}"#.utf8), statusCode: 409)])
+        let service = TeamSyncService(httpClient: http, credentialStore: credentials, stateStore: store, machineFingerprint: { String(repeating: "b", count: 64) })
+        do { _ = try await service.additionalDeviceCode(serverURL: origin); XCTFail("clone must stop") }
+        catch { XCTAssertEqual(error as? TeamSyncProtocolError, .machineChanged) }
+        XCTAssertNil(store.state?.deviceID)
+        XCTAssertTrue(credentials.values.isEmpty)
+        let requests = await http.requests
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(requests.first?.url?.path, TeamSyncProtocolConfiguration.additionalDevicePath)
+        XCTAssertEqual(requests.first?.value(forHTTPHeaderField: "X-Machine-Fingerprint"), String(repeating: "b", count: 64))
+    }
+
+    func testAdditionalCodeUsesSignedEmptyBodyWithoutPersistingCode() async throws {
+        let origin = "https://team.example.com", code = String(repeating: "T", count: 43)
+        let now = Date(timeIntervalSince1970: 100)
+        let store = MemoryTeamSyncStateStore(state: TeamSyncPersistentState(serverURL: origin, deviceID: "device-one"))
+        let credentials = MemoryTeamSyncCredentialStore(values: ["device-one": "fixture_device_secret"])
+        let data = try JSONSerialization.data(withJSONObject: ["enrollment_token": code, "expires_at": "1970-01-01T00:16:40Z"])
+        let http = RecordingTeamSyncHTTPClient(responses: [TeamSyncHTTPResponse(data: data, statusCode: 201)])
+        let service = TeamSyncService(httpClient: http, credentialStore: credentials, stateStore: store, machineFingerprint: { String(repeating: "a", count: 64) })
+        let result = try await service.additionalDeviceCode(serverURL: origin, now: now)
+        XCTAssertEqual(result.token, code)
+        XCTAssertFalse(String(data: try JSONEncoder().encode(store.state), encoding: .utf8)!.contains(code))
+        let requests = await http.requests
+        XCTAssertEqual(requests.first?.httpBody, Data("{}".utf8))
+        XCTAssertNotNil(requests.first?.value(forHTTPHeaderField: "X-Signature"))
+    }
+
+    func testMachineUUIDCanonicalizationAndEmptyHardwareRejection() throws {
+        let lower = "123e4567-e89b-12d3-a456-426614174000"
+        XCTAssertEqual(try TeamSyncMachineIdentity.fingerprint(uuidText: lower), try TeamSyncMachineIdentity.fingerprint(uuidText: lower.uppercased()))
+        XCTAssertEqual(try TeamSyncMachineIdentity.fingerprint(uuidText: lower).count, 64)
+        XCTAssertThrowsError(try TeamSyncMachineIdentity.fingerprint(uuidText: "00000000-0000-0000-0000-000000000000"))
+        XCTAssertThrowsError(try TeamSyncMachineIdentity.fingerprint(uuidText: "invalid"))
+    }
+
     func testManualRetryPolicyKeepsRequestRejectedReachableButBlocksCredentials() {
         XCTAssertTrue(
             TeamSyncManualRetryPolicy.allowsForceRetry(
@@ -245,6 +318,7 @@ final class TeamSyncServiceTests: XCTestCase {
             state: TeamSyncPersistentState(
                 serverURL: origin,
                 devicePublicID: publicID,
+                machineFingerprint: String(repeating: "a", count: 64),
                 deviceID: deviceID
             )
         )
@@ -258,7 +332,8 @@ final class TeamSyncServiceTests: XCTestCase {
                 ]
             ),
             credentialStore: credentials,
-            stateStore: stateStore
+            stateStore: stateStore,
+            machineFingerprint: { String(repeating: "a", count: 64) }
         )
 
         do {
@@ -286,6 +361,7 @@ final class TeamSyncServiceTests: XCTestCase {
             state: TeamSyncPersistentState(
                 serverURL: "https://previous.example.com",
                 devicePublicID: publicID,
+                machineFingerprint: String(repeating: "a", count: 64),
                 deviceID: "previous-device"
             )
         )
@@ -299,7 +375,8 @@ final class TeamSyncServiceTests: XCTestCase {
                 ]
             ),
             credentialStore: credentials,
-            stateStore: stateStore
+            stateStore: stateStore,
+            machineFingerprint: { String(repeating: "a", count: 64) }
         )
 
         do {
