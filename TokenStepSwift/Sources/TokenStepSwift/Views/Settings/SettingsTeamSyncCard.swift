@@ -16,8 +16,10 @@ struct SettingsTeamSyncCard: View {
             }
             publicPrivacyCard
             currentDeviceCard
+            additionalDeviceControls
             buildStatusNotice
         }
+        .onDisappear { appState.additionalDeviceCode = nil }
         .alert(L("清除社群榜连接？"), isPresented: $showsClearConfirmation) {
             Button(L("取消"), role: .cancel) {}
             Button(L("清除连接"), role: .destructive) {
@@ -37,7 +39,7 @@ struct SettingsTeamSyncCard: View {
                     TeamSyncSettingRow(label: L("今天排名"), detail: rankPopulationText, value: rankText)
                     TeamSyncSettingRow(label: L("上次同步"), detail: L("设备凭据保存在系统钥匙串"), value: lastSyncCompactText)
                 } else {
-                    Text(L("从专属接入页复制一次性设备码；新增设备必须由管理员为既有成员签发。"))
+                    Text(L("首次接入使用专属设备码；添加另一台设备可在原设备生成单次码。"))
                         .font(.system(size: 8, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -144,9 +146,39 @@ struct SettingsTeamSyncCard: View {
         SettingsCard(title: L("当前设备连接"), symbol: "laptopcomputer.and.iphone", height: 154) {
             VStack(alignment: .leading, spacing: 0) {
                 TeamSyncSettingRow(label: L("这台设备"), detail: L("凭据安全保存在本机，不展示原始设备码"), value: appState.isCommunitySyncEnrollmentCompatible ? L("已连接") : L("未连接"), tint: .tokenGreenDark)
-                TeamSyncSettingRow(label: L("添加另一台设备"), detail: L("向管理员领取新的 60 分钟单次码；多台设备归入同一昵称"), value: L("不影响本机"))
-                TeamSyncSettingRow(label: L("普通用户权限"), detail: L("不能自行生成或补发设备码"), value: L("管理员签发"))
+                TeamSyncSettingRow(label: L("添加另一台设备"), detail: L("在已连接设备生成 15 分钟单次码；归入同一昵称"), value: L("不影响本机"))
+                TeamSyncSettingRow(label: L("普通用户权限"), detail: L("只能为当前昵称添加设备"), value: L("本人添加"))
             }
+        }
+    }
+
+    @ViewBuilder
+    private var additionalDeviceControls: some View {
+        if appState.isCommunitySyncEnrollmentCompatible {
+            VStack(alignment: .leading, spacing: 8) {
+                Button(appState.isCreatingDeviceCode ? L("生成中") : L("添加另一台设备")) {
+                    appState.createAdditionalDeviceCode()
+                }
+                .disabled(appState.isCreatingDeviceCode || appState.isTeamSyncing || isScreenshotRendering)
+                Text(L("设备码 15 分钟有效、仅用一次。另一台设备用它连接后归入同一昵称；重新生成会使旧码失效。"))
+                    .font(.caption).foregroundStyle(.secondary)
+                if let code = appState.additionalDeviceCode, code.expiresAt > Date(), !isScreenshotRendering {
+                    SecureField(L("添加设备码"), text: .constant(code.token)).textFieldStyle(.roundedBorder)
+                        .task(id: code.expiresAt) {
+                            try? await Task.sleep(for: .seconds(max(0, code.expiresAt.timeIntervalSinceNow)))
+                            guard !Task.isCancelled,
+                                  appState.additionalDeviceCode?.expiresAt == code.expiresAt else { return }
+                            appState.additionalDeviceCode = nil
+                        }
+                    Button(L("复制添加设备码")) {
+                        guard code.expiresAt > Date() else { appState.additionalDeviceCode = nil; return }
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(code.token, forType: .string)
+                    }
+                    Text(L("只交给自己的另一台设备；请勿复制 AI 日志或 TokenFleet 连接文件，以免重复计数。"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }.padding(10)
         }
     }
 

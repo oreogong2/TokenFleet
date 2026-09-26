@@ -46,6 +46,38 @@ async function load() {
   $("#status").textContent = data.privacy;
 }
 
+let deviceCodeExpiry = 0;
+let deviceCodeTimer;
+function clearDeviceCode() {
+  $("#device-code").value = "";
+  $("#device-code-expiry").textContent = "";
+  $("#copy-device-code").disabled = true;
+  deviceCodeExpiry = 0;
+  clearTimeout(deviceCodeTimer);
+}
+async function addDevice() {
+  clearDeviceCode();
+  $("#add-device").disabled = true;
+  try {
+    const response = await fetch("/api/devices/add-code", {method: "POST", headers: {...actionHeaders, "Content-Type": "application/json"}, body: "{}", cache: "no-store"});
+    const code = await response.json();
+    if (!response.ok) throw new Error(code.error || "无法生成设备码");
+    deviceCodeExpiry = Date.parse(code.expires_at);
+    if (!/^[A-Za-z0-9_-]{32,256}$/.test(code.enrollment_token) || !Number.isFinite(deviceCodeExpiry) || deviceCodeExpiry <= Date.now()) throw new Error("设备码无效或已过期");
+    $("#device-code").value = code.enrollment_token;
+    $("#copy-device-code").disabled = false;
+    $("#device-code-expiry").textContent = `有效至 ${new Date(deviceCodeExpiry).toLocaleTimeString("zh-CN")}，只用一次`;
+    deviceCodeTimer = setTimeout(clearDeviceCode, deviceCodeExpiry - Date.now());
+  } finally { $("#add-device").disabled = false; }
+}
+async function copyDeviceCode() {
+  if (deviceCodeExpiry <= Date.now()) { clearDeviceCode(); throw new Error("设备码已过期，请重新生成"); }
+  await navigator.clipboard.writeText($("#device-code").value);
+}
+window.addEventListener("pagehide", clearDeviceCode);
+$("#add-device").addEventListener("click", () => run(addDevice));
+$("#copy-device-code").addEventListener("click", () => run(copyDeviceCode));
+
 async function setExperimental(enabled) {
   const response = await fetch("/api/settings/experimental", {method: "POST", headers: {...actionHeaders, "Content-Type": "application/json"}, body: JSON.stringify({enabled})});
   if (!response.ok) throw new Error((await response.json()).error || "开关保存失败");

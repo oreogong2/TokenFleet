@@ -4,6 +4,7 @@ import Foundation
 enum TeamSyncProtocolConfiguration {
     static let schemaVersion = 1
     static let collectorVersion = "0.2.2"
+    static let additionalDevicePath = "/api/v1/devices/me/enrollment-tokens"
     static let enrollmentPath = "/api/v1/devices/enroll"
     static let dailyUsagePath = "/api/v1/usage/daily"
     static let communityRankPath = "/api/v1/devices/me/community-rank"
@@ -215,13 +216,41 @@ struct TeamSyncEnrollmentRequest: Codable, Equatable {
     var platform: String
     var appVersion: String
     var collectorVersion: String
+    var machineFingerprint: String? = nil
 
     enum CodingKeys: String, CodingKey {
+        case machineFingerprint = "machine_fingerprint"
         case enrollmentToken = "enrollment_token"
         case devicePublicID = "device_public_id"
         case platform
         case appVersion = "app_version"
         case collectorVersion = "collector_version"
+    }
+}
+
+struct TeamSyncAdditionalDeviceCode: Decodable {
+    var token: String
+    var expiresAt: Date
+
+    enum CodingKeys: String, CodingKey { case token = "enrollment_token"; case expiresAt = "expires_at" }
+
+    static func decode(_ data: Data, now: Date) throws -> Self {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let text = try decoder.singleValueContainer().decode(String.self)
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: text) { return date }
+            formatter.formatOptions = [.withInternetDateTime]
+            guard let date = formatter.date(from: text) else { throw TeamSyncProtocolError.invalidAdditionalDeviceResponse }
+            return date
+        }
+        guard let code = try? decoder.decode(Self.self, from: data),
+              code.token.range(of: "^[A-Za-z0-9_-]{32,256}$", options: .regularExpression) != nil,
+              code.expiresAt > now, code.expiresAt.timeIntervalSince(now) <= (15 + 5 + 1) * 60 else {
+            throw TeamSyncProtocolError.invalidAdditionalDeviceResponse
+        }
+        return code
     }
 }
 
@@ -721,6 +750,9 @@ enum TeamSyncProtocolError: LocalizedError, Equatable {
     case invalidCommunityShareGrantResponse
     case invalidBucket
     case duplicateBucket
+    case machineChanged
+    case machineIdentityUnavailable
+    case invalidAdditionalDeviceResponse
     case notEnrolled
     case reconnectRequired
     case operationInProgress
@@ -752,6 +784,12 @@ enum TeamSyncProtocolError: LocalizedError, Equatable {
             return L("社群榜服务器未能安全创建网页分享凭证。")
         case .invalidBucket, .duplicateBucket:
             return L("本地日汇总未通过同步校验。")
+        case .machineChanged:
+            return L("这是一台新设备，请用原设备的添加设备码重新连接。")
+        case .machineIdentityUnavailable:
+            return L("无法确认当前机器身份，尚未发送数据；请稍后重试。")
+        case .invalidAdditionalDeviceResponse:
+            return L("服务器返回的添加设备码无效，请重新生成。")
         case .notEnrolled:
             return L("请先连接社群榜服务器。")
         case .reconnectRequired:
@@ -873,7 +911,8 @@ enum TeamSyncProtocol {
         enrollmentToken: String,
         devicePublicID: String,
         appVersion: String,
-        collectorVersion: String = TeamSyncProtocolConfiguration.collectorVersion
+        collectorVersion: String = TeamSyncProtocolConfiguration.collectorVersion,
+        machineFingerprint: String? = nil
     ) throws -> URLRequest {
         let token = enrollmentToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else { throw TeamSyncProtocolError.enrollmentTokenRequired }
@@ -884,7 +923,8 @@ enum TeamSyncProtocol {
             devicePublicID: devicePublicID,
             platform: "macos",
             appVersion: appVersion,
-            collectorVersion: collectorVersion
+            collectorVersion: collectorVersion,
+            machineFingerprint: machineFingerprint
         )
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -899,7 +939,8 @@ enum TeamSyncProtocol {
         deviceSecret: String,
         payload: TeamSyncDailyPayload,
         timestamp: Int,
-        nonce: String
+        nonce: String,
+        machineFingerprint: String? = nil
     ) throws -> URLRequest {
         let serverURL = try normalizedServerURL(rawServerURL)
         let endpoint = try endpointURL(serverURL: serverURL, path: TeamSyncProtocolConfiguration.dailyUsagePath)
@@ -911,7 +952,8 @@ enum TeamSyncProtocol {
             nonce: nonce,
             method: "POST",
             path: TeamSyncProtocolConfiguration.dailyUsagePath,
-            body: body
+            body: body,
+            machineFingerprint: machineFingerprint
         )
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -920,6 +962,7 @@ enum TeamSyncProtocol {
         request.setValue(headers.timestamp, forHTTPHeaderField: "X-Timestamp")
         request.setValue(headers.nonce, forHTTPHeaderField: "X-Nonce")
         request.setValue(headers.signature, forHTTPHeaderField: "X-Signature")
+        request.setValue(machineFingerprint, forHTTPHeaderField: "X-Machine-Fingerprint")
         request.httpBody = body
         return request
     }
@@ -929,7 +972,8 @@ enum TeamSyncProtocol {
         deviceID: String,
         deviceSecret: String,
         timestamp: Int,
-        nonce: String
+        nonce: String,
+        machineFingerprint: String? = nil
     ) throws -> URLRequest {
         let serverURL = try normalizedServerURL(rawServerURL)
         let endpoint = try endpointURL(
@@ -943,7 +987,8 @@ enum TeamSyncProtocol {
             nonce: nonce,
             method: "GET",
             path: TeamSyncProtocolConfiguration.communityRankPath,
-            body: Data()
+            body: Data(),
+            machineFingerprint: machineFingerprint
         )
         var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
@@ -951,6 +996,7 @@ enum TeamSyncProtocol {
         request.setValue(headers.timestamp, forHTTPHeaderField: "X-Timestamp")
         request.setValue(headers.nonce, forHTTPHeaderField: "X-Nonce")
         request.setValue(headers.signature, forHTTPHeaderField: "X-Signature")
+        request.setValue(machineFingerprint, forHTTPHeaderField: "X-Machine-Fingerprint")
         return request
     }
 
@@ -962,7 +1008,8 @@ enum TeamSyncProtocol {
         deviceID: String,
         deviceSecret: String,
         timestamp: Int,
-        nonce: String
+        nonce: String,
+        machineFingerprint: String? = nil
     ) throws -> URLRequest {
         let serverURL = try normalizedServerURL(rawServerURL)
         let endpoint = try endpointURL(
@@ -977,7 +1024,8 @@ enum TeamSyncProtocol {
             nonce: nonce,
             method: "POST",
             path: TeamSyncProtocolConfiguration.communityShareGrantPath,
-            body: body
+            body: body,
+            machineFingerprint: machineFingerprint
         )
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -986,6 +1034,43 @@ enum TeamSyncProtocol {
         request.setValue(headers.timestamp, forHTTPHeaderField: "X-Timestamp")
         request.setValue(headers.nonce, forHTTPHeaderField: "X-Nonce")
         request.setValue(headers.signature, forHTTPHeaderField: "X-Signature")
+        request.setValue(machineFingerprint, forHTTPHeaderField: "X-Machine-Fingerprint")
+        request.httpBody = body
+        return request
+    }
+
+    static func additionalDeviceURLRequest(
+        serverURL rawServerURL: String,
+        deviceID: String,
+        deviceSecret: String,
+        timestamp: Int,
+        nonce: String,
+        machineFingerprint: String? = nil
+    ) throws -> URLRequest {
+        let serverURL = try normalizedServerURL(rawServerURL)
+        let endpoint = try endpointURL(
+            serverURL: serverURL,
+            path: TeamSyncProtocolConfiguration.additionalDevicePath
+        )
+        let body = Data("{}".utf8)
+        let headers = signedHeaders(
+            deviceID: deviceID,
+            deviceSecret: deviceSecret,
+            timestamp: timestamp,
+            nonce: nonce,
+            method: "POST",
+            path: TeamSyncProtocolConfiguration.additionalDevicePath,
+            body: body,
+            machineFingerprint: machineFingerprint
+        )
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(headers.deviceID, forHTTPHeaderField: "X-Device-ID")
+        request.setValue(headers.timestamp, forHTTPHeaderField: "X-Timestamp")
+        request.setValue(headers.nonce, forHTTPHeaderField: "X-Nonce")
+        request.setValue(headers.signature, forHTTPHeaderField: "X-Signature")
+        request.setValue(machineFingerprint, forHTTPHeaderField: "X-Machine-Fingerprint")
         request.httpBody = body
         return request
     }
@@ -1025,7 +1110,8 @@ enum TeamSyncProtocol {
         nonce: String,
         method: String,
         path: String,
-        body: Data
+        body: Data,
+        machineFingerprint: String? = nil
     ) -> TeamSyncSignedHeaders {
         let timestampText = String(timestamp)
         let canonicalValue = canonical(
@@ -1033,7 +1119,8 @@ enum TeamSyncProtocol {
             nonce: nonce,
             method: method,
             path: path,
-            body: body
+            body: body,
+            machineFingerprint: machineFingerprint
         )
         let derivedKey = SHA256.hash(
             data: Data((TeamSyncProtocolConfiguration.signingKeyContext + deviceSecret).utf8)
@@ -1055,10 +1142,12 @@ enum TeamSyncProtocol {
         nonce: String,
         method: String,
         path: String,
-        body: Data
+        body: Data,
+        machineFingerprint: String? = nil
     ) -> String {
-        [timestamp, nonce, method.uppercased(), path, body.sha256Hex]
+        let base = [timestamp, nonce, method.uppercased(), path, body.sha256Hex]
             .joined(separator: "\n")
+        return base + (machineFingerprint.map { "\nmachine-fingerprint-v1:" + $0 } ?? "")
     }
 
     static func dailyBuckets(

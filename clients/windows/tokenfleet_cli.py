@@ -181,6 +181,7 @@ def _sync(args: argparse.Namespace, paths: ClientPaths) -> int:
 
 
 def _status(args: argparse.Namespace, paths: ClientPaths) -> int:
+    _client(paths).validate_machine_binding()
     config = CommunityInstallationConfigStore(
         paths.community_config, paths.community_digest
     ).load()

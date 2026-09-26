@@ -13,11 +13,12 @@ from .protocol import ProtocolError, canonical_json, endpoint
 
 class NetworkError(RuntimeError):
     def __init__(self, message: str, *, status: int | None = None,
-                 server_time: int | None = None, rejected_indices: tuple[int, ...] = ()) -> None:
+                 server_time: int | None = None, rejected_indices: tuple[int, ...] = (), machine_mismatch: bool = False) -> None:
         super().__init__(message)
         self.status = status
         self.server_time = server_time
         self.rejected_indices = rejected_indices
+        self.machine_mismatch = machine_mismatch
 
     @classmethod
     def from_http(cls, error: urllib.error.HTTPError) -> "NetworkError":
@@ -25,9 +26,11 @@ class NetworkError(RuntimeError):
         # text, validation input, proxy HTML, credentials or reflected labels.
         server_time = None
         rejected: list[int] = []
+        machine_mismatch = False
         try:
             payload = error.read(MAX_RESPONSE_BYTES + 1)
             detail = json.loads(payload).get("detail") if len(payload) <= MAX_RESPONSE_BYTES else None
+            machine_mismatch = error.code == 409 and isinstance(detail, dict) and detail.get("code") == "machine_mismatch"
             if isinstance(detail, dict) and detail.get("code") == "clock_skew":
                 timestamp = detail.get("server_time")
                 if type(timestamp) is int and 0 < timestamp <= 4_102_444_800:
@@ -42,7 +45,7 @@ class NetworkError(RuntimeError):
         finally:
             error.close()
         return cls(f"TokenFleet server returned HTTP {error.code}", status=error.code,
-                   server_time=server_time, rejected_indices=tuple(rejected))
+                   server_time=server_time, rejected_indices=tuple(rejected), machine_mismatch=machine_mismatch)
 
 
 class JSONTransport(Protocol):

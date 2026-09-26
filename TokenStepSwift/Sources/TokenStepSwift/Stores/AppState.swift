@@ -23,6 +23,8 @@ final class AppState: ObservableObject {
     @Published private(set) var showsPricingReestimationNotice = false
     @Published private(set) var teamSyncState: TeamSyncPersistentState?
     @Published private(set) var isTeamSyncing = false
+    @Published var additionalDeviceCode: TeamSyncAdditionalDeviceCode?
+    @Published var isCreatingDeviceCode = false
     @Published private(set) var teamSyncActionError: String?
     @Published private(set) var communityRank: TeamSyncCommunityRank?
     @Published private(set) var isRefreshingCommunityRank = false
@@ -39,6 +41,7 @@ final class AppState: ObservableObject {
     private var foregroundTimer: Timer?
     private var teamSyncTimer: Timer?
     private var initialUsageRefreshTask: Task<Void, Never>?
+    private var teamSyncStateLoadTask: Task<Void, Never>?
     private var foregroundRefreshSurfaces = Set<String>()
     private var pendingRefreshAfterCurrent = false
     private var pendingForcedRefresh = false
@@ -88,6 +91,7 @@ final class AppState: ObservableObject {
     private init(communityServerOrigin: URL?) {
         fixedCommunityServerOrigin = communityServerOrigin
         load()
+        loadInitialTeamSyncState()
         scheduleInitialUsageRefresh()
         applyDefaultAutostartIfNeeded()
         configureTimer()
@@ -101,6 +105,7 @@ final class AppState: ObservableObject {
         foregroundTimer?.invalidate()
         teamSyncTimer?.invalidate()
         initialUsageRefreshTask?.cancel()
+        teamSyncStateLoadTask?.cancel()
     }
 
     var today: DailyUsage {
@@ -283,6 +288,22 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func loadInitialTeamSyncState() {
+        // Connection status must pass the same machine guard as networking.
+        teamSyncStateLoadTask?.cancel()
+        teamSyncStateLoadTask = Task {
+            guard !Task.isCancelled else { return }
+            let loadedState = await TeamSyncService.live.loadState()
+            guard !Task.isCancelled else { return }
+            teamSyncState = loadedState
+            if teamSyncState?.isEnrolled != true {
+                communityRank = nil
+                additionalDeviceCode = nil
+            }
+            configureTeamSyncTimer()
+        }
+    }
+
     func load() {
         defer { MemoryPressure.relieveAllocatorPressure() }
         let loadedSettings = DataService.loadSettings()
@@ -290,7 +311,6 @@ final class AppState: ObservableObject {
         TokenStepThemeRuntime.apply(loadedSettings.theme)
         settings = loadedSettings
         snapshot = (try? DataService.loadSnapshot()) ?? .empty
-        teamSyncState = FileTeamSyncStateStore().load()
         cursorImportedUsageRecordCount = CursorUsageImportStore.recordCount()
         showsUsageRecalibrationNotice = DataService.hasPendingUsageRecalibrationNotice(for: snapshot)
         showsPricingReestimationNotice = DataService.hasPendingPricingReestimationNotice(for: snapshot)
@@ -590,6 +610,23 @@ final class AppState: ObservableObject {
         }
     }
 
+    func createAdditionalDeviceCode() {
+        guard !isCreatingDeviceCode, !isTeamSyncing,
+              isCommunitySyncEnrollmentCompatible, let origin = fixedCommunityServerOrigin else { return }
+        isCreatingDeviceCode = true
+        additionalDeviceCode = nil
+        teamSyncActionError = nil
+        Task {
+            defer { isCreatingDeviceCode = false }
+            do {
+                additionalDeviceCode = try await TeamSyncService.live.additionalDeviceCode(serverURL: origin.absoluteString)
+            } catch {
+                teamSyncState = await TeamSyncService.live.loadState()
+                teamSyncActionError = error.localizedDescription
+            }
+        }
+    }
+
     func enrollTeamSync(enrollmentToken: String) {
         guard !isTeamSyncing else { return }
         guard let fixedCommunityServerOrigin else {
@@ -612,6 +649,7 @@ final class AppState: ObservableObject {
                 configureTeamSyncTimer()
                 syncTeamUsage(force: true)
             } catch {
+                teamSyncState = await TeamSyncService.live.loadState()
                 teamSyncActionError = error.localizedDescription
                 isTeamSyncing = false
                 configureTeamSyncTimer()
@@ -675,6 +713,7 @@ final class AppState: ObservableObject {
     }
 
     func clearTeamSync() {
+        additionalDeviceCode = nil
         guard !isTeamSyncing else { return }
         // Stop every automatic path before touching the Keychain. If deletion
         // fails, keep the binding visible for an explicit retry but never
@@ -738,6 +777,12 @@ final class AppState: ObservableObject {
             } catch let error as TeamSyncProtocolError
                 where error == .operationCancelled {
                 return
+            } catch let error as TeamSyncProtocolError
+                where error == .machineChanged {
+                teamSyncState = await TeamSyncService.live.loadState()
+                communityRank = nil
+                additionalDeviceCode = nil
+                communityRankError = error.localizedDescription
             } catch {
                 guard isCommunitySyncEnrollmentCompatible else { return }
                 communityRankError = L("暂时无法读取社群排名")
@@ -818,6 +863,7 @@ final class AppState: ObservableObject {
         }
         precondition(rank.isValid, "Community render fixture rank is invalid")
         precondition(leaderboard.isValid, "Community render fixture leaderboard is invalid")
+        teamSyncStateLoadTask?.cancel()
 
         teamSyncState = TeamSyncPersistentState(
             serverURL: fixedCommunityServerOrigin.absoluteString,

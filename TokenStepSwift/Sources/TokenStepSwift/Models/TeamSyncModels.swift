@@ -8,6 +8,7 @@ enum TeamSyncTerminalReason: String, Codable, Equatable {
 struct TeamSyncPersistentState: Codable, Equatable {
     var serverURL: String
     var devicePublicID: String
+    var machineFingerprint: String?
     var deviceID: String?
     var enrolledAt: Date?
     var lastSyncAt: Date?
@@ -24,6 +25,7 @@ struct TeamSyncPersistentState: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case serverURL = "server_url"
         case devicePublicID = "device_public_id"
+        case machineFingerprint = "machine_fingerprint"
         case deviceID = "device_id"
         case enrolledAt = "enrolled_at"
         case lastSyncAt = "last_sync_at"
@@ -41,6 +43,7 @@ struct TeamSyncPersistentState: Codable, Equatable {
     init(
         serverURL: String,
         devicePublicID: String = UUID().uuidString.lowercased(),
+        machineFingerprint: String? = nil,
         deviceID: String? = nil,
         enrolledAt: Date? = nil,
         lastSyncAt: Date? = nil,
@@ -56,6 +59,7 @@ struct TeamSyncPersistentState: Codable, Equatable {
     ) {
         self.serverURL = serverURL
         self.devicePublicID = devicePublicID
+        self.machineFingerprint = machineFingerprint
         self.deviceID = deviceID
         self.enrolledAt = enrolledAt
         self.lastSyncAt = lastSyncAt
@@ -75,6 +79,7 @@ struct TeamSyncPersistentState: Codable, Equatable {
         serverURL = try container.decodeIfPresent(String.self, forKey: .serverURL) ?? ""
         devicePublicID = try container.decodeIfPresent(String.self, forKey: .devicePublicID)
             ?? UUID().uuidString.lowercased()
+        machineFingerprint = try container.decodeIfPresent(String.self, forKey: .machineFingerprint)
         deviceID = try container.decodeIfPresent(String.self, forKey: .deviceID)
         enrolledAt = try container.decodeIfPresent(Date.self, forKey: .enrolledAt)
         lastSyncAt = try container.decodeIfPresent(Date.self, forKey: .lastSyncAt)

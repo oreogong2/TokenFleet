@@ -131,6 +131,11 @@ def _rank_for_dashboard(
 
 
 def dashboard_data(paths: ClientPaths, client: TokenFleetClient) -> dict[str, Any]:
+    identity_error = None
+    try:
+        client.validate_machine_binding()
+    except RuntimeError:
+        identity_error = "机器身份需要确认，请检查本机连接状态"
     settings = SettingsStore(paths.settings).load()
     collection = client.preview(history_days=180)
     # The accounting timezone is fixed at UTC+8; converting from the instant
@@ -139,13 +144,13 @@ def dashboard_data(paths: ClientPaths, client: TokenFleetClient) -> dict[str, An
     today_key = today.isoformat()
     week_start = today - timedelta(days=today.weekday())
     week_days = {(week_start + timedelta(days=offset)).isoformat() for offset in range(7)}
-    rank, rank_error = _rank_for_dashboard(paths, client)
+    rank, rank_error = _rank_for_dashboard(paths, client) if identity_error is None else (None, identity_error)
     state = client.state_store.load()
     return {
         "sync": {
             "last_success_at": state.last_sync_at,
             "last_attempt_at": state.last_sync_attempt_at,
-            "last_error": state.last_sync_error,
+            "last_error": state.last_sync_error or identity_error,
             "consecutive_failures": state.consecutive_sync_failures,
             "omitted_buckets": state.last_omitted_bucket_count,
             "skipped_records": collection.diagnostics.skipped_records,
@@ -290,6 +295,17 @@ def dashboard_handler_class(
                 return
             if length < 0:
                 self._send_json(400, {"error": "请求长度无效"})
+                return
+            if self.path == "/api/devices/add-code":
+                if length != 2 or self.rfile.read(length) != b"{}":
+                    self._send_json(400, {"error": "请求字段无效"})
+                    return
+                try:
+                    code = client_factory(paths).additional_device_code()
+                except RuntimeError:
+                    self._send_json(400, {"error": "无法生成设备码，请检查本机连接状态"})
+                    return
+                self._send_json(201, code)
                 return
             if self.path == "/api/settings/experimental":
                 if length > 1024:

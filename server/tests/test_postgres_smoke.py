@@ -346,7 +346,7 @@ def test_postgres_migration_starts_from_fresh_database(
             # rejects this destructive downgrade, so Alembic rolls the whole
             # chain back to the original current head rather than leaving an
             # empty intermediate schema behind.
-            "d8e6f3a19b25"
+            "b72c34d8e901"
         )
         connection.execute(
             text("DELETE FROM organizations WHERE slug = 'downgrade-guard'")
@@ -1380,3 +1380,56 @@ def test_postgres_stable_device_reenrollment_does_not_duplicate_history(
                 .select_from(DailyUsage)
                 .where(DailyUsage.org_id == team.org_id)
             ) == 1
+
+
+def _signed_machine_request(client, device, path, payload, fingerprint):
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    timestamp, nonce = str(int(time.time())), str(uuid.uuid4())
+    signature = sign_device_request(device_secret=device["device_secret"], timestamp_text=timestamp,
+        nonce=nonce, method="POST", path=path, body=body, machine_fingerprint=fingerprint)
+    return client.post(path, content=body, headers={"Content-Type": "application/json",
+        "X-Device-ID": device["device_id"], "X-Timestamp": timestamp,
+        "X-Nonce": nonce, "X-Signature": signature, "X-Machine-Fingerprint": fingerprint})
+
+
+def test_postgres_concurrent_first_machine_binding_has_one_winner(postgres_runtime):
+    team = _new_team(postgres_runtime, "machine-binding")
+    app = _app(postgres_runtime)
+    with TestClient(app) as client:
+        device = _enroll(client, _issue_enrollment_token(client, team, _admin_headers(client, team)), str(uuid.uuid4()))
+    barrier = threading.Barrier(2)
+    payload = _usage_payload(generated_at=utcnow())
+    def attempt(fingerprint):
+        with TestClient(app) as client:
+            barrier.wait(timeout=10)
+            return fingerprint, _signed_machine_request(client, device, "/api/v1/usage/daily", payload, fingerprint).status_code
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(attempt, ["a" * 64, "b" * 64]))
+    assert sorted(status for _, status in results) == [200, 409]
+    with Session(postgres_runtime.engine) as session:
+        assert session.get(Device, device["device_id"]).machine_fingerprint == next(fp for fp, status in results if status == 200)
+        assert session.scalar(select(func.count()).select_from(DailyUsage).where(DailyUsage.device_id == device["device_id"])) == 1
+
+
+def test_postgres_concurrent_self_codes_leave_one_live_and_preserve_admin_code(postgres_runtime):
+    team = _new_team(postgres_runtime, "machine-code")
+    app = _app(postgres_runtime)
+    with TestClient(app) as client:
+        headers = _admin_headers(client, team)
+        device = _enroll(client, _issue_enrollment_token(client, team, headers), str(uuid.uuid4()))
+        admin_code = _issue_enrollment_token(client, team, headers)
+    barrier = threading.Barrier(2)
+    def attempt(_):
+        with TestClient(app) as client:
+            barrier.wait(timeout=10)
+            response = _signed_machine_request(client, device, "/api/v1/devices/me/enrollment-tokens", {}, "a" * 64)
+            assert response.status_code == 201
+            return response.json()["enrollment_token"]
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        codes = list(executor.map(attempt, range(2)))
+    with Session(postgres_runtime.engine) as session:
+        live = list(session.scalars(select(EnrollmentToken).where(EnrollmentToken.user_id == team.member_id,
+            EnrollmentToken.used_at.is_(None), EnrollmentToken.expires_at > utcnow())))
+        own = [row for row in live if row.created_by_user_id == team.member_id]
+        assert len(own) == 1 and own[0].token_hash in {opaque_token_hash(code) for code in codes}
+        assert any(row.token_hash == opaque_token_hash(admin_code) for row in live)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import uuid
 from dataclasses import asdict, dataclass
@@ -17,6 +18,8 @@ class StateError(RuntimeError):
 class ClientState:
     version: int = 1
     device_public_id: str = ""
+    machine_fingerprint: str | None = None
+    reconnect_required: bool = False
     last_sync_at: str | None = None
     last_bucket_count: int = 0
     last_uploaded_tokens: int = 0
@@ -32,6 +35,7 @@ class ClientState:
     @classmethod
     def from_object(cls, value: Any) -> "ClientState":
         if not isinstance(value, dict) or set(value) - {
+            "machine_fingerprint", "reconnect_required",
             "version",
             "device_public_id",
             "last_sync_at",
@@ -59,6 +63,11 @@ class ClientState:
             or uploaded_tokens < 0
         ):
             raise StateError("TokenFleet local state is invalid")
+        fingerprint = value.get("machine_fingerprint")
+        reconnect = value.get("reconnect_required", False)
+        if ((fingerprint is not None and (not isinstance(fingerprint, str) or not re.fullmatch(r"[0-9a-f]{64}", fingerprint)))
+            or type(reconnect) is not bool):
+            raise StateError("TokenFleet machine binding is invalid")
         last_sync_at = value.get("last_sync_at")
         if last_sync_at is not None and not isinstance(last_sync_at, str):
             raise StateError("TokenFleet local state is invalid")
@@ -72,6 +81,7 @@ class ClientState:
             or type(omitted) is not int or omitted < 0):
             raise StateError("TokenFleet local sync status is invalid")
         return cls(
+            machine_fingerprint=fingerprint, reconnect_required=reconnect,
             version=version,
             device_public_id=public_id,
             last_sync_at=last_sync_at,
