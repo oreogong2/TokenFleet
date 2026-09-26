@@ -4,8 +4,8 @@ import {
   takeBatchInvitationToken,
   takeJoinCode,
 } from "./join-secret.js";
-import { parseCommunityRoute } from "./community-contract.js?v=cost-coverage-1";
-import { mountCommunityApp } from "./community-app.js?v=cost-coverage-1";
+import { parseCommunityRoute } from "./community-contract.js?v=batch1-sync-cost-1";
+import { mountCommunityApp } from "./community-app.js?v=batch1-sync-cost-1";
 
 const app = document.querySelector("#app");
 const demoMode = new URLSearchParams(location.search).get("demo") === "1";

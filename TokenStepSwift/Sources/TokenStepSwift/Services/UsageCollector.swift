@@ -5293,6 +5293,8 @@ enum UsageCollector {
                     tools: item.tools,
                     models: item.models,
                     atomicUsage: item.atomicUsage,
+                    omittedIncompleteTokens: item.omittedIncompleteTokens,
+                    omittedIncompleteBucketCount: item.omittedIncompleteBucketCount,
                     totalTokens: item.totalTokens,
                     cost: rounded(item.cost, digits: 4),
                     pricedTokens: item.pricedTokens,
@@ -7457,8 +7459,16 @@ private struct DailyAccumulator {
         unpricedTokens += resolvedCost.unpricedTokens
     }
 
+    var omittedIncompleteTokens: Int {
+        atomic.values.reduce(0) { $0 + $1.omittedTokens }
+    }
+
+    var omittedIncompleteBucketCount: Int {
+        atomic.values.filter { $0.omittedRecords > 0 }.count
+    }
+
     var atomicUsage: [DailyAtomicUsage] {
-        atomic.map { key, accumulator in
+        atomic.filter { $0.value.usage.totalTokens > 0 }.map { key, accumulator in
             let counts = accumulator.usage
             return DailyAtomicUsage(
                 tool: key.tool,
@@ -7487,10 +7497,16 @@ private struct DailyAccumulator {
 private struct DailyAtomicAccumulator {
     var usage = TokenUsageCounts()
     var breakdownComplete = true
+    var omittedTokens = 0
+    var omittedRecords = 0
 
     mutating func add(_ counts: TokenUsageCounts) {
+        guard counts.cacheCoverageComplete else {
+            omittedTokens += counts.totalTokens
+            omittedRecords += 1
+            return
+        }
         usage.add(counts)
-        breakdownComplete = breakdownComplete && counts.cacheCoverageComplete
     }
 }
 

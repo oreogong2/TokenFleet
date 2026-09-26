@@ -4,6 +4,18 @@ import XCTest
 @testable import TokenStepSwift
 
 final class TeamSyncProtocolTests: XCTestCase {
+    func testEnrichedPublicTotalsShowPartialCostWithoutClaimingFullPricing() throws {
+        let data = Data(#"{"input_tokens":"100","output_tokens":"0","cache_read_tokens":"0","cache_write_tokens":"0","norm_tokens":"100","total_tokens":"100","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false,"priced_tokens":"50","priced_costs_microunits":{"USD":"1200000"}}"#.utf8)
+        var totals = try JSONDecoder().decode(TeamSyncPublicUsageTotals.self, from: data)
+        XCTAssertTrue(totals.isValid)
+        XCTAssertNil(totals.estimatedCost)
+        XCTAssertEqual(totals.publiclyPricedCost, 1.2)
+        XCTAssertEqual(totals.pricingCoverage, 0.5)
+        totals.pricedTokens = "101"
+        XCTAssertFalse(totals.isValid)
+    }
+
+
     func testTeamSyncHTTPResponsesAreCappedAtOneMiB() {
         XCTAssertEqual(
             TeamSyncProtocolConfiguration.maximumHTTPResponseBytes,
@@ -570,9 +582,9 @@ final class TeamSyncProtocolTests: XCTestCase {
             models: [],
             sources: [:]
         )
-        XCTAssertThrowsError(
-            try TeamSyncProtocol.dailyBucketBuild(snapshot: unsafeSnapshot)
-        )
+        let build = try TeamSyncProtocol.dailyBucketBuild(snapshot: unsafeSnapshot)
+        XCTAssertTrue(build.buckets.isEmpty)
+        XCTAssertEqual(build.omittedIncompleteBucketCount, 1)
     }
 
     func testBackoffIsJitteredAndCappedAtSixHours() {

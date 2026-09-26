@@ -97,9 +97,9 @@ export function formatMicrounitAmount(value, currency = "USD") {
   if (parsed === null) return "—";
   const negative = parsed < 0n;
   const absolute = negative ? -parsed : parsed;
-  const whole = absolute / 1_000_000n;
-  let fraction = (absolute % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
-  fraction = fraction.padEnd(2, "0");
+  const cents = (absolute + 5_000n) / 10_000n;
+  const whole = cents / 100n;
+  const fraction = (cents % 100n).toString().padStart(2, "0");
   const decimal = `.${fraction}`;
   const normalizedCurrency = String(currency || "USD").toUpperCase();
 
@@ -289,6 +289,16 @@ export function normalizeDevice(value = {}, users = []) {
     user_name: value.user_name || user?.name || user?.email || "未分配成员",
     label: value.label || `设备 ${String(value.device_public_id || value.id || "").slice(0, 8)}`,
   };
+}
+
+// Successful ingest time is distinct from authenticated reads/last_seen_at.
+export function deviceSyncHealth(device, now = new Date()) {
+  if (device.enabled === false || device.is_active === false) return { warning: false, label: "已禁用" };
+  const raw = device.last_successful_sync_at || device.created_at;
+  const last = raw ? Date.parse(raw) : NaN;
+  const days = Number.isFinite(last) ? Math.floor((now.getTime() - last) / 86_400_000) : 0;
+  if (days >= 7) return { warning: true, label: `${days} 天未成功同步` };
+  return { warning: false, label: device.last_successful_sync_at ? "已连接" : "尚未成功同步" };
 }
 
 export function normalizePriceRows(payload = {}) {

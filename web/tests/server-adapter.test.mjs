@@ -394,8 +394,8 @@ test("cost microunits aggregate and format exactly beyond Number safe precision"
     dashboard.people.find((item) => item.id === "u1").estimated_costs_microunits.USD,
     exactMicrounits,
   );
-  assert.equal(formatMicrounitAmount(exactMicrounits, "USD"), "US$18,014,398,509.481988");
-  assert.equal(formatCostSummary(dashboard.totals), "US$18,014,398,509.481988");
+  assert.equal(formatMicrounitAmount(exactMicrounits, "USD"), "US$18,014,398,509.48");
+  assert.equal(formatCostSummary(dashboard.totals), "US$18,014,398,509.48");
 });
 
 test("price rows retain their own currency and use a payload fallback only when absent", () => {
@@ -418,4 +418,20 @@ test("mixed timezone warning is preserved for the UI", () => {
     { users, devices, organization: { default_timezone: "UTC" } },
   );
   assert.equal(dashboard.timezone_warning, "device-local warning");
+});
+
+test("microunits round to cents without floating point or huge-value loss", () => {
+  assert.equal(formatMicrounitAmount("4999", "USD"), "US$0.00");
+  assert.equal(formatMicrounitAmount("5000", "USD"), "US$0.01");
+  assert.equal(formatMicrounitAmount("999995000", "USD"), "US$1,000.00");
+  assert.equal(formatMicrounitAmount("999999999999999999999999", "USD"), "US$1,000,000,000,000,000,000.00");
+});
+
+test("device staleness uses successful ingest instead of authenticated reads", async () => {
+  const { deviceSyncHealth } = await import("../server-adapter.js");
+  const now = new Date("2026-08-10T00:00:00Z");
+  const stale = deviceSyncHealth({ last_successful_sync_at: "2026-08-01T00:00:00Z", last_seen_at: now.toISOString() }, now);
+  assert.deepEqual(stale, { warning: true, label: "9 天未成功同步" });
+  assert.equal(deviceSyncHealth({ created_at: "2026-08-09T00:00:00Z" }, now).warning, false);
+  assert.equal(deviceSyncHealth({ enabled: false, last_successful_sync_at: "2026-08-01T00:00:00Z" }, now).warning, false);
 });

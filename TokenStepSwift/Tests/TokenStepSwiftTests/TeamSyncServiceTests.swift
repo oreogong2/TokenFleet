@@ -1036,7 +1036,7 @@ final class TeamSyncServiceTests: XCTestCase {
     func testCredentialRejectionsCannotBeBypassedByForce() async {
         for status in [401, 403] {
             let http = RecordingTeamSyncHTTPClient(
-                responses: [TeamSyncHTTPResponse(data: Data(), statusCode: status)]
+                responses: Array(repeating: TeamSyncHTTPResponse(data: Data(), statusCode: status), count: status == 401 ? 2 : 1)
             )
             let credentials = MemoryTeamSyncCredentialStore(
                 values: ["server-device": "device-secret"]
@@ -1081,11 +1081,11 @@ final class TeamSyncServiceTests: XCTestCase {
                 XCTAssertEqual(error as? TeamSyncProtocolError, .reconnectRequired)
             }
             let requests = await http.requests
-            XCTAssertEqual(requests.count, 1)
+            XCTAssertEqual(requests.count, status == 401 ? 2 : 1)
         }
     }
 
-    func testValidation422RequiresExplicitForceThenCanRecover() async throws {
+    func testValidation422BacksOffThenCanRecover() async throws {
         let http = RecordingTeamSyncHTTPClient(
             responses: [
                 TeamSyncHTTPResponse(data: Data(), statusCode: 422),
@@ -1121,20 +1121,9 @@ final class TeamSyncServiceTests: XCTestCase {
             XCTAssertEqual(error as? TeamSyncProtocolError, .httpStatus(422))
         }
 
-        XCTAssertEqual(stateStore.state?.automaticRetryStopped, true)
-        XCTAssertEqual(stateStore.state?.terminalReason, .requestRejected)
-        XCTAssertNil(stateStore.state?.nextAttemptAt)
-
-        do {
-            _ = try await service.synchronize(
-                snapshot: exactSnapshot(),
-                serverURL: "https://team.example.com",
-                now: Date(timeIntervalSince1970: 1_786_240_100)
-            )
-            XCTFail("Automatic work bypassed terminal request rejection")
-        } catch {
-            XCTAssertEqual(error as? TeamSyncProtocolError, .automaticRetryStopped)
-        }
+        XCTAssertEqual(stateStore.state?.automaticRetryStopped, false)
+        XCTAssertNil(stateStore.state?.terminalReason)
+        XCTAssertNotNil(stateStore.state?.nextAttemptAt)
         var requests = await http.requests
         XCTAssertEqual(requests.count, 1)
 
@@ -1152,6 +1141,107 @@ final class TeamSyncServiceTests: XCTestCase {
         XCTAssertEqual(recovered.failureCount, 0)
         XCTAssertEqual(recovered.lastLedgerVersion, 2)
         XCTAssertEqual(recovered.syncedBucketHashes.count, 1)
+    }
+
+    func testClockSkewRetryUsesFreshNonceAndDoesNotStopSync() async throws {
+        let http = RecordingTeamSyncHTTPClient(responses: [
+            TeamSyncHTTPResponse(data: Data(#"{"detail":{"code":"clock_skew","server_time":2000}}"#.utf8), statusCode: 401),
+            TeamSyncHTTPResponse(data: Data(#"{"created":1,"updated":0,"unchanged":0,"ledger_version":2}"#.utf8), statusCode: 200)
+        ])
+        let store = MemoryTeamSyncStateStore(state: TeamSyncPersistentState(
+            serverURL: "https://team.example.com", devicePublicID: "anonymous", deviceID: "server-device"))
+        let service = TeamSyncService(httpClient: http,
+            credentialStore: MemoryTeamSyncCredentialStore(values: ["server-device": "device-secret"]),
+            stateStore: store, requestClock: { Date(timeIntervalSince1970: 1000) })
+        let result = try await service.synchronize(snapshot: exactSnapshot(), serverURL: "https://team.example.com")
+        let requests = await http.requests
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests[0].value(forHTTPHeaderField: "X-Timestamp"), "1000")
+        XCTAssertEqual(requests[1].value(forHTTPHeaderField: "X-Timestamp"), "2000")
+        XCTAssertNotEqual(requests[0].value(forHTTPHeaderField: "X-Nonce"), requests[1].value(forHTTPHeaderField: "X-Nonce"))
+        XCTAssertFalse(result.automaticRetryStopped)
+        XCTAssertNil(result.lastError)
+    }
+
+    func testRepeatedClockSkewStillRetriesAutomatically() async {
+        let response = TeamSyncHTTPResponse(data: Data(#"{"detail":{"code":"clock_skew","server_time":2000}}"#.utf8), statusCode: 401)
+        let http = RecordingTeamSyncHTTPClient(responses: [response, response])
+        let store = MemoryTeamSyncStateStore(state: TeamSyncPersistentState(
+            serverURL: "https://team.example.com", devicePublicID: "anonymous", deviceID: "server-device"))
+        let service = TeamSyncService(httpClient: http,
+            credentialStore: MemoryTeamSyncCredentialStore(values: ["server-device": "device-secret"]), stateStore: store)
+        do {
+            _ = try await service.synchronize(snapshot: exactSnapshot(), serverURL: "https://team.example.com")
+            XCTFail("Expected bounded clock retry")
+        } catch {
+            XCTAssertEqual(error as? TeamSyncProtocolError, .clockSkew)
+        }
+        XCTAssertEqual(store.state?.automaticRetryStopped, false)
+        XCTAssertNotNil(store.state?.nextAttemptAt)
+        XCTAssertTrue(store.state?.syncedBucketHashes.isEmpty == true)
+    }
+
+    func testPolicyUpgradeRecoversOldStopOnlyOnce() async throws {
+        var old = TeamSyncPersistentState(serverURL: "https://team.example.com", devicePublicID: "anonymous", deviceID: "server-device")
+        old.retryPolicyVersion = 0
+        old.automaticRetryStopped = true
+        old.terminalReason = .credentials
+        let store = MemoryTeamSyncStateStore(state: old)
+        let service = TeamSyncService(httpClient: RecordingTeamSyncHTTPClient(responses: []),
+            credentialStore: MemoryTeamSyncCredentialStore(), stateStore: store)
+        let recovered = await service.loadState()
+        XCTAssertEqual(recovered?.automaticRetryStopped, false)
+        XCTAssertEqual(recovered?.retryPolicyVersion, 1)
+        var confirmed = try XCTUnwrap(store.state)
+        confirmed.automaticRetryStopped = true
+        confirmed.terminalReason = .credentials
+        try store.save(confirmed)
+        let retained = await service.loadState()
+        XCTAssertEqual(retained?.automaticRetryStopped, true)
+        XCTAssertEqual(retained?.terminalReason, .credentials)
+    }
+
+    func testSigningClockIsReadForEachUploadChunk() async throws {
+        var snapshot = authoritativeSnapshot()
+        let rows = (0..<2001).map { index in DailyAtomicUsage(tool: "Codex", model: "fixture-\(index)",
+            inputTokens: 1, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 1) }
+        snapshot.daily[0].atomicUsage = rows
+        snapshot.daily[0].totalTokens = rows.count
+        let clock = SteppingSyncClock()
+        let http = RecordingTeamSyncHTTPClient(responses: [
+            TeamSyncHTTPResponse(data: Data(#"{"created":2000,"updated":0,"unchanged":0,"ledger_version":1}"#.utf8), statusCode: 200),
+            TeamSyncHTTPResponse(data: Data(#"{"created":1,"updated":0,"unchanged":0,"ledger_version":2}"#.utf8), statusCode: 200)
+        ])
+        let store = MemoryTeamSyncStateStore(state: TeamSyncPersistentState(serverURL: "https://team.example.com", devicePublicID: "anonymous", deviceID: "server-device"))
+        let service = TeamSyncService(httpClient: http,
+            credentialStore: MemoryTeamSyncCredentialStore(values: ["server-device": "device-secret"]), stateStore: store,
+            requestClock: { clock.next() })
+        _ = try await service.synchronize(snapshot: snapshot, serverURL: "https://team.example.com")
+        let requests = await http.requests
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests[0].value(forHTTPHeaderField: "X-Timestamp"), "1000")
+        XCTAssertEqual(requests[1].value(forHTTPHeaderField: "X-Timestamp"), "1601")
+    }
+
+    func test422QuarantinesOnlyRejectedRowsWithoutAcknowledgingThem() async throws {
+        var snapshot = authoritativeSnapshot()
+        var second = try XCTUnwrap(snapshot.daily[0].atomicUsage?.first)
+        second.model = "fixture-second"
+        snapshot.daily[0].atomicUsage?.append(second)
+        snapshot.daily[0].totalTokens = 20
+        let http = RecordingTeamSyncHTTPClient(responses: [
+            TeamSyncHTTPResponse(data: Data(#"{"detail":[{"loc":["body","buckets",0,"model"],"input":"PRIVATE_SENTINEL"}]}"#.utf8), statusCode: 422),
+            TeamSyncHTTPResponse(data: Data(#"{"created":1,"updated":0,"unchanged":0,"ledger_version":2}"#.utf8), statusCode: 200)
+        ])
+        let store = MemoryTeamSyncStateStore(state: TeamSyncPersistentState(serverURL: "https://team.example.com", devicePublicID: "anonymous", deviceID: "server-device"))
+        let service = TeamSyncService(httpClient: http,
+            credentialStore: MemoryTeamSyncCredentialStore(values: ["server-device": "device-secret"]), stateStore: store)
+        let result = try await service.synchronize(snapshot: snapshot, serverURL: "https://team.example.com")
+        let requests = await http.requests
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(result.syncedBucketHashes.count, 1)
+        XCTAssertEqual(result.lastOmittedIncompleteBucketCount, 1)
+        XCTAssertFalse(String(data: try JSONEncoder().encode(result), encoding: .utf8)?.contains("PRIVATE_SENTINEL") == true)
     }
 
     private func exactSnapshot() -> UsageSnapshot {
@@ -1354,8 +1444,9 @@ final class TeamSyncServiceTests: XCTestCase {
         }
         XCTAssertTrue(stateStore.state?.syncedBucketHashes.isEmpty == true)
         XCTAssertNil(stateStore.state?.lastLedgerVersion)
-        XCTAssertEqual(stateStore.state?.automaticRetryStopped, true)
-        XCTAssertEqual(stateStore.state?.terminalReason, .requestRejected)
+        XCTAssertEqual(stateStore.state?.automaticRetryStopped, false)
+        XCTAssertNil(stateStore.state?.terminalReason)
+        XCTAssertNotNil(stateStore.state?.nextAttemptAt)
     }
 }
 
@@ -1571,5 +1662,17 @@ private final class ThrowingSaveTeamSyncStateStore: TeamSyncStateStoring {
 
     func delete() throws {
         throw TeamSyncProtocolError.stateUnavailable
+    }
+}
+
+private final class SteppingSyncClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var timestamp: TimeInterval = 1000
+    func next() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        let result = Date(timeIntervalSince1970: timestamp)
+        timestamp += 601
+        return result
     }
 }

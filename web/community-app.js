@@ -1,4 +1,4 @@
-import { createCommunityApiClient } from "./community-api.js?v=cost-coverage-1";
+import { createCommunityApiClient } from "./community-api.js?v=batch1-sync-cost-1";
 import {
   PUBLIC_METRICS,
   PUBLIC_PERIODS,
@@ -10,15 +10,15 @@ import {
   normalizePublicMemberDetail,
   publicMetricValue,
   sanitizePublicFilters,
-} from "./community-contract.js?v=cost-coverage-1";
+} from "./community-contract.js?v=batch1-sync-cost-1";
 import {
   SUPPORTED_TOOL_CATALOG,
   communityCapabilitiesState,
   loadCommunityCapabilities,
-} from "./community-capabilities.js?v=cost-coverage-1";
-import { createCommunityDemoApi } from "./community-demo-data.js?v=cost-coverage-1";
+} from "./community-capabilities.js?v=batch1-sync-cost-1";
+import { createCommunityDemoApi } from "./community-demo-data.js?v=batch1-sync-cost-1";
 import { buildCommunityPosterModel, createCommunityPosterArtifact } from "./community-poster.js?v=beta8-canvas-preview-copy";
-import { formatTokenCount, toTokenBigInt, tokenRatio } from "./server-adapter.js";
+import { formatTokenCount, toTokenBigInt, tokenRatio } from "./server-adapter.js?v=batch1-sync-cost-1";
 
 const COMMUNITY_SHARE_GRANT = /^[A-Za-z0-9_-]{43,128}$/;
 const COMMUNITY_PUBLIC_ID = /^[A-Za-z0-9_-]{1,128}$/;
@@ -215,7 +215,7 @@ function totalsCells(person) {
 }
 
 function privacyNotice() {
-  return `<aside class="community-privacy" aria-label="公开范围说明"><strong>金额与公开范围</strong><p>金额是 API 等价估算，不是订阅费或实付账单。覆盖率表示有公开价格的 Token 占比，不代表估算准确度；未定价不等于 0 元。费用榜只比较完整计价、币种一致的记录。</p><p>这里只展示管理员已开启榜单的昵称、排名、四类 Token、公开标准价估算、工具/模型与日趋势。不展示邮箱、内部 ID、设备、小时、会话或消息；Token 不代表绩效。</p></aside>`;
+  return `<aside class="community-privacy" aria-label="公开范围说明"><strong>金额与公开范围</strong><p>金额是 API 等价估算，不是订阅费或实付账单。覆盖率表示有公开价格的 Token 占比，不代表估算准确度；未定价不等于 0 元。费用榜按当前公开计价口径排列，不混合不同币种。</p><p>这里只展示管理员已开启榜单的昵称、排名、四类 Token、公开标准价估算、工具/模型与日趋势。不展示邮箱、内部 ID、设备、小时、会话或消息；Token 不代表绩效。</p></aside>`;
 }
 
 function timezoneNotice(value) {
@@ -245,7 +245,7 @@ function primaryModelSummary(person) {
 
 function leaderboardRows(data) {
   const medals = ["", "金", "银", "铜"];
-  return data.participants.map((person) => `<article class="community-rank-row"><span class="community-rank ${person.rank && person.rank <= 3 ? "is-top" : ""}">${person.rank && person.rank <= 3 ? `<i aria-hidden="true">${medals[person.rank]}</i>` : ""}<b>${person.rank ? String(person.rank).padStart(2, "0") : "—"}</b></span><a class="community-person" href="${localHref({ kind: "profile", publicId: person.publicId, filters: data })}"><span><strong title="${escapeHTML(person.displayName)}">${escapeHTML(person.displayName)}</strong><small>查看全部工具、模型与趋势</small></span></a>${primaryModelSummary(person)}${totalsCells(person)}<div class="community-primary"><span>${escapeHTML(metricLabel(data.metric))}</span><strong title="${escapeHTML(metricDisplay(person, data.metric, false))}">${escapeHTML(metricDisplay(person, data.metric))}</strong><small>${escapeHTML(formatPublicCost(person.cost))}</small></div></article>`).join("");
+  return data.participants.map((person) => `<article class="community-rank-row${data.metric === "cost" ? " is-cost" : ""}"><span class="community-rank ${person.rank && person.rank <= 3 ? "is-top" : ""}">${person.rank && person.rank <= 3 ? `<i aria-hidden="true">${medals[person.rank]}</i>` : ""}<b>${person.rank ? String(person.rank).padStart(2, "0") : "—"}</b></span><a class="community-person" href="${localHref({ kind: "profile", publicId: person.publicId, filters: data })}"><span><strong title="${escapeHTML(person.displayName)}">${escapeHTML(person.displayName)}</strong><small>查看全部工具、模型与趋势</small></span></a>${primaryModelSummary(person)}${totalsCells(person)}<div class="community-primary"><span>${escapeHTML(metricLabel(data.metric))}</span><strong title="${escapeHTML(metricDisplay(person, data.metric, false))}">${escapeHTML(metricDisplay(person, data.metric))}</strong><small>${escapeHTML(formatPublicCost(person.cost))}</small></div></article>`).join("");
 }
 
 function leaderboardEmptyState(data, filters, capabilityState) {

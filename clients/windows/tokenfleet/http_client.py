@@ -12,7 +12,37 @@ from .protocol import ProtocolError, canonical_json, endpoint
 
 
 class NetworkError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, status: int | None = None,
+                 server_time: int | None = None, rejected_indices: tuple[int, ...] = ()) -> None:
+        super().__init__(message)
+        self.status = status
+        self.server_time = server_time
+        self.rejected_indices = rejected_indices
+
+    @classmethod
+    def from_http(cls, error: urllib.error.HTTPError) -> "NetworkError":
+        # Parse only known numeric metadata. Never retain or expose response
+        # text, validation input, proxy HTML, credentials or reflected labels.
+        server_time = None
+        rejected: list[int] = []
+        try:
+            payload = error.read(MAX_RESPONSE_BYTES + 1)
+            detail = json.loads(payload).get("detail") if len(payload) <= MAX_RESPONSE_BYTES else None
+            if isinstance(detail, dict) and detail.get("code") == "clock_skew":
+                timestamp = detail.get("server_time")
+                if type(timestamp) is int and 0 < timestamp <= 4_102_444_800:
+                    server_time = timestamp
+            if isinstance(detail, list):
+                for item in detail:
+                    loc = item.get("loc") if isinstance(item, dict) else None
+                    if isinstance(loc, list) and len(loc) >= 3 and loc[:2] == ["body", "buckets"] and type(loc[2]) is int:
+                        rejected.append(loc[2])
+        except (OSError, ValueError, AttributeError):
+            pass
+        finally:
+            error.close()
+        return cls(f"TokenFleet server returned HTTP {error.code}", status=error.code,
+                   server_time=server_time, rejected_indices=tuple(rejected))
 
 
 class JSONTransport(Protocol):
@@ -93,7 +123,7 @@ class HTTPSJSONTransport:
         except urllib.error.HTTPError as exc:
             # Never include the response body: enrollment responses can carry a
             # device secret and proxy error pages can reflect request values.
-            raise NetworkError(f"TokenFleet server returned HTTP {exc.code}") from None
+            raise NetworkError.from_http(exc) from None
         except (urllib.error.URLError, OSError, TimeoutError, ValueError) as exc:
             raise NetworkError("TokenFleet server could not be reached securely") from exc
         if status != expected_status:
@@ -123,7 +153,7 @@ class HTTPSJSONTransport:
         except NetworkError:
             raise
         except urllib.error.HTTPError as exc:
-            raise NetworkError(f"TokenFleet server returned HTTP {exc.code}") from None
+            raise NetworkError.from_http(exc) from None
         except (urllib.error.URLError, OSError, TimeoutError, ValueError) as exc:
             raise NetworkError("TokenFleet server could not be reached securely") from exc
         if status != expected_status:

@@ -69,6 +69,9 @@ def test_hmac_tamper_expiry_and_replay(harness) -> None:
     now = int(time.time())
     expired = harness.signed_post(device, payload, timestamp=now - outside_window)
     assert expired.status_code == 401
+    assert expired.json()["detail"]["code"] == "clock_skew"
+    assert type(expired.json()["detail"]["server_time"]) is int
+    assert abs(expired.json()["detail"]["server_time"] - now) < 10
     future = harness.signed_post(device, payload, timestamp=now + outside_window)
     assert future.status_code == 401
 

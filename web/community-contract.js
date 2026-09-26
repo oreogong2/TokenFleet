@@ -2,7 +2,7 @@ import {
   compareTokenValues,
   formatMicrounitAmount,
   toTokenBigInt,
-} from "./server-adapter.js";
+} from "./server-adapter.js?v=batch1-sync-cost-1";
 
 export const PUBLIC_PERIODS = Object.freeze([
   ["today", "今天"],
@@ -113,7 +113,7 @@ function normalizePublicCost(value = {}) {
     const partiallyUnpriced = totals.unpriced === true || BigInt(pricedTokens) < totalTokens;
     const mixedCurrency = totals.mixed_currency === true || amounts.length > 1;
     return {
-      // Keep incomplete and mixed-currency estimates out of cost ranking/charts.
+      // Charts require complete comparable amounts; ranking uses server metric_value.
       unpriced: partiallyUnpriced || mixedCurrency || amounts.length !== 1,
       mixedCurrency,
       partiallyUnpriced,
@@ -148,13 +148,14 @@ function normalizePublicCost(value = {}) {
 }
 
 export function formatPublicCost(cost) {
-  if (!cost || !cost.amounts?.length) return "未定价";
+  if (!cost || !cost.amounts?.length) return cost?.coveragePercent === 0
+    ? "未定价 · 部分模型无公开价 · 已计价部分为 0 · 覆盖 0%" : "未定价";
   const priced = cost.amounts
     .map((item) => formatMicrounitAmount(item.microunits, item.currency))
     .join(" · ");
   const coverage = cost.coveragePercent === null || cost.coveragePercent === undefined
     ? "" : ` · 覆盖 ${cost.coveragePercent}%`;
-  if (cost.partiallyUnpriced) return `已计价部分 ${priced}${coverage}`;
+  if (cost.partiallyUnpriced) return `已计价部分 ${priced} · 部分模型无公开价${coverage}`;
   if (cost.mixedCurrency) return `分币种 ${priced}${coverage}`;
   return `${priced}${coverage}`;
 }

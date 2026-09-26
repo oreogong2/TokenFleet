@@ -421,6 +421,7 @@ def _preflight_cost_currency(
     session: Session,
     query: Select,
     metric: PublicMetric,
+    partial_cost_ranking: bool = False,
 ) -> None:
     if metric != "cost":
         return
@@ -429,6 +430,16 @@ def _preflight_cost_currency(
         DailyUsage.cost_microunits.is_not(None),
         DailyUsage.cost_currency.is_not(None),
     )
+    if partial_cost_ranking:
+        # Inspect public priced rows across ALL members, including partial ones.
+        # Never sum currencies or expose a non-public price.
+        currencies = list(session.scalars(
+            query.with_only_columns(DailyUsage.cost_currency, maintain_column_froms=True)
+            .where(public_cost).order_by(None).distinct().limit(2)
+        ))
+        if len(currencies) > 1:
+            raise HTTPException(status_code=422, detail="metric=cost requires one public price currency")
+        return
     comparable_members = (
         query.with_only_columns(
             User.public_id,
@@ -707,24 +718,26 @@ def _capability_model_labels(
     )
 
 
-def _metric_value(aggregate: UsageAggregate, metric: PublicMetric) -> int | None:
+def _metric_value(aggregate: UsageAggregate, metric: PublicMetric, partial_cost_ranking: bool = False) -> int | None:
     if metric == "tokens":
         return aggregate.total_tokens
     if metric == "norm":
         return aggregate.norm_tokens
+    if partial_cost_ranking:
+        return sum(aggregate.costs.values()) if not aggregate.mixed_currency else None
     comparable_cost = aggregate.comparable_cost()
     return comparable_cost[1] if comparable_cost is not None else None
 
 
 def _metric_currency(
-    aggregates: Iterable[UsageAggregate], metric: PublicMetric
+    aggregates: Iterable[UsageAggregate], metric: PublicMetric, partial_cost_ranking: bool = False
 ) -> str | None:
     if metric != "cost":
         return None
     currencies = {
         cost[0]
         for aggregate in aggregates
-        if (cost := aggregate.comparable_cost()) is not None
+        if (cost := (next(iter(aggregate.costs.items()), None) if partial_cost_ranking else aggregate.comparable_cost())) is not None
     }
     if len(currencies) > 1:
         raise HTTPException(
@@ -743,8 +756,9 @@ def _stable_metric_sort_key(
     *,
     nickname: str,
     public_id: str,
+    partial_cost_ranking: bool = False,
 ) -> tuple[object, ...]:
-    value = _metric_value(aggregate, metric)
+    value = _metric_value(aggregate, metric, partial_cost_ranking)
     return (
         value is None,
         -(value or 0),
@@ -755,7 +769,7 @@ def _stable_metric_sort_key(
 
 
 def _ordered_members(
-    members: Iterable[MemberAggregate], metric: PublicMetric
+    members: Iterable[MemberAggregate], metric: PublicMetric, partial_cost_ranking: bool = False
 ) -> list[MemberAggregate]:
     return sorted(
         members,
@@ -764,6 +778,7 @@ def _ordered_members(
             metric,
             nickname=item.nickname,
             public_id=item.public_id,
+            partial_cost_ranking=partial_cost_ranking,
         ),
     )
 
@@ -772,10 +787,11 @@ def _member_rank(
     ordered: Iterable[MemberAggregate],
     metric: PublicMetric,
     public_id: str,
+    partial_cost_ranking: bool = False,
 ) -> int | None:
     ranked_position = 0
     for member in ordered:
-        value = _metric_value(member.usage, metric)
+        value = _metric_value(member.usage, metric, partial_cost_ranking)
         if value is None:
             continue
         ranked_position += 1
@@ -826,6 +842,7 @@ def build_public_leaderboard(
     model: str | None,
     limit: int,
     max_scan_rows: int,
+    partial_cost_ranking: bool = False,
 ) -> PublicLeaderboardResponse:
     start_date, end_date = period_bounds(organization, period)
     public_scope_query = _base_public_usage_query(
@@ -844,7 +861,7 @@ def build_public_leaderboard(
     # a missing or rare label can match zero rows while still forcing the database
     # to walk the entire public period to prove that result.
     _enforce_scan_limit(session, public_scope_query, max_scan_rows)
-    _preflight_cost_currency(session, query, metric)
+    _preflight_cost_currency(session, query, metric, partial_cost_ranking)
     # Discovery stays independent of the active tool/model filters and executes
     # as DISTINCT SQL over the complete scope admitted by the hard row budget.
     available_tools = _available_labels(
@@ -865,14 +882,14 @@ def build_public_leaderboard(
         if member.usage.mixed_timezones:
             response_timezones.mixed_timezones = True
 
-    ordered = _ordered_members(members.values(), metric)
+    ordered = _ordered_members(members.values(), metric, partial_cost_ranking)
     metric_currency = _metric_currency(
-        (member.usage for member in ordered), metric
+        (member.usage for member in ordered), metric, partial_cost_ranking
     )
     entries: list[PublicLeaderboardEntry] = []
     ranked_position = 0
     for member in ordered[:limit]:
-        value = _metric_value(member.usage, metric)
+        value = _metric_value(member.usage, metric, partial_cost_ranking)
         primary_tool, primary_tool_tokens = _primary_usage(member.tools)
         primary_model, primary_model_tokens = _primary_usage(member.models)
         rank = None
@@ -905,7 +922,7 @@ def build_public_leaderboard(
     return PublicLeaderboardResponseV2(
         period=period,
         metric=metric,
-        metric_definition=METRIC_DEFINITIONS[metric],
+        metric_definition=("publicly priced estimated cost; includes partial and unpriced members" if metric == "cost" and partial_cost_ranking else METRIC_DEFINITIONS[metric]),
         metric_currency=metric_currency,
         tool=tool,
         model=model,
@@ -994,6 +1011,7 @@ def build_public_member_detail(
     tool: str | None,
     model: str | None,
     max_scan_rows: int,
+    partial_cost_ranking: bool = False,
 ) -> PublicMemberDetailResponse:
     public_user = session.execute(
         select(User.public_id, User.display_name).where(
@@ -1024,7 +1042,7 @@ def build_public_member_detail(
         query = query.where(DailyUsage.tool == tool)
     if model is not None:
         query = query.where(_model_matches(model))
-    _preflight_cost_currency(session, query, metric)
+    _preflight_cost_currency(session, query, metric, partial_cost_ranking)
     members = _member_aggregates(session, query)
     target_query = query.where(User.public_id == public_id)
     tools = _distribution_aggregates(
@@ -1044,20 +1062,20 @@ def build_public_member_detail(
         dimension=DailyUsage.usage_date,
     )
 
-    ordered = _ordered_members(members.values(), metric)
+    ordered = _ordered_members(members.values(), metric, partial_cost_ranking)
     target_member = members.get(public_id)
     totals = target_member.usage if target_member is not None else UsageAggregate()
-    value = _metric_value(totals, metric)
+    value = _metric_value(totals, metric, partial_cost_ranking)
     metric_currency = _metric_currency(
-        (member.usage for member in ordered), metric
+        (member.usage for member in ordered), metric, partial_cost_ranking
     )
     return PublicMemberDetailResponseV2(
         public_id=public_id,
         nickname=nickname,
-        rank=_member_rank(ordered, metric, public_id),
+        rank=_member_rank(ordered, metric, public_id, partial_cost_ranking),
         period=period,
         metric=metric,
-        metric_definition=METRIC_DEFINITIONS[metric],
+        metric_definition=("publicly priced estimated cost; includes partial and unpriced members" if metric == "cost" and partial_cost_ranking else METRIC_DEFINITIONS[metric]),
         metric_value=str(value) if value is not None else None,
         metric_currency=metric_currency,
         tool=tool,

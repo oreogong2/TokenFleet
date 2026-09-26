@@ -4,7 +4,7 @@ import {
   parseJsonWithLosslessIntegers,
   toQuery,
 } from "./api.js";
-import { sanitizePublicFilters } from "./community-contract.js?v=cost-coverage-1";
+import { sanitizePublicFilters } from "./community-contract.js?v=batch1-sync-cost-1";
 
 export const PUBLIC_API_PATHS = Object.freeze({
   capabilities: "/api/v1/public/capabilities",

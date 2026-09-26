@@ -879,7 +879,7 @@ class CollectorTests(unittest.TestCase):
             self.assertEqual(result.buckets, [])
             self.assertGreater(result.diagnostics.skipped_records["Codex"], 0)
 
-    def test_one_unknown_record_excludes_the_whole_exact_day_model_bucket(self) -> None:
+    def test_one_unknown_record_preserves_healthy_exact_records(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary)
             write_jsonl(
@@ -914,10 +914,11 @@ class CollectorTests(unittest.TestCase):
                 ],
             )
             result = collect_usage(home)
-            self.assertEqual(result.buckets, [])
+            self.assertEqual(result.total_tokens, 15)
+            self.assertTrue(all(bucket["completeness"] == "exact" for bucket in result.buckets))
             self.assertGreater(result.diagnostics.skipped_records["Codex"], 0)
 
-    def test_incomplete_claude_records_withhold_the_exact_bucket(self) -> None:
+    def test_incomplete_claude_records_preserve_the_exact_bucket(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary)
             write_jsonl(
@@ -955,7 +956,8 @@ class CollectorTests(unittest.TestCase):
 
             result = collect_usage(home)
 
-            self.assertEqual(result.buckets, [])
+            self.assertEqual(result.total_tokens, 150)
+            self.assertTrue(all(bucket["completeness"] == "exact" for bucket in result.buckets))
             self.assertEqual(result.diagnostics.exact_records["Claude Code"], 1)
             self.assertEqual(result.diagnostics.skipped_records["Claude Code"], 2)
 
@@ -988,7 +990,8 @@ class CollectorTests(unittest.TestCase):
 
             result = collect_usage(home)
 
-            self.assertEqual(result.buckets, [])
+            self.assertEqual(result.total_tokens, 60)
+            self.assertTrue(all(bucket["completeness"] == "exact" for bucket in result.buckets))
             self.assertEqual(result.diagnostics.exact_records["Claude Code"], 1)
             self.assertEqual(result.diagnostics.skipped_records["Claude Code"], 1)
 

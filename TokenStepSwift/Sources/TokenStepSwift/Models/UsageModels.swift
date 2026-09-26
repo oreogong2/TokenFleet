@@ -245,6 +245,8 @@ struct DailyUsage: Codable, Identifiable {
     /// independent tool/model marginals. An empty array is an exact row with no
     /// atomic usage. Keeping the distinction prevents fabricated cross-detail.
     var atomicUsage: [DailyAtomicUsage]?
+    var omittedIncompleteTokens: Int?
+    var omittedIncompleteBucketCount: Int?
     var totalTokens: Int
     var cost: Double
     var pricedTokens: Int?
@@ -265,6 +267,8 @@ struct DailyUsage: Codable, Identifiable {
         case tools
         case models
         case atomicUsage = "atomic_usage"
+        case omittedIncompleteTokens = "omitted_incomplete_tokens"
+        case omittedIncompleteBucketCount = "omitted_incomplete_bucket_count"
         case totalTokens = "total_tokens"
         case cost
         case pricedTokens = "priced_tokens"
@@ -277,6 +281,8 @@ struct DailyUsage: Codable, Identifiable {
         tools: [String: Int],
         models: [String: Int] = [:],
         atomicUsage: [DailyAtomicUsage]? = nil,
+        omittedIncompleteTokens: Int? = nil,
+        omittedIncompleteBucketCount: Int? = nil,
         totalTokens: Int,
         cost: Double,
         pricedTokens: Int? = nil,
@@ -287,6 +293,8 @@ struct DailyUsage: Codable, Identifiable {
         self.tools = tools
         self.models = models
         self.atomicUsage = atomicUsage
+        self.omittedIncompleteTokens = omittedIncompleteTokens
+        self.omittedIncompleteBucketCount = omittedIncompleteBucketCount
         self.totalTokens = totalTokens
         self.cost = cost
         self.pricedTokens = pricedTokens
@@ -300,6 +308,8 @@ struct DailyUsage: Codable, Identifiable {
         tools = try container.decodeIfPresent([String: Int].self, forKey: .tools) ?? [:]
         models = try container.decodeIfPresent([String: Int].self, forKey: .models) ?? [:]
         atomicUsage = try container.decodeIfPresent([DailyAtomicUsage].self, forKey: .atomicUsage)
+        omittedIncompleteTokens = try container.decodeIfPresent(Int.self, forKey: .omittedIncompleteTokens)
+        omittedIncompleteBucketCount = try container.decodeIfPresent(Int.self, forKey: .omittedIncompleteBucketCount)
         totalTokens = try container.decode(Int.self, forKey: .totalTokens)
         cost = try container.decode(Double.self, forKey: .cost)
         pricedTokens = try container.decodeIfPresent(Int.self, forKey: .pricedTokens)
