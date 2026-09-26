@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import secrets
+from decimal import Decimal
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -42,6 +43,9 @@ OFFICIAL_PAGES = {
     'docs.anthropic.com': ('/en/docs/about-claude/pricing',),
     'docs.z.ai': ('/guides/overview/pricing',),
     'api-docs.deepseek.com': ('/quick_start/pricing', '/updates/'),
+    'platform.minimax.io': ('/docs/guides/pricing-paygo',),
+    'platform.kimi.ai': ('/docs/pricing/chat',),
+    'docs.x.ai': ('/developers/pricing',),
 }
 
 
@@ -49,6 +53,10 @@ class OfficialPriceImport(PriceCreate):
     tool: Literal['*'] = '*'
     currency: Literal['USD'] = 'USD'
     public_estimate: Literal[True] = True
+    # Explicit null means the official page/available bucket does not determine
+    # this rate. Omitting the key is rejected; zero is a real published free rate.
+    cache_read_per_million: Annotated[Decimal | None, Field(ge=0, max_digits=20, decimal_places=8)]
+    cache_write_per_million: Annotated[Decimal | None, Field(ge=0, max_digits=20, decimal_places=8)]
     effective_from: date | None = None
     effective_basis: Literal['official_date', 'ledger_first_seen']
     source_url: Annotated[str, Field(min_length=1, max_length=512)]
@@ -77,9 +85,15 @@ class OfficialPriceImport(PriceCreate):
     def verified_scope(self) -> 'OfficialPriceImport':
         canonical = normalize_model(self.model)
         host = urlsplit(self.source_url).hostname or ''
-        families = ('gpt-', 'o1', 'o3', 'o4') if host.endswith('openai.com') else (
-            ('claude-',) if host in ('platform.claude.com', 'docs.anthropic.com') else
-            ('glm-',) if host == 'docs.z.ai' else ('deepseek-',))
+        families = {
+            'developers.openai.com': ('gpt-', 'o1', 'o3', 'o4'),
+            'platform.openai.com': ('gpt-', 'o1', 'o3', 'o4'),
+            'openai.com': ('gpt-', 'o1', 'o3', 'o4'),
+            'platform.claude.com': ('claude-',), 'docs.anthropic.com': ('claude-',),
+            'docs.z.ai': ('glm-',), 'api-docs.deepseek.com': ('deepseek-',),
+            'platform.minimax.io': ('minimax-',), 'platform.kimi.ai': ('kimi-',),
+            'docs.x.ai': ('grok-',),
+        }.get(host, ())
         if not canonical.startswith(families) or not re.fullmatch(r'[a-z0-9][a-z0-9._-]{0,127}', canonical):
             raise ValueError('model family does not match the official price source')
         if (self.effective_basis == 'official_date') != (self.effective_from is not None):
@@ -167,6 +181,10 @@ def public_catalog(session: Session, org_id: str) -> dict:
               'source_url', 'source_checked_at', 'effective_basis')
     entries = [{k: str(getattr(p, k)) for k in fields}
                for p in sorted(prices, key=lambda p: (p.tool, p.model, p.effective_from, p.id))]
+    for entry, price in zip(entries, sorted(prices, key=lambda p: (p.tool, p.model, p.effective_from, p.id))):
+        for kind in ('read', 'write'):
+            if not getattr(price, f'cache_{kind}_price_known'):
+                entry[f'cache_{kind}_per_million'] = None
     # No organization/user identifiers or private-price fingerprints are published.
     org = session.get(Organization, org_id)
     if org is None:
@@ -237,8 +255,10 @@ def missing_prices(actor: PricePrincipal = Depends(get_price_principal),
                                         'catalog_backfillable_rows': 0})
         group['unpriced_exact_rows'] += 1
         group['token_total'] += row.input_tokens + row.output_tokens + row.cache_read_tokens + row.cache_write_tokens
-        if find_price(session, org_id=actor.org_id, tool=row.tool, model=row.model,
-                      usage_date=row.usage_date, catalog=prices, public_only=True):
+        price = find_price(session, org_id=actor.org_id, tool=row.tool, model=row.model,
+                           usage_date=row.usage_date, catalog=prices, public_only=True)
+        if price and (not row.cache_read_tokens or price.cache_read_price_known) and (
+                not row.cache_write_tokens or price.cache_write_price_known):
             group['catalog_backfillable_rows'] += 1
     for group in groups.values():
         group['token_total'] = str(group['token_total'])
@@ -259,12 +279,34 @@ def import_price(payload: OfficialPriceImport, actor: PricePrincipal = Depends(g
             raise HTTPException(status_code=422, detail='model has no ledger first appearance; supply an official date')
     values = payload.model_dump(exclude={'effective_from'})
     values['model'], values['effective_from'] = model, effective
+    for kind in ('read', 'write'):
+        key = f'cache_{kind}_per_million'
+        values[f'cache_{kind}_price_known'] = values[key] is not None
+        if values[key] is None:
+            values[key] = Decimal(0)  # inert storage; known flag forbids charging it
     candidates = [p for p in load_prices(session, actor.org_id) if normalize_tool(p.tool) == '*'
                   and normalize_model(p.model) == model and p.effective_from == effective]
     if candidates:
-        if len(candidates) != 1 or any(getattr(candidates[0], k) != v for k, v in values.items() if k != 'source_checked_at'):
-            raise HTTPException(status_code=409, detail='immutable price version conflicts; existing values were not changed')
+        if len(candidates) != 1:
+            raise HTTPException(status_code=409, detail='ambiguous price versions; existing values were not changed')
         price = candidates[0]
+        # Previously unknown cache rates can be completed from the same official
+        # source. Every previously known rate, scope and provenance stays frozen.
+        completion_keys = set()
+        for kind in ('read', 'write'):
+            known = f'cache_{kind}_price_known'
+            rate = f'cache_{kind}_per_million'
+            if not getattr(price, known) and values[known]:
+                completion_keys.update((known, rate))
+        if any(getattr(price, k) != v for k, v in values.items()
+               if k not in completion_keys and k != 'source_checked_at'):
+            raise HTTPException(status_code=409, detail='immutable price version conflicts; existing values were not changed')
+        if completion_keys:
+            for key in completion_keys:
+                setattr(price, key, values[key])
+            price.source_checked_at = payload.source_checked_at
+            org.price_catalog_revision += 1
+            session.flush()
         created = False
     else:
         price = PriceVersion(org_id=actor.org_id, created_by_user_id=actor.user_id, **values)

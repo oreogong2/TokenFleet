@@ -34,7 +34,12 @@ COST_DECIMAL_PRECISION = 64
 COST_OVERFLOW_DETAIL = "derived cost exceeds the supported signed 64-bit range"
 
 
-def derived_cost_microunits(bucket: UsageBucket, price: PriceVersion) -> int:
+def derived_cost_microunits(bucket: UsageBucket, price: PriceVersion) -> int | None:
+    # A missing rate is harmless only when the corresponding counter is zero.
+    # Transient legacy test objects may not have SQL defaults applied yet.
+    if (bucket.cache_read_tokens and price.cache_read_price_known is False
+            or bucket.cache_write_tokens and price.cache_write_price_known is False):
+        return None
     # A rate expressed in currency units per million tokens has the same numeric
     # multiplier when the result is expressed in micro-currency units.
     # The schema permits 16-digit token counters and 20-digit rates. Four exact
@@ -141,6 +146,7 @@ def _values_for_bucket(
     price: PriceVersion | None,
     now: datetime,
 ) -> dict[str, object]:
+    cost = derived_cost_microunits(bucket, price) if price is not None and not bucket.deleted else None
     return {
         "id": new_id(),
         "org_id": device.org_id,
@@ -160,15 +166,9 @@ def _values_for_bucket(
         "report_schema_version": report.schema_version,
         "collector_version": report.collector_version,
         "reported_generated_at": _utc(report.generated_at),
-        "price_version_id": price.id if price else None,
-        "cost_microunits": (
-            derived_cost_microunits(bucket, price)
-            if price is not None and not bucket.deleted
-            else None
-        ),
-        "cost_currency": (
-            price.currency if price is not None and not bucket.deleted else None
-        ),
+        "price_version_id": price.id if price is not None and (bucket.deleted or cost is not None) else None,
+        "cost_microunits": cost,
+        "cost_currency": price.currency if price is not None and cost is not None else None,
         "created_at": now,
         "updated_at": now,
     }

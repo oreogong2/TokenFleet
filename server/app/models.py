@@ -314,6 +314,9 @@ class PriceVersion(Base):
     output_per_million: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     cache_read_per_million: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     cache_write_per_million: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
+    # Unknown components use an inert numeric placeholder, never a zero rate.
+    cache_read_price_known: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    cache_write_price_known: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     effective_from: Mapped[date] = mapped_column(Date, nullable=False)
     # Legacy prices have no verified provenance until explicitly audited.
     source_url: Mapped[str | None] = mapped_column(String(512))

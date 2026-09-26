@@ -74,7 +74,8 @@ def find_price(
         # Case/alias-equivalent versions with conflicting rates cannot silently
         # choose a price by insertion order. Operators must resolve the ambiguity.
         rates = {(p.currency, p.input_per_million, p.output_per_million,
-                  p.cache_read_per_million, p.cache_write_per_million) for p in newest}
+                  p.cache_read_per_million, p.cache_write_per_million,
+                  p.cache_read_price_known, p.cache_write_price_known) for p in newest}
         if len(rates) != 1:
             return None
         return max(newest, key=lambda p: (p.created_at, p.id))
@@ -84,7 +85,8 @@ def find_price(
 def catalog_fingerprint(prices: Sequence[PriceVersion]) -> str:
     fields = ('id', 'org_id', 'tool', 'model', 'currency', 'public_estimate',
               'input_per_million', 'output_per_million', 'cache_read_per_million',
-              'cache_write_per_million', 'effective_from', 'source_url',
+              'cache_write_per_million', 'cache_read_price_known', 'cache_write_price_known',
+              'effective_from', 'source_url',
               'source_checked_at', 'effective_basis')
     rows = [{f: str(getattr(p, f)) for f in fields} for p in sorted(prices, key=lambda p: p.id)]
     return hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
@@ -178,16 +180,21 @@ def reprice_usage(
                              cache_read_tokens=row.cache_read_tokens, cache_write_tokens=row.cache_write_tokens,
                              completeness='exact')
         cost = derived_cost_microunits(bucket, price)
-        after[price.currency] += cost
-        after_priced_tokens += tokens
-        if (row.price_version_id, row.cost_microunits, row.cost_currency) != (price.id, cost, price.currency):
+        if cost is None:
+            no_price += 1
+            target = (None, None, None)
+        else:
+            after[price.currency] += cost
+            after_priced_tokens += tokens
+            target = (price.id, cost, price.currency)
+        if (row.price_version_id, row.cost_microunits, row.cost_currency) != target:
             changed += 1
-            changes.append((row, price, cost))
+            changes.append((row, target))
     ledger_before = organization.ledger_version
     if apply and changes:
         now = utcnow()
-        for row, price, cost in changes:
-            row.price_version_id, row.cost_microunits, row.cost_currency = price.id, cost, price.currency
+        for row, target in changes:
+            row.price_version_id, row.cost_microunits, row.cost_currency = target
             row.updated_at = now
         organization.ledger_version += 1
         session.flush()

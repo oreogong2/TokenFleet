@@ -102,6 +102,20 @@ final class TokenPricingTests: XCTestCase {
         XCTAssertEqual(permissions.intValue & 0o777, 0o600)
     }
 
+    func testUnknownCacheRatesOnlyBlockNonzeroComponents() throws {
+        let body = try JSONSerialization.jsonObject(with: TokenPriceCatalogFixture.payload) as! [String: Any]
+        for key in ["cache_read_per_million", "cache_write_per_million"] {
+            var rows = body["prices"] as! [[String: Any]]
+            rows[1][key] = NSNull()
+            let catalog = try ServerTokenPriceCatalog.decode(TokenPriceCatalogFixture.replacing(["prices": rows]))
+            XCTAssertNotNil(catalog.estimate(tool: "Codex", model: "gpt-6-sol", usage: usage(input: 100),
+                date: "2026-09-26", pricingVersion: "synthetic"))
+            let used = key == "cache_read_per_million" ? usage(input: 100, cacheRead: 1) : usage(input: 100, cacheWrite: 1)
+            XCTAssertNil(catalog.estimate(tool: "Codex", model: "gpt-6-sol", usage: used,
+                date: "2026-09-26", pricingVersion: "synthetic"))
+        }
+    }
+
     func testMissingCatalogDoesNotGuessPricesAndFutureSnapshotsArePreserved() {
         XCTAssertTrue(TokenPricingCatalog.shouldReestimate(storedVersion: nil))
         XCTAssertTrue(TokenPricingCatalog.shouldReestimate(storedVersion: "public-usd-2026-08-14"))

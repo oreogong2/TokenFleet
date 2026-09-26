@@ -14,6 +14,8 @@ depends_on = None
 
 def upgrade():
     op.add_column("organizations", sa.Column("price_catalog_revision", sa.Integer(), nullable=False, server_default="0"))
+    op.add_column("price_versions", sa.Column("cache_read_price_known", sa.Boolean(), nullable=False, server_default=sa.true()))
+    op.add_column("price_versions", sa.Column("cache_write_price_known", sa.Boolean(), nullable=False, server_default=sa.true()))
     op.add_column("price_versions", sa.Column("source_url", sa.String(512)))
     op.add_column("price_versions", sa.Column("source_checked_at", sa.Date()))
     op.add_column("price_versions", sa.Column("effective_basis", sa.String(32)))
@@ -44,4 +46,6 @@ def downgrade():
     op.drop_column("price_versions", "effective_basis")
     op.drop_column("price_versions", "source_checked_at")
     op.drop_column("price_versions", "source_url")
+    op.drop_column("price_versions", "cache_write_price_known")
+    op.drop_column("price_versions", "cache_read_price_known")
     op.drop_column("organizations", "price_catalog_revision")

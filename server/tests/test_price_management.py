@@ -216,3 +216,80 @@ def test_device_catalog_is_signed_and_bound_to_its_organization(harness):
     assert harness.client.get(path).status_code == 401
     assert len(harness.signed_get(a, path).json()['prices']) == 1
     assert harness.signed_get(b, path).json()['prices'] == []
+
+
+@pytest.mark.parametrize('kind', ['read', 'write'])
+def test_explicit_unknown_cache_rate_is_not_zero_and_completion_only_backfills_missing(harness, kind):
+    harness.app.state.settings = replace(harness.app.state.settings, public_org_slug='alpha')
+    def upload(count):
+        device = harness.enroll(admin_name='a_admin', user_name='a_member')
+        report = harness.usage_payload()
+        report['buckets'][0].update(model='gpt-6-astra', input_tokens=100,
+            output_tokens=10, cache_read_tokens=0, cache_write_tokens=0)
+        report['buckets'][0]['cache_' + kind + '_tokens'] = count
+        assert harness.signed_post(device, report).status_code == 200
+        with harness.session_factory() as session:
+            row = session.scalar(select(DailyUsage).where(DailyUsage.device_id == device.id))
+            return row.id
+    eligible = upload(0)
+    conditional = upload(3)
+    before = state(harness)
+    _, headers, _ = issue(harness)
+    key = 'cache_' + kind + '_per_million'
+    request = payload(**{key: None})
+    first = harness.client.post('/api/v1/price-management/versions', headers=headers, json=request)
+    assert first.status_code == 200, first.text
+    assert first.json()['backfill']['changed_rows'] == 1
+    after = state(harness)
+    assert after[eligible]['cost_microunits'] == 1500
+    assert after[conditional] == before[conditional]
+    catalog = harness.client.get('/api/v1/public/price-catalog').json()
+    assert catalog['prices'][0][key] is None
+    missing = harness.client.get('/api/v1/price-management/missing', headers=headers).json()
+    assert missing['models'][0]['catalog_backfillable_rows'] == 0
+    admin = harness.client.get('/api/v1/prices', headers=harness.auth('a_admin')).json()
+    assert admin[0][key] is None and admin[0]['cache_' + kind + '_price_known'] is False
+    # Future ingestion with the same conditional rate also stays truly unpriced.
+    future = upload(3)
+    assert state(harness)[future]['price_version_id'] is None
+    completed = harness.client.post('/api/v1/price-management/versions', headers=headers, json=payload())
+    assert completed.status_code == 200, completed.text
+    assert completed.json()['created'] is False
+    assert completed.json()['backfill']['changed_rows'] == 2
+    filled = state(harness)
+    assert filled[eligible] == after[eligible]  # originally priced rows are frozen
+    expected = 1503 if kind == 'read' else 1538
+    assert filled[conditional]['cost_microunits'] == expected
+    assert filled[future]['cost_microunits'] == expected
+    assert harness.client.get('/api/v1/public/price-catalog').json()['revision'] == catalog['revision'] + 1
+    for rid in (eligible, conditional):
+        for field in before[rid]:
+            if field not in ('price_version_id', 'cost_microunits', 'cost_currency', 'updated_at'):
+                assert filled[rid][field] == before[rid][field]
+    retry = harness.client.post('/api/v1/price-management/versions', headers=headers, json=payload())
+    assert retry.status_code == 200 and retry.json()['backfill']['changed_rows'] == 0
+    assert state(harness) == filled
+    for invalid in (request, payload(input_per_million='9')):
+        assert harness.client.post('/api/v1/price-management/versions', headers=headers, json=invalid).status_code == 409
+        assert state(harness) == filled
+
+
+def test_full_public_correction_clears_guessed_cache_cost_but_weekly_preserves_it(harness):
+    from .test_batch2_pricing import price, preview, apply_preview
+    old = price(harness, model='gpt-6-astra', rate='99')
+    rid, day = uploaded_row(harness, model='gpt-6-astra')
+    before = state(harness)
+    _, headers, _ = issue(harness)
+    response = harness.client.post('/api/v1/price-management/versions', headers=headers,
+                                  json=payload(cache_write_per_million=None))
+    assert response.status_code == 200 and state(harness) == before
+    dry = preview(harness, day, unpriced_only=False)
+    assert dry['changed_rows'] == 1 and dry['no_price_rows'] == 1
+    assert dry['priced_tokens_after'] == '0' and state(harness) == before
+    result = apply_preview(harness, day, dry, unpriced_only=False)
+    assert result['changed_rows'] == 1
+    row = state(harness)[rid]
+    assert row['price_version_id'] is row['cost_microunits'] is row['cost_currency'] is None
+    for key in before[rid]:
+        if key not in ('price_version_id', 'cost_microunits', 'cost_currency', 'updated_at'):
+            assert row[key] == before[rid][key]

@@ -41,23 +41,25 @@ struct ServerTokenPriceCatalog: Decodable {
         let currency: String
         let inputPerMillion: String
         let outputPerMillion: String
-        let cacheReadPerMillion: String
-        let cacheWritePerMillion: String
+        let cacheReadPerMillion: String?
+        let cacheWritePerMillion: String?
         let effectiveFrom: String
         let sourceUrl: String
         let sourceCheckedAt: String
         let effectiveBasis: String
 
-        var rates: [Decimal]? {
-            let strings = [inputPerMillion, outputPerMillion, cacheReadPerMillion, cacheWritePerMillion]
-            let values = strings.compactMap { value -> Decimal? in
+        var rates: [Decimal?]? {
+            let strings: [String?] = [inputPerMillion, outputPerMillion, cacheReadPerMillion, cacheWritePerMillion]
+            var values = [Decimal?]()
+            for value in strings {
+                guard let value else { values.append(nil); continue }
                 guard value.range(of: "^[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$", options: .regularExpression) != nil,
                       value.count <= 40,
                       let result = Decimal(string: value, locale: Locale(identifier: "en_US_POSIX")),
                       !result.isNaN, result >= 0 else { return nil }
-                return result
+                values.append(result)
             }
-            return values.count == 4 ? values : nil
+            return values
         }
     }
 
@@ -86,7 +88,8 @@ struct ServerTokenPriceCatalog: Decodable {
             throw TokenPriceCatalogError.unsupportedSchema
         }
         let officialHosts = Set(["developers.openai.com", "platform.openai.com", "openai.com",
-                                 "platform.claude.com", "docs.anthropic.com", "docs.z.ai", "api-docs.deepseek.com"])
+                                 "platform.claude.com", "docs.anthropic.com", "docs.z.ai", "api-docs.deepseek.com",
+                                 "platform.minimax.io", "platform.kimi.ai", "docs.x.ai"])
         guard result.revision >= 0, result.basis == "standard_api_equivalent", result.prices.count <= 10_000,
               Set(result.prices.map(\.id)).count == result.prices.count,
               result.prices.allSatisfy({ row in
@@ -156,6 +159,8 @@ struct ServerTokenPriceCatalog: Decodable {
             let tokens = [usage.inputTokens, usage.outputTokens, usage.cacheReadTokens, usage.cacheWriteTokens]
             var total = Decimal.zero
             for (count, rate) in zip(tokens, rates) {
+                if count == 0 { continue }
+                guard let rate else { return nil }
                 var lhs = Decimal(count), rhs = rate, product = Decimal.zero, next = Decimal.zero
                 guard NSDecimalMultiply(&product, &lhs, &rhs, .plain) == .noError,
                       NSDecimalAdd(&next, &total, &product, .plain) == .noError else { return nil }

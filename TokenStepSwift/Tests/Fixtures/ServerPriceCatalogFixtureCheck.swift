@@ -30,6 +30,21 @@ struct ServerPriceCatalogFixtureCheck {
             try expect(abs((estimate?.costUSD ?? -1) - expected) < 0.00000001, "HALF_UP micro-unit mismatch")
             try expect(catalog.estimate(tool: "Codex", model: "router/gpt-6-sol", usage: usage, date: "2026-09-26", pricingVersion: context.pricingVersion) == nil, "arbitrary router guessed")
         }
+        let body = try JSONSerialization.jsonObject(with: payload) as! [String: Any]
+        for key in ["cache_read_per_million", "cache_write_per_million"] {
+            var rows = body["prices"] as! [[String: Any]]
+            rows[1][key] = NSNull()
+            let partial = try ServerTokenPriceCatalog.decode(replacing(payload, ["prices": rows]))
+            let unused = TokenPricingUsage(inputTokens: 100, outputTokens: 0, cacheReadTokens: 0,
+                cacheWriteTokens: 0, totalTokens: 100, breakdownComplete: true)
+            var used = unused
+            if key == "cache_read_per_million" { used.cacheReadTokens = 1 } else { used.cacheWriteTokens = 1 }
+            used.totalTokens = 101
+            try expect(partial.estimate(tool: "Codex", model: "gpt-6-sol", usage: unused,
+                date: "2026-09-26", pricingVersion: "synthetic") != nil, "zero unknown component blocked known usage")
+            try expect(partial.estimate(tool: "Codex", model: "gpt-6-sol", usage: used,
+                date: "2026-09-26", pricingVersion: "synthetic") == nil, "unknown cache rate was guessed as zero")
+        }
         // Actual SQLite collection proves source invoice costs are not used.
         let db = root.appendingPathComponent("proxy.sqlite3")
         let sql = """

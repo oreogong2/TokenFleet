@@ -453,12 +453,23 @@ class PriceResponse(StrictModel):
     public_estimate: bool
     input_per_million: Decimal
     output_per_million: Decimal
-    cache_read_per_million: Decimal
-    cache_write_per_million: Decimal
+    cache_read_per_million: Decimal | None
+    cache_write_per_million: Decimal | None
+    cache_read_price_known: bool
+    cache_write_price_known: bool
     effective_from: date
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
+    @model_validator(mode="after")
+    def unknown_cache_rates(self) -> "PriceResponse":
+        if not self.cache_read_price_known:
+            self.cache_read_per_million = None
+        if not self.cache_write_price_known:
+            self.cache_write_per_million = None
+        return self
 
 
 class PriceVisibilityUpdate(StrictModel):
