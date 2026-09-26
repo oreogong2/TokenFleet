@@ -111,3 +111,16 @@ This removes the scheduled task, local state, DPAPI ciphertext, installed files,
 and the user PATH entry. It does not touch `.codex`, `.claude`, `.zcode`, other AI tools,
 their third-party credentials, or server-side history. Ask an administrator to
 disable the old device if immediate server-side revocation is required.
+
+### Sync recovery
+
+Newly registered sync tasks use XML with the current interactive user and least
+privilege. Tasks run every six hours and at login, permit battery operation, and
+start when available after a missed run. Existing installations need to rerun
+the Windows installer to register the updated task settings.
+
+`tokenfleet status` and the local dashboard show last success, last attempt,
+a bounded generic failure message, and rejected upload bucket count. Clock skew
+gets one signed retry; identifiable HTTP 422 bucket errors isolate only those
+rows. Rejected rows are excluded from uploaded totals. Collector diagnostics
+count omitted records without retaining server validation inputs or log contents.

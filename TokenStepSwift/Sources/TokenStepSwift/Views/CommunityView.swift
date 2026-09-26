@@ -322,6 +322,8 @@ private struct CommunityLeaderboardRow: View {
                 .monospacedDigit()
                 .frame(width: 104, alignment: .trailing)
             Text(costText)
+                .lineLimit(2)
+                .help(entry.totals.pricingCoverage.map { LFormat("价格覆盖率 %.1f%%", $0 * 100) } ?? costText)
                 .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(.secondary)
                 .frame(width: 104, alignment: .trailing)
@@ -339,8 +341,9 @@ private struct CommunityLeaderboardRow: View {
     }
 
     private var costText: String {
-        guard let cost = entry.totals.estimatedCost else { return L("未完整计价") }
-        return TokenStepFormat.money(cost)
+        guard let cost = entry.totals.publiclyPricedCost else { return L("部分模型无公开价") }
+        let amount = TokenStepFormat.money(cost)
+        return entry.totals.unpriced ? L("已计价部分") + " " + amount + "\n" + L("部分模型无公开价") : amount
     }
 
     private func rankColor(_ rank: Int) -> Color {

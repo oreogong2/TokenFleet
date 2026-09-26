@@ -31,13 +31,13 @@ test("partial public costs display coverage without becoming comparable totals",
     priced_tokens: "30", priced_costs_microunits: { USD: "190000" },
   };
   const person = normalizePublicMemberDetail({ public_id: "partial", nickname: "部分计价", totals });
-  assert.equal(formatPublicCost(person.cost), "已计价部分 US$0.19 · 覆盖 3%");
+  assert.equal(formatPublicCost(person.cost), "已计价部分 US$0.19 · 部分模型无公开价 · 覆盖 3%");
   assert.equal(publicMetricValue(person, "cost"), null);
   assert.equal(publicMetricValue(person, "tokens"), "1000");
   const unknown = normalizePublicMemberDetail({ public_id: "unknown", totals: {
     ...totals, priced_tokens: "0", priced_costs_microunits: {},
   } });
-  assert.equal(formatPublicCost(unknown.cost), "未定价");
+  assert.equal(formatPublicCost(unknown.cost), "未定价 · 部分模型无公开价 · 已计价部分为 0 · 覆盖 0%");
   const free = normalizePublicMemberDetail({ public_id: "free", totals: {
     ...totals, unpriced: false, priced_tokens: "1000", priced_costs_microunits: { USD: "0" },
   } });
@@ -158,7 +158,7 @@ test("real PublicMemberDetailResponse nested totals feed non-zero tool/model/tre
   assert.equal(detail.tools[0].normTokens, "900719925474099312352");
   assert.equal(detail.tools[0].metricValue, "100");
   assert.equal(detail.tools[0].cost.amounts[0].microunits, "18014398509481988");
-  assert.equal(formatPublicCost(detail.tools[0].cost), "US$18,014,398,509.481988");
+  assert.equal(formatPublicCost(detail.tools[0].cost), "US$18,014,398,509.48");
   assert.equal(detail.models[0].metricValue, "88");
   assert.equal(detail.dailyTrend[0].metricValue, "77");
   assert.equal(detail.dailyTrend[0].totalTokens, "900719925474099312376");
@@ -253,4 +253,16 @@ test("demo norm distributions use norm_tokens for every tool/model row", async (
   for (const item of [...detail.tools, ...detail.models]) {
     assert.equal(item.metricValue, item.normTokens);
   }
+});
+
+test("entirely unpriced enriched totals distinguish zero priced cost from free usage", () => {
+  const board = normalizePublicLeaderboard({ entries: [{
+    public_id: "synthetic-unpriced", nickname: "Synthetic unpriced", rank: 1, metric_value: "0",
+    totals: { input_tokens: "100", output_tokens: "0", cache_read_tokens: "0", cache_write_tokens: "0",
+      norm_tokens: "100", total_tokens: "100", unpriced: true, mixed_currency: false,
+      estimated_cost_microunits: null, cost_currency: null, priced_tokens: "0", priced_costs_microunits: {} }
+  }], metric: "cost" });
+  assert.match(formatPublicCost(board.participants[0].cost), /部分模型无公开价/);
+  assert.match(formatPublicCost(board.participants[0].cost), /已计价部分为 0 · 覆盖 0%/);
+  assert.equal(board.participants[0].rank, 1);
 });

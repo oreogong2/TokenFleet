@@ -1,4 +1,4 @@
-import { createCommunityApiClient } from "./community-api.js?v=cost-coverage-1";
+import { createCommunityApiClient } from "./community-api.js?v=batch1-sync-cost-1";
 import {
   PUBLIC_METRICS,
   PUBLIC_PERIODS,
@@ -10,15 +10,15 @@ import {
   normalizePublicMemberDetail,
   publicMetricValue,
   sanitizePublicFilters,
-} from "./community-contract.js?v=cost-coverage-1";
+} from "./community-contract.js?v=batch1-sync-cost-1";
 import {
   SUPPORTED_TOOL_CATALOG,
   communityCapabilitiesState,
   loadCommunityCapabilities,
-} from "./community-capabilities.js?v=cost-coverage-1";
-import { createCommunityDemoApi } from "./community-demo-data.js?v=cost-coverage-1";
+} from "./community-capabilities.js?v=batch1-sync-cost-1";
+import { createCommunityDemoApi } from "./community-demo-data.js?v=batch1-sync-cost-1";
 import { buildCommunityPosterModel, createCommunityPosterArtifact } from "./community-poster.js?v=beta8-canvas-preview-copy";
-import { formatTokenCount, toTokenBigInt, tokenRatio } from "./server-adapter.js";
+import { formatTokenCount, toTokenBigInt, tokenRatio } from "./server-adapter.js?v=batch1-sync-cost-1";
 
 const COMMUNITY_SHARE_GRANT = /^[A-Za-z0-9_-]{43,128}$/;
 const COMMUNITY_PUBLIC_ID = /^[A-Za-z0-9_-]{1,128}$/;

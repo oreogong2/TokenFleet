@@ -13,6 +13,7 @@ struct TeamSyncPersistentState: Codable, Equatable {
     var lastSyncAt: Date?
     var lastError: String?
     var failureCount: Int
+    var retryPolicyVersion: Int
     var nextAttemptAt: Date?
     var automaticRetryStopped: Bool
     var terminalReason: TeamSyncTerminalReason?
@@ -28,6 +29,7 @@ struct TeamSyncPersistentState: Codable, Equatable {
         case lastSyncAt = "last_sync_at"
         case lastError = "last_error"
         case failureCount = "failure_count"
+        case retryPolicyVersion = "retry_policy_version"
         case nextAttemptAt = "next_attempt_at"
         case automaticRetryStopped = "automatic_retry_stopped"
         case terminalReason = "terminal_reason"
@@ -44,6 +46,7 @@ struct TeamSyncPersistentState: Codable, Equatable {
         lastSyncAt: Date? = nil,
         lastError: String? = nil,
         failureCount: Int = 0,
+        retryPolicyVersion: Int = 1,
         nextAttemptAt: Date? = nil,
         automaticRetryStopped: Bool = false,
         terminalReason: TeamSyncTerminalReason? = nil,
@@ -58,6 +61,7 @@ struct TeamSyncPersistentState: Codable, Equatable {
         self.lastSyncAt = lastSyncAt
         self.lastError = lastError
         self.failureCount = failureCount
+        self.retryPolicyVersion = retryPolicyVersion
         self.nextAttemptAt = nextAttemptAt
         self.automaticRetryStopped = automaticRetryStopped
         self.terminalReason = terminalReason
@@ -76,6 +80,7 @@ struct TeamSyncPersistentState: Codable, Equatable {
         lastSyncAt = try container.decodeIfPresent(Date.self, forKey: .lastSyncAt)
         lastError = try container.decodeIfPresent(String.self, forKey: .lastError)
         failureCount = try container.decodeIfPresent(Int.self, forKey: .failureCount) ?? 0
+        retryPolicyVersion = try container.decodeIfPresent(Int.self, forKey: .retryPolicyVersion) ?? 0
         nextAttemptAt = try container.decodeIfPresent(Date.self, forKey: .nextAttemptAt)
         automaticRetryStopped = try container.decodeIfPresent(Bool.self, forKey: .automaticRetryStopped) ?? false
         terminalReason = try container.decodeIfPresent(TeamSyncTerminalReason.self, forKey: .terminalReason)

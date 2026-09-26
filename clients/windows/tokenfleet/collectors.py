@@ -415,9 +415,9 @@ def collect_usage(
         + cursor_records
         + experimental_records,
         excluded_keys=(
-            incomplete_codex_buckets
-            | incomplete_claude_buckets
-            | incomplete_zcode_buckets
+            # Codex/Claude collectors already reject each malformed record.
+            # An unrelated bad row cannot invalidate these proven exact rows.
+            incomplete_zcode_buckets
             | incomplete_cursor_buckets
             | incomplete_experimental_buckets
         ),

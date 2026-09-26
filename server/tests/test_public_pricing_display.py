@@ -121,3 +121,56 @@ def test_enriched_endpoint_obeys_public_visibility_and_scan_limits(harness):
     assert harness.signed_post(visible_device, harness.usage_payload(buckets=[_usage(harness, "one", 1), _usage(harness, "two", 2)])).status_code == 200
     harness.app.state.settings = replace(harness.app.state.settings, public_max_scan_rows=1)
     assert harness.client.get("/api/v1/public/priced-leaderboard").status_code == 503
+
+
+def test_partial_cost_ranking_is_disabled_until_price_rollout_and_cache_separated(harness):
+    from dataclasses import replace
+    _enable_alpha_public_board(harness)
+    assert harness.app.state.settings.partial_cost_ranking_enabled is False
+    _create_price(harness, model="priced", public_estimate=True)
+    _create_price(harness, model="private-price", public_estimate=False)
+    members = []
+    for label, buckets in (
+        ("Fully priced", [_usage(harness, "priced", 100)]),
+        ("Partially priced", [_usage(harness, "priced", 200), _usage(harness, "missing", 300)]),
+        ("Unpriced", [_usage(harness, "private-price", 1000)]),
+    ):
+        participant = _create_participant(harness, display_name=label)
+        device = _enroll_participant(harness, participant)
+        assert harness.signed_post(device, harness.usage_payload(buckets=buckets)).status_code == 200
+        members.append(participant["participant"]["public_id"])
+    params = {"metric": "cost"}
+    def board():
+        response = harness.client.get("/api/v1/public/priced-leaderboard", params=params)
+        assert response.status_code == 200, response.text
+        return response.json()
+    before = board()
+    assert [row["rank"] for row in before["entries"]] == [1, None, None]
+    harness.app.state.settings = replace(harness.app.state.settings, partial_cost_ranking_enabled=True)
+    enabled = board()
+    assert [row["public_id"] for row in enabled["entries"]] == [members[1], members[0], members[2]]
+    assert [row["rank"] for row in enabled["entries"]] == [1, 2, 3]
+    assert [row["metric_value"] for row in enabled["entries"]] == ["200", "100", "0"]
+    for row in enabled["entries"]:
+        detail = harness.client.get(f"/api/v1/public/priced-members/{row['public_id']}", params=params)
+        assert detail.status_code == 200
+        assert detail.json()["rank"] == row["rank"]
+        assert detail.json()["metric_value"] == row["metric_value"]
+    harness.app.state.settings = replace(harness.app.state.settings, partial_cost_ranking_enabled=False)
+    assert board() == before
+
+
+def test_partial_cost_ranking_rejects_cross_currency_even_in_incomplete_members(harness):
+    from dataclasses import replace
+    _enable_alpha_public_board(harness)
+    harness.app.state.settings = replace(harness.app.state.settings, partial_cost_ranking_enabled=True)
+    for currency in ("USD", "EUR"):
+        _create_price(harness, model=currency, currency=currency, public_estimate=True)
+        participant = _create_participant(harness, display_name=currency)
+        device = _enroll_participant(harness, participant)
+        assert harness.signed_post(device, harness.usage_payload(buckets=[
+            _usage(harness, currency, 100), _usage(harness, "missing", 100)
+        ])).status_code == 200
+    rejected = harness.client.get("/api/v1/public/priced-leaderboard", params={"metric": "cost"})
+    assert rejected.status_code == 422
+    assert harness.client.get("/api/v1/public/priced-leaderboard", params={"metric": "tokens"}).status_code == 200

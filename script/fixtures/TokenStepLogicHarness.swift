@@ -1425,12 +1425,12 @@ struct TokenStepLogicHarness {
             force: true,
             now: Date(timeIntervalSince1970: 1_786_240_000)
         )
-        expect(rejectedState.state?.automaticRetryStopped == true, "Terminal 4xx kept retrying")
-        expect(rejectedState.state?.terminalReason == .requestRejected, "Terminal 4xx reason mismatch")
+        expect(rejectedState.state?.automaticRetryStopped == false, "422 became terminal")
+        expect(rejectedState.state?.terminalReason == nil && rejectedState.state?.nextAttemptAt != nil, "422 did not back off")
         _ = try? await rejectedService.synchronize(
             snapshot: authoritativeSnapshot,
             serverURL: "https://team.example.com",
-            now: Date(timeIntervalSince1970: 1_786_240_100)
+            now: Date(timeIntervalSince1970: 1_786_240_001)
         )
         var rejectedRequests = await rejectedHTTP.requests
         expect(rejectedRequests.count == 1, "Automatic work bypassed terminal 422")
@@ -1449,9 +1449,8 @@ struct TokenStepLogicHarness {
         )
 
         for credentialStatus in [401, 403] {
-            let credentialHTTP = HarnessHTTPClient([
-                TeamSyncHTTPResponse(data: Data(), statusCode: credentialStatus)
-            ])
+            let credentialHTTP = HarnessHTTPClient(Array(repeating:
+                TeamSyncHTTPResponse(data: Data(), statusCode: credentialStatus), count: credentialStatus == 401 ? 2 : 1))
             let credentialState = HarnessStateStore(
                 TeamSyncPersistentState(
                     serverURL: "https://team.example.com",
@@ -1478,7 +1477,7 @@ struct TokenStepLogicHarness {
             )
             let credentialRequests = await credentialHTTP.requests
             expect(
-                credentialRequests.count == 1
+                credentialRequests.count == (credentialStatus == 401 ? 2 : 1)
                     && credentialState.state?.terminalReason == .credentials,
                 "Force bypassed credential rejection \(credentialStatus)"
             )

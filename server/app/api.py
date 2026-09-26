@@ -293,10 +293,12 @@ def _public_projection_cache_key(
     tool: str | None,
     model: str | None,
     public_id: str | None = None,
+    partial_cost_ranking: bool = False,
 ) -> tuple[object, ...]:
     start_date, end_date = period_bounds(organization, period)
     return (
         projection,
+        partial_cost_ranking,
         organization.id,
         organization.ledger_version,
         period,
@@ -376,6 +378,7 @@ def public_leaderboard(
     organization = resolve_public_organization(session, settings.public_org_slug)
     cache_key = _public_projection_cache_key(
         projection="leaderboard",
+        partial_cost_ranking=settings.partial_cost_ranking_enabled,
         organization=organization,
         period=period,
         metric=metric,
@@ -397,6 +400,7 @@ def public_leaderboard(
             # canonical maximum once and slice it per response below.
             limit=100,
             max_scan_rows=settings.public_max_scan_rows,
+            partial_cost_ranking=settings.partial_cost_ranking_enabled,
         )
         request.app.state.public_projection_cache.put(cache_key, cached)
     response.headers["Cache-Control"] = _public_cache_control(settings)
@@ -436,6 +440,7 @@ def public_member_detail(
     organization = resolve_public_organization(session, settings.public_org_slug)
     cache_key = _public_projection_cache_key(
         projection="member-detail",
+        partial_cost_ranking=settings.partial_cost_ranking_enabled,
         organization=organization,
         public_id=canonical_public_id,
         period=period,
@@ -456,6 +461,7 @@ def public_member_detail(
             tool=normalized_tool,
             model=normalized_model,
             max_scan_rows=settings.public_max_scan_rows,
+            partial_cost_ranking=settings.partial_cost_ranking_enabled,
         )
         request.app.state.public_projection_cache.put(cache_key, cached)
     response.headers["Cache-Control"] = _public_cache_control(settings)

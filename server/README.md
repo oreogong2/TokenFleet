@@ -603,3 +603,17 @@ enrollment token, or device secret. Without the variable, these tests report
 
 Make this smoke a required production CI/release gate. The SQLite suite alone does
 not substitute for PostgreSQL MVCC and driver verification.
+
+### Deferred cost ranking rollout
+
+`PARTIAL_COST_RANKING_ENABLED` defaults to `false`. Keep it off until the
+server price catalog and historical pricing work are accepted. When enabled,
+public cost ranking includes partial estimates and zero publicly priced cost;
+private prices remain excluded, and cross-currency cost comparison is rejected.
+This flag affects reads only and does not reprice or migrate ledger rows.
+
+Signed device requests outside the clock window return HTTP 401 with
+`detail.code=clock_skew` and integer `detail.server_time`. Clients may retry once
+with a fresh signature. This response does not bypass signature verification.
+The admin device view warns after seven days without successful ingest, using
+`last_successful_sync_at`, rather than authenticated reads.

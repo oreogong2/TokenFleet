@@ -22,6 +22,7 @@ from .constants import (
 from .credential import CredentialStore, DeviceCredential
 from .http_client import (
     HTTPSJSONTransport,
+    NetworkError,
     community_rank_endpoint,
     enrollment_endpoint,
     usage_endpoint,
@@ -151,43 +152,82 @@ class TokenFleetClient:
         )
 
     def sync(self, *, history_days: int = 366) -> SyncSummary:
+        try:
+            summary = self._sync_once(history_days=history_days)
+        except Exception as error:
+            state = self.state_store.load()
+            state.last_sync_attempt_at = generated_at()
+            state.consecutive_sync_failures += 1
+            status = error.status if isinstance(error, NetworkError) else None
+            state.last_sync_error = (
+                f"同步失败（HTTP {status}），请检查连接状态" if status in (401, 403)
+                else "同步暂未成功，计划任务会重试；可运行 tokenfleet sync"
+            )
+            self.state_store.save(state)
+            raise
+        state = self.state_store.load()
+        state.last_sync_attempt_at = summary.generated_at
+        state.last_sync_error = None
+        state.consecutive_sync_failures = 0
+        self.state_store.save(state)
+        return summary
+
+    def _sync_once(self, *, history_days: int = 366) -> SyncSummary:
         credential = self._credential_for_pinned_origin()
         result = self.preview(history_days=history_days)
         generated = generated_at()
-        total_tokens = result.total_tokens
         if not result.buckets:
             state = self.state_store.load()
             state.last_sync_at = generated
             state.last_bucket_count = 0
             state.last_uploaded_tokens = 0
+            state.last_omitted_bucket_count = 0
             self.state_store.save(state)
             return SyncSummary(0, 0, 0, 0, 0, 0, generated)
 
         totals = {"created": 0, "updated": 0, "unchanged": 0, "ledger_version": 0}
+        acknowledged_count = 0
+        acknowledged_tokens = 0
+        omitted_count = 0
         chunks = self._chunks(result.buckets, generated=generated)
         for index, buckets in enumerate(chunks):
             if index and index % 11 == 0:
                 # The server's default authenticated device budget is 12/min.
                 self.sleeper(61.0)
-            payload = daily_payload(
-                buckets,
-                collector_version=COLLECTOR_VERSION,
-                generated=generated,
-            )
-            body = canonical_json(payload)
-            headers = signed_headers(
-                device_id=credential.device_id,
-                device_secret=credential.device_secret,
-                body=body,
-                path=DAILY_USAGE_PATH,
-            )
-            response = self.transport.post_bytes(
-                usage_endpoint(credential.server_origin),
-                body,
-                headers=headers,
-                expected_status=200,
-            )
-            validated = validate_ingest_response(response, expected_count=len(buckets))
+            clock_offset = 0
+            authentication_retries = 0
+            validation_retries = 0
+            validated = None
+            while buckets:
+                payload = daily_payload(buckets, collector_version=COLLECTOR_VERSION, generated=generated)
+                body = canonical_json(payload)
+                headers = signed_headers(
+                    device_id=credential.device_id, device_secret=credential.device_secret,
+                    body=body, path=DAILY_USAGE_PATH, timestamp=int(time.time()) + clock_offset,
+                )
+                try:
+                    response = self.transport.post_bytes(
+                        usage_endpoint(credential.server_origin), body, headers=headers, expected_status=200,
+                    )
+                except NetworkError as error:
+                    if error.status == 401 and authentication_retries == 0:
+                        authentication_retries += 1
+                        if error.server_time is not None:
+                            clock_offset = error.server_time - int(time.time())
+                        continue
+                    rejected = {i for i in error.rejected_indices if 0 <= i < len(buckets)}
+                    if error.status == 422 and rejected and validation_retries < 2:
+                        validation_retries += 1
+                        omitted_count += len(rejected)
+                        buckets = [bucket for i, bucket in enumerate(buckets) if i not in rejected]
+                        continue
+                    raise
+                validated = validate_ingest_response(response, expected_count=len(buckets))
+                break
+            if validated is None:
+                continue
+            acknowledged_count += len(buckets)
+            acknowledged_tokens += sum(sum(bucket[field] for field in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens")) for bucket in buckets)
             for field in ("created", "updated", "unchanged"):
                 totals[field] += validated[field]
             totals["ledger_version"] = max(
@@ -196,12 +236,13 @@ class TokenFleetClient:
 
         state = self.state_store.load()
         state.last_sync_at = generated
-        state.last_bucket_count = len(result.buckets)
-        state.last_uploaded_tokens = total_tokens
+        state.last_bucket_count = acknowledged_count
+        state.last_uploaded_tokens = acknowledged_tokens
+        state.last_omitted_bucket_count = omitted_count
         self.state_store.save(state)
         return SyncSummary(
-            buckets=len(result.buckets),
-            total_tokens=total_tokens,
+            buckets=acknowledged_count,
+            total_tokens=acknowledged_tokens,
             created=totals["created"],
             updated=totals["updated"],
             unchanged=totals["unchanged"],

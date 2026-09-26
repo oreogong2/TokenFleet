@@ -83,7 +83,11 @@ struct SettingsTeamSyncCard: View {
                     .disabled(!appState.isCommunitySyncEnrollmentCompatible || !TeamSyncCredentialStorageAvailability.isAvailable)
                 }
                 .padding(.vertical, 8)
-                TeamSyncSettingRow(label: L("失败重试"), detail: L("指数退避，不阻塞本地统计"), value: L("自动"))
+                TeamSyncSettingRow(label: L("失败重试"), detail: L("指数退避，不阻塞本地统计"), value: appState.teamSyncState?.automaticRetryStopped == true ? L("自动重试已停止") : L("自动"))
+                if let omitted = appState.teamSyncState?.lastOmittedIncompleteBucketCount, omitted > 0 {
+                    Text(LFormat("%d 个桶含未上传记录，完整记录仍会同步", omitted))
+                        .font(.system(size: 7, weight: .semibold)).foregroundStyle(.orange)
+                }
                 HStack(spacing: 7) {
                     Button {
                         appState.syncTeamUsage(force: true)

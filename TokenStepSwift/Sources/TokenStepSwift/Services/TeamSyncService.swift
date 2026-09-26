@@ -57,21 +57,41 @@ actor TeamSyncService {
     private let httpClient: TeamSyncHTTPClient
     private let credentialStore: TeamSyncCredentialStoring
     private let stateStore: TeamSyncStateStoring
+    private let requestClock: @Sendable () -> Date
     private var operationEpoch: UInt64 = 0
     private var activeOperationID: UUID?
 
     init(
         httpClient: TeamSyncHTTPClient,
         credentialStore: TeamSyncCredentialStoring,
-        stateStore: TeamSyncStateStoring
+        stateStore: TeamSyncStateStoring,
+        requestClock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.httpClient = httpClient
         self.credentialStore = credentialStore
         self.stateStore = stateStore
+        self.requestClock = requestClock
     }
 
     func loadState() -> TeamSyncPersistentState? {
-        stateStore.load()
+        guard var state = stateStore.load() else { return nil }
+        if state.retryPolicyVersion < 1 {
+            // Old clients classified clock skew and HTML as terminal. Permit
+            // ONE upgrade recovery attempt; a confirmed revocation stays stopped.
+            state.retryPolicyVersion = 1
+            state.automaticRetryStopped = false
+            state.terminalReason = nil
+            state.nextAttemptAt = nil
+            state.failureCount = 0
+            do {
+                try stateStore.save(state)
+            } catch {
+                // Do not repeat the recovery on every launch if persistence
+                // failed. Keep the previous stopped state until it can be saved.
+                return stateStore.load()
+            }
+        }
+        return state
     }
 
     func enroll(
@@ -246,12 +266,16 @@ actor TeamSyncService {
         let normalizedServerURL = try TeamSyncProtocol.normalizedServerURL(
             rawServerURL
         ).absoluteString
-        let request = try TeamSyncProtocol.publicLeaderboardAPIURLRequest(
-            serverURL: normalizedServerURL
+        var request = try TeamSyncProtocol.publicLeaderboardAPIURLRequest(
+            serverURL: normalizedServerURL, enriched: true
         )
-        let response: TeamSyncHTTPResponse
+        var response: TeamSyncHTTPResponse
         do {
             response = try await httpClient.send(request)
+            if response.statusCode == 404 {
+                request = try TeamSyncProtocol.publicLeaderboardAPIURLRequest(serverURL: normalizedServerURL)
+                response = try await httpClient.send(request)
+            }
         } catch let error as TeamSyncProtocolError {
             throw error
         } catch {
@@ -347,7 +371,7 @@ actor TeamSyncService {
     ) async throws -> TeamSyncPersistentState {
         let operation = try beginOperation()
         defer { finishOperation(operation) }
-        guard var state = stateStore.load(),
+        guard var state = loadState(),
               state.isEnrolled,
               let deviceID = state.deviceID
         else {
@@ -411,39 +435,73 @@ actor TeamSyncService {
                 by: TeamSyncProtocolConfiguration.maxBucketsPerRequest
             ) {
                 let chunkEnd = min(chunkStart + TeamSyncProtocolConfiguration.maxBucketsPerRequest, pending.count)
-                let chunk = Array(pending[chunkStart..<chunkEnd])
-                let payload = TeamSyncDailyPayload(
-                    schemaVersion: TeamSyncProtocolConfiguration.schemaVersion,
-                    collectorVersion: TeamSyncProtocolConfiguration.collectorVersion,
-                    generatedAt: generatedAt,
-                    buckets: chunk.map(\.bucket)
-                )
-                let request = try TeamSyncProtocol.dailyUsageURLRequest(
-                    serverURL: normalizedServerURL,
-                    deviceID: deviceID,
-                    deviceSecret: deviceSecret,
-                    payload: payload,
-                    timestamp: Int(now.timeIntervalSince1970),
-                    nonce: UUID().uuidString.lowercased()
-                )
-                let response: TeamSyncHTTPResponse
-                do {
-                    response = try await httpClient.send(request)
-                } catch let error as TeamSyncProtocolError {
-                    throw error
-                } catch {
-                    throw TeamSyncProtocolError.networkUnavailable
+                var chunk = Array(pending[chunkStart..<chunkEnd])
+                var clockOffset: TimeInterval = 0
+                var authenticationRetries = 0
+                var validationRetries = 0
+                var acknowledged: DailyUsageIngestResponse?
+                while !chunk.isEmpty {
+                    let payload = TeamSyncDailyPayload(
+                        schemaVersion: TeamSyncProtocolConfiguration.schemaVersion,
+                        collectorVersion: TeamSyncProtocolConfiguration.collectorVersion,
+                        generatedAt: generatedAt,
+                        buckets: chunk.map(\.bucket)
+                    )
+                    // Payload time describes the snapshot; signing time must be
+                    // fresh for EVERY request, including retries and later chunks.
+                    let signedAt = requestClock().addingTimeInterval(clockOffset)
+                    let request = try TeamSyncProtocol.dailyUsageURLRequest(
+                        serverURL: normalizedServerURL,
+                        deviceID: deviceID,
+                        deviceSecret: deviceSecret,
+                        payload: payload,
+                        timestamp: Int(signedAt.timeIntervalSince1970),
+                        nonce: UUID().uuidString.lowercased()
+                    )
+                    let response: TeamSyncHTTPResponse
+                    do {
+                        response = try await httpClient.send(request)
+                    } catch let error as TeamSyncProtocolError {
+                        throw error
+                    } catch {
+                        throw TeamSyncProtocolError.networkUnavailable
+                    }
+                    try ensureOperation(operation)
+                    if response.statusCode == 401 {
+                        let serverTime = Self.clockSkewTime(response.data)
+                        if authenticationRetries == 0 {
+                            authenticationRetries += 1
+                            if let serverTime {
+                                clockOffset = serverTime - requestClock().timeIntervalSince1970
+                            }
+                            continue
+                        }
+                        if serverTime != nil { throw TeamSyncProtocolError.clockSkew }
+                    }
+                    if response.statusCode == 422, validationRetries < 2 {
+                        let rejected = Self.rejectedBucketIndices(response.data, count: chunk.count)
+                        if !rejected.isEmpty {
+                            validationRetries += 1
+                            state.lastOmittedIncompleteBucketCount += rejected.count
+                            chunk = chunk.enumerated().filter { !rejected.contains($0.offset) }.map(\.element)
+                            continue
+                        }
+                    }
+                    guard (200...299).contains(response.statusCode) else {
+                        throw TeamSyncProtocolError.httpStatus(response.statusCode)
+                    }
+                    guard let ingestResponse = try? JSONDecoder().decode(
+                        DailyUsageIngestResponse.self,
+                        from: response.data
+                    ), ingestResponse.isValid(expectedBucketCount: chunk.count) else {
+                        throw TeamSyncProtocolError.invalidIngestResponse
+                    }
+                    acknowledged = ingestResponse
+                    break
                 }
-                try ensureOperation(operation)
-                guard (200...299).contains(response.statusCode) else {
-                    throw TeamSyncProtocolError.httpStatus(response.statusCode)
-                }
-                guard let ingestResponse = try? JSONDecoder().decode(
-                    DailyUsageIngestResponse.self,
-                    from: response.data
-                ), ingestResponse.isValid(expectedBucketCount: chunk.count) else {
-                    throw TeamSyncProtocolError.invalidIngestResponse
-                }
+                // Quarantined rows are not acknowledged or added to the hash
+                // ledger. Healthy rows are committed only after a valid receipt.
+                guard let ingestResponse = acknowledged else { continue }
                 var committedState = state
                 committedState.lastLedgerVersion = ingestResponse.ledgerVersion
                 for item in chunk {
@@ -534,17 +592,35 @@ actor TeamSyncService {
 
     private func shouldRetry(_ error: TeamSyncProtocolError) -> Bool {
         switch error {
-        case .networkUnavailable, .credentialStoreTemporarilyUnavailable:
+        case .networkUnavailable, .credentialStoreTemporarilyUnavailable, .invalidIngestResponse, .clockSkew:
             return true
         case let .httpStatus(status):
-            return status == 408
-                || status == 409
-                || status == 425
-                || status == 429
-                || (500...599).contains(status)
+            return status != 401 && status != 403
         default:
             return false
         }
+    }
+
+    private static func clockSkewTime(_ data: Data) -> TimeInterval? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let detail = object["detail"] as? [String: Any],
+              detail["code"] as? String == "clock_skew",
+              let timestamp = detail["server_time"] as? Int,
+              (1...4_102_444_800).contains(timestamp)
+        else { return nil }
+        return TimeInterval(timestamp)
+    }
+
+    private static func rejectedBucketIndices(_ data: Data, count: Int) -> Set<Int> {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let details = object["detail"] as? [[String: Any]] else { return [] }
+        return Set(details.compactMap { detail in
+            guard let location = detail["loc"] as? [Any], location.count >= 3,
+                  location[0] as? String == "body", location[1] as? String == "buckets",
+                  let index = location[2] as? Int, (0..<count).contains(index)
+            else { return nil }
+            return index
+        })
     }
 
     private func beginOperation() throws -> OperationToken {

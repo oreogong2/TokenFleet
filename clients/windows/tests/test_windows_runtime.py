@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import socket
 import tempfile
+import subprocess
+import xml.etree.ElementTree as ET
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -62,6 +64,15 @@ class WindowsRuntimeTests(unittest.TestCase):
             try:
                 register(script)
                 self.assertTrue(is_registered(), TASK_NAME)
+                queried = subprocess.run(["schtasks.exe", "/Query", "/TN", TASK_NAME, "/XML"],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+                document = ET.fromstring(queried.stdout)
+                ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+                for field, expected in (("DisallowStartIfOnBatteries", "false"),
+                                        ("StopIfGoingOnBatteries", "false"), ("StartWhenAvailable", "true")):
+                    self.assertEqual(document.findtext(f"t:Settings/t:{field}", namespaces=ns), expected)
+                self.assertIsNotNone(document.find("t:Triggers/t:LogonTrigger", ns))
+                self.assertEqual(document.findtext("t:Principals/t:Principal/t:RunLevel", namespaces=ns), "LeastPrivilege")
             finally:
                 unregister(ignore_missing=True)
             self.assertFalse(is_registered(), TASK_NAME)

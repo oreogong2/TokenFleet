@@ -13,12 +13,13 @@ import {
   saveApiKey,
 } from "./api.js";
 import { demoApi } from "./demo-data.js";
-import { parseCommunityRoute } from "./community-contract.js?v=cost-coverage-1";
-import { mountCommunityApp } from "./community-app.js?v=cost-coverage-1";
+import { parseCommunityRoute } from "./community-contract.js?v=batch1-sync-cost-1";
+import { mountCommunityApp } from "./community-app.js?v=batch1-sync-cost-1";
 import {
   aggregateTokenRows,
   adaptUsageDashboard,
   dateRangeForTimezone,
+  deviceSyncHealth,
   formatCostSummary,
   formatTokenCount,
   normalizeOrganization,
@@ -27,7 +28,7 @@ import {
   personDetail,
   tokenRatio,
   toTokenBigInt,
-} from "./server-adapter.js";
+} from "./server-adapter.js?v=batch1-sync-cost-1";
 
 const app = document.querySelector("#app");
 const params = new URLSearchParams(location.search);
@@ -455,13 +456,13 @@ function renderPersonDetail() {
 
 function deviceList(items) {
   if (!items.length) return emptyInline("暂无已登记设备");
-  return `<div class="device-list">${items.map((device) => `<div class="device-row"><span class="device-icon">${icon("laptop", 18)}</span><span><strong>${escapeHTML(device.label || `设备 ${String(device.id || "").slice(-6)}`)}</strong><small>${escapeHTML(device.user_name || device.platform || "macOS")} · ${escapeHTML(formatTime(device.last_seen_at))}</small></span><span class="device-health ${device.enabled === false ? "disabled" : ""}">${device.enabled === false ? "已禁用" : "正常"}</span></div>`).join("")}</div>`;
+  return `<div class="device-list">${items.map((device) => `<div class="device-row"><span class="device-icon">${icon("laptop", 18)}</span><span><strong>${escapeHTML(device.label || `设备 ${String(device.id || "").slice(-6)}`)}</strong><small>${escapeHTML(device.user_name || device.platform || "macOS")} · ${escapeHTML(formatTime(device.last_seen_at))}</small></span><span class="device-health ${(device.enabled === false || deviceSyncHealth(device).warning) ? "disabled" : ""}">${deviceSyncHealth(device).label}</span></div>`).join("")}</div>`;
 }
 
 function renderDevices() {
   const devices = normalizeCollection(state.pageData, ["items", "devices"]);
   if (!devices.length) return `<article class="panel">${emptyInline("尚未登记设备")}</article>`;
-  return `<div class="device-grid">${devices.map((device) => `<article class="device-card ${device.enabled === false ? "is-disabled" : ""}"><div class="device-card-top"><span class="device-icon large">${icon("laptop", 24)}</span><span class="device-health ${device.enabled === false ? "disabled" : ""}">${device.enabled === false ? "已禁用" : "已连接"}</span></div><h2>${escapeHTML(device.label || `设备 ${String(device.id || "").slice(-6)}`)}</h2><p>${escapeHTML(device.user_name || "未分配成员")}</p><dl><div><dt>Token</dt><dd>${formatTokens(device.total_tokens)}</dd></div><div><dt>最近同步</dt><dd>${escapeHTML(formatTime(device.last_seen_at))}</dd></div><div><dt>客户端</dt><dd>${escapeHTML(device.app_version || "未知")}</dd></div><div><dt>设备 ID</dt><dd><code>${escapeHTML(String(device.id || "").slice(0, 8))}</code></dd></div></dl>${state.me?.role === "admin" ? `<button class="${device.enabled === false ? "secondary-button" : "danger-button"} full" data-action="toggle-device" data-device-id="${escapeHTML(device.id)}" data-enabled="${device.enabled === false ? "true" : "false"}">${device.enabled === false ? "重新启用" : "禁用设备"}</button>` : ""}</article>`).join("")}</div>`;
+  return `<div class="device-grid">${devices.map((device) => `<article class="device-card ${device.enabled === false ? "is-disabled" : ""}"><div class="device-card-top"><span class="device-icon large">${icon("laptop", 24)}</span><span class="device-health ${(device.enabled === false || deviceSyncHealth(device).warning) ? "disabled" : ""}">${deviceSyncHealth(device).label}</span></div><h2>${escapeHTML(device.label || `设备 ${String(device.id || "").slice(-6)}`)}</h2><p>${escapeHTML(device.user_name || "未分配成员")}</p><dl><div><dt>Token</dt><dd>${formatTokens(device.total_tokens)}</dd></div><div><dt>最近同步</dt><dd>${escapeHTML(formatTime(device.last_seen_at))}</dd></div><div><dt>客户端</dt><dd>${escapeHTML(device.app_version || "未知")}</dd></div><div><dt>设备 ID</dt><dd><code>${escapeHTML(String(device.id || "").slice(0, 8))}</code></dd></div></dl>${state.me?.role === "admin" ? `<button class="${device.enabled === false ? "secondary-button" : "danger-button"} full" data-action="toggle-device" data-device-id="${escapeHTML(device.id)}" data-enabled="${device.enabled === false ? "true" : "false"}">${device.enabled === false ? "重新启用" : "禁用设备"}</button>` : ""}</article>`).join("")}</div>`;
 }
 
 function aggregateBy(items, key) {

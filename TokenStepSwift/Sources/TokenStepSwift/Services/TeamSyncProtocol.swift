@@ -363,6 +363,8 @@ struct TeamSyncPublicUsageTotals: Decodable, Equatable {
     var costCurrency: String?
     var unpriced: Bool
     var mixedCurrency: Bool
+    var pricedTokens: String? = nil
+    var pricedCostsMicrounits: [String: String]? = nil
 
     enum CodingKeys: String, CodingKey {
         case inputTokens = "input_tokens"
@@ -375,6 +377,8 @@ struct TeamSyncPublicUsageTotals: Decodable, Equatable {
         case costCurrency = "cost_currency"
         case unpriced
         case mixedCurrency = "mixed_currency"
+        case pricedTokens = "priced_tokens"
+        case pricedCostsMicrounits = "priced_costs_microunits"
     }
 
     var estimatedCost: Double? {
@@ -386,6 +390,18 @@ struct TeamSyncPublicUsageTotals: Decodable, Equatable {
         return value / 1_000_000
     }
 
+    var publiclyPricedCost: Double? {
+        guard !mixedCurrency, let amount = pricedCostsMicrounits?["USD"],
+              let value = Double(amount), value.isFinite else { return estimatedCost }
+        return value / 1_000_000
+    }
+
+    var pricingCoverage: Double? {
+        guard let pricedTokens, let covered = Double(pricedTokens),
+              let total = Double(totalTokens), total > 0 else { return nil }
+        return covered / total
+    }
+
     var isValid: Bool {
         let required = [
             inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
@@ -393,6 +409,18 @@ struct TeamSyncPublicUsageTotals: Decodable, Equatable {
         ]
         guard required.allSatisfy(TeamSyncPublicLeaderboard.isCanonicalInteger) else {
             return false
+        }
+        if let pricedTokens {
+            guard TeamSyncPublicLeaderboard.isCanonicalInteger(pricedTokens),
+                  pricedTokens.count < totalTokens.count ||
+                    (pricedTokens.count == totalTokens.count && pricedTokens <= totalTokens)
+            else { return false }
+        }
+        if let costs = pricedCostsMicrounits {
+            guard costs.allSatisfy({ key, value in
+                key.count == 3 && key.utf8.allSatisfy { (65...90).contains($0) }
+                    && TeamSyncPublicLeaderboard.isCanonicalInteger(value)
+            }) else { return false }
         }
         if let estimatedCostMicrounits,
            !TeamSyncPublicLeaderboard.isCanonicalInteger(estimatedCostMicrounits) {
@@ -703,6 +731,7 @@ enum TeamSyncProtocolError: LocalizedError, Equatable {
     case secureCredentialStorageUnavailable
     case stateUnavailable
     case networkUnavailable
+    case clockSkew
     case httpStatus(Int)
 
     var errorDescription: String? {
@@ -716,7 +745,7 @@ enum TeamSyncProtocolError: LocalizedError, Equatable {
         case .invalidEnrollmentResponse:
             return L("社群榜服务器返回了无效的注册信息。")
         case .invalidIngestResponse:
-            return L("社群榜服务器未确认完整接收本次日汇总，已停止自动重试。")
+            return L("社群榜服务器未确认完整接收本次日汇总，稍后会自动重试。")
         case .invalidCommunityRankResponse:
             return L("社群榜服务器返回了无效的排名信息。")
         case .invalidCommunityShareGrantResponse:
@@ -741,6 +770,8 @@ enum TeamSyncProtocolError: LocalizedError, Equatable {
             return L("当前构建未启用安全凭据存储，社群榜同步保持关闭。")
         case .stateUnavailable:
             return L("无法保存社群榜同步状态。")
+        case .clockSkew:
+            return L("设备时间与服务器不一致，稍后会自动重试。")
         case .networkUnavailable:
             return L("社群榜服务器暂时无法连接。")
         case let .httpStatus(status):
@@ -962,12 +993,13 @@ enum TeamSyncProtocol {
     /// Reads only the anonymous public projection. It never carries device
     /// credentials, enrollment tokens, cookies, or an Authorization header.
     static func publicLeaderboardAPIURLRequest(
-        serverURL rawServerURL: String
+        serverURL rawServerURL: String,
+        enriched: Bool = false
     ) throws -> URLRequest {
         let serverURL = try normalizedServerURL(rawServerURL)
         let endpoint = try endpointURL(
             serverURL: serverURL,
-            path: TeamSyncProtocolConfiguration.publicLeaderboardAPIPath
+            path: (enriched ? "/api/v1/public/priced-leaderboard" : TeamSyncProtocolConfiguration.publicLeaderboardAPIPath)
         )
         guard var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false) else {
             throw TeamSyncProtocolError.invalidServerURL
@@ -1054,7 +1086,15 @@ enum TeamSyncProtocol {
                 omittedIncompleteBucketCount = nextCount
                 continue
             }
-            var atomicDayTotal = 0
+            let omittedTokens = day.omittedIncompleteTokens ?? 0
+            let omittedBuckets = day.omittedIncompleteBucketCount ?? 0
+            guard omittedTokens >= 0, omittedBuckets >= 0 else {
+                throw TeamSyncProtocolError.invalidBucket
+            }
+            let (nextOmitted, omittedOverflow) = omittedIncompleteBucketCount.addingReportingOverflow(omittedBuckets)
+            guard !omittedOverflow else { throw TeamSyncProtocolError.invalidBucket }
+            omittedIncompleteBucketCount = nextOmitted
+            var atomicDayTotal = omittedTokens
             for atomic in atomicUsage {
                 guard atomic.totalTokens >= 0 else {
                     throw TeamSyncProtocolError.invalidBucket
@@ -1077,7 +1117,12 @@ enum TeamSyncProtocol {
                     cacheReadTokens: atomic.cacheReadTokens,
                     cacheWriteTokens: atomic.cacheWriteTokens
                 )
-                try validate(bucket: bucket)
+                do {
+                    try validate(bucket: bucket)
+                } catch TeamSyncProtocolError.invalidBucket {
+                    omittedIncompleteBucketCount += 1
+                    continue
+                }
                 let componentTotal = bucket.inputTokens
                     + bucket.outputTokens
                     + bucket.cacheReadTokens

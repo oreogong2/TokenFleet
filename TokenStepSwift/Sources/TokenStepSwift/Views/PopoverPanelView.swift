@@ -28,6 +28,15 @@ struct PopoverPanelView: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 10)
             }
+            if appState.teamSyncState?.automaticRetryStopped == true {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.icloud.fill")
+                    Text(appState.teamSyncState?.terminalReason == .credentials
+                         ? L("社群同步需要重新连接，请打开设置") : L("社群同步已停止，请打开设置检查"))
+                }
+                .font(.caption.weight(.bold)).foregroundStyle(.orange)
+                .padding(.horizontal, 18).padding(.vertical, 8)
+            }
             PopoverTodayRingCard()
             if appState.settings.showCodexQuota {
                 PopoverQuotaCard()

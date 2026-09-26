@@ -33,6 +33,10 @@ async function load() {
     $("#rank").textContent = "—";
     $("#rank-detail").textContent = data.rank_error || "尚未进入公开名次";
   }
+  $("#sync-success").textContent = data.sync?.last_success_at ? `上次成功：${data.sync.last_success_at}` : "尚未成功同步";
+  $("#sync-error").textContent = data.sync?.last_error || "自动同步每 6 小时运行；登录和错过任务时补跑";
+  const skipped = Object.values(data.sync?.skipped_records || {}).reduce((sum, value) => sum + value, 0);
+  $("#sync-skipped").textContent = [skipped ? `本轮跳过 ${skipped} 条无法确认完整用量的记录，正常记录仍计入` : "", data.sync?.omitted_buckets ? `上次同步隔离 ${data.sync.omitted_buckets} 个服务器拒收的桶，未计入上传量` : ""].filter(Boolean).join("；");
   bars($("#tools"), data.week.tools);
   bars($("#models"), data.week.models);
   $("#experimental").checked = data.experimental.enabled;

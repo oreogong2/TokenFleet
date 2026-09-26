@@ -13,12 +13,31 @@ final class UsageCollectorCodexTests: XCTestCase {
         )
 
         let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home)
-        let atomic = try XCTUnwrap(snapshot.daily.first?.atomicUsage?.first)
-
-        XCTAssertEqual(atomic.totalTokens, 100)
-        XCTAssertFalse(atomic.breakdownComplete)
+        XCTAssertEqual(snapshot.daily.first?.totalTokens, 100)
+        XCTAssertTrue(snapshot.daily.first?.atomicUsage?.isEmpty == true)
+        XCTAssertEqual(snapshot.daily.first?.omittedIncompleteTokens, 100)
         let build = try TeamSyncProtocol.dailyBucketBuild(snapshot: snapshot)
         XCTAssertTrue(build.buckets.isEmpty)
+        XCTAssertEqual(build.omittedIncompleteBucketCount, 1)
+    }
+
+    func testIncompleteRecordDoesNotPoisonExactRecordsInSameModelBucket() throws {
+        let home = try makeTemporaryHome("mixed-exact")
+        let root = home.appendingPathComponent(".codex/sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try writeCodexSession(codexLines(sessionID: "incomplete", totalTokens: 100), to: root.appendingPathComponent("incomplete.jsonl"))
+        let vector = CodexUsageParts(input: 80, output: 20, cached: 60, reasoning: 0)
+        try writeCodexSession([
+            codexMetaLine(id: "exact", timestamp: "2026-06-22T05:00:00Z"),
+            codexContextLine(model: "gpt-5", timestamp: "2026-06-22T05:00:01Z"),
+            codexTokenLine(timestamp: "2026-06-22T05:01:00Z", cumulative: vector, last: vector)
+        ], to: root.appendingPathComponent("exact.jsonl"))
+        let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home)
+        XCTAssertEqual(snapshot.totals.tokens, 200)
+        XCTAssertEqual(snapshot.daily.first?.omittedIncompleteTokens, 100)
+        let build = try TeamSyncProtocol.dailyBucketBuild(snapshot: snapshot)
+        XCTAssertEqual(build.buckets.count, 1)
+        XCTAssertEqual(build.buckets.first?.totalTokens, 100)
         XCTAssertEqual(build.omittedIncompleteBucketCount, 1)
     }
 

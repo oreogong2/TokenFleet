@@ -20,6 +20,7 @@ class Settings:
     trusted_proxy_cidrs: str = ""
     trusted_proxy_hops: int = 0
     public_org_slug: str = ""
+    partial_cost_ranking_enabled: bool = False
     public_rate_limit_attempts: int = 30
     public_rate_limit_window_seconds: int = 60
     public_rate_limit_max_keys: int = 10_000
@@ -86,6 +87,7 @@ class Settings:
                 os.getenv("TRUSTED_PROXY_HOPS", defaults.trusted_proxy_hops)
             ),
             public_org_slug=os.getenv("PUBLIC_ORG_SLUG", defaults.public_org_slug),
+            partial_cost_ranking_enabled=os.getenv("PARTIAL_COST_RANKING_ENABLED", "false").lower() == "true",
             public_rate_limit_attempts=int(
                 os.getenv(
                     "PUBLIC_RATE_LIMIT_ATTEMPTS",

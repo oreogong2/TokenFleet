@@ -11,7 +11,7 @@ from unittest import mock
 
 import tokenfleet_cli
 from tokenfleet.constants import TASK_NAME
-from tokenfleet.scheduler import create_task_command, task_action
+from tokenfleet.scheduler import create_task_command, task_action, task_xml
 from tokenfleet.state import ClientState, StateError, StateStore
 from tokenfleet.settings import ClientSettings, SettingsStore
 
@@ -118,7 +118,7 @@ class CLIAndStateTests(unittest.TestCase):
             device_public_id="public-id",
             last_sync_at=None,
             last_bucket_count=0,
-            last_uploaded_tokens=0,
+            last_uploaded_tokens=0, last_sync_attempt_at=None, last_sync_error=None, last_omitted_bucket_count=0, consecutive_sync_failures=0,
         )
         rank_value = {
             "rank": 137,
@@ -189,10 +189,19 @@ class CLIAndStateTests(unittest.TestCase):
         self.assertNotIn("pythonw.exe", action)
         self.assertIn("sync --quiet", action)
         self.assertNotIn("connect", action)
-        command = create_task_command(script)
+        command = create_task_command(script, xml_path=Path("fixture-task.xml"))
         self.assertEqual(command[0], "schtasks.exe")
         self.assertIn(TASK_NAME, command)
-        self.assertIn("LIMITED", command)
+        self.assertIn("/XML", command)
+        import xml.etree.ElementTree as ET
+        tree = ET.fromstring(task_xml(script, python))
+        ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+        self.assertEqual(tree.findtext("t:Principals/t:Principal/t:RunLevel", namespaces=ns), "LeastPrivilege")
+        self.assertEqual(tree.findtext("t:Settings/t:DisallowStartIfOnBatteries", namespaces=ns), "false")
+        self.assertEqual(tree.findtext("t:Settings/t:StopIfGoingOnBatteries", namespaces=ns), "false")
+        self.assertEqual(tree.findtext("t:Settings/t:StartWhenAvailable", namespaces=ns), "true")
+        self.assertIsNotNone(tree.find("t:Triggers/t:LogonTrigger", ns))
+        self.assertEqual(tree.findtext("t:Triggers/t:CalendarTrigger/t:Repetition/t:Interval", namespaces=ns), "PT6H")
         self.assertNotIn("SYSTEM", command)
 
 

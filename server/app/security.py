@@ -198,8 +198,9 @@ async def authenticate_device_request(
         request_timestamp = int(timestamp_text)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail="invalid timestamp") from exc
-    if abs(int(time.time()) - request_timestamp) > settings.hmac_max_clock_skew_seconds:
-        raise HTTPException(status_code=401, detail="request timestamp is outside the allowed window")
+    server_time = int(time.time())
+    if abs(server_time - request_timestamp) > settings.hmac_max_clock_skew_seconds:
+        raise HTTPException(status_code=401, detail={"code": "clock_skew", "server_time": server_time})
 
     device = session.scalar(select(Device).where(Device.id == device_id))
     if device is None:
