@@ -37,7 +37,8 @@ final class UsageCollectorCodexTests: XCTestCase {
         XCTAssertEqual(snapshot.daily.first?.omittedIncompleteTokens, 100)
         let build = try TeamSyncProtocol.dailyBucketBuild(snapshot: snapshot)
         XCTAssertEqual(build.buckets.count, 1)
-        XCTAssertEqual(build.buckets.first?.totalTokens, 100)
+        let bucket = try XCTUnwrap(build.buckets.first)
+        XCTAssertEqual(bucket.inputTokens + bucket.outputTokens + bucket.cacheReadTokens + bucket.cacheWriteTokens, 100)
         XCTAssertEqual(build.omittedIncompleteBucketCount, 1)
     }
 

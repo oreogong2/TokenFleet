@@ -66,7 +66,11 @@ class WindowsRuntimeTests(unittest.TestCase):
                 self.assertTrue(is_registered(), TASK_NAME)
                 queried = subprocess.run(["schtasks.exe", "/Query", "/TN", TASK_NAME, "/XML"],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-                document = ET.fromstring(queried.stdout)
+                # schtasks can emit console-encoded bytes while declaring UTF-16.
+                # Parse decoded text; actual task settings must still match.
+                raw = queried.stdout
+                text = raw.decode("utf-16") if b"\x00" in raw[:100] else raw.decode("utf-8-sig", errors="replace")
+                document = ET.fromstring(text)
                 ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
                 for field, expected in (("DisallowStartIfOnBatteries", "false"),
                                         ("StopIfGoingOnBatteries", "false"), ("StartWhenAvailable", "true")):
