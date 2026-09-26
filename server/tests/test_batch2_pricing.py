@@ -132,7 +132,8 @@ def test_preview_and_weekly_backfill_only_missing_exact_prices(harness):
 
 
 def test_explicit_public_history_correction_excludes_private_rows(harness):
-    day=date.today()
+    # The uploaded ledger date follows its timezone, independently of the host.
+    day=date.fromisoformat(harness.usage_payload()['buckets'][0]['date'])
     price(harness,model='gpt-5',day=day-timedelta(days=1))
     public_row,_=uploaded_row(harness)
     private_id=price(harness,model='private-model',public=False)
