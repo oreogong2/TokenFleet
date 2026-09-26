@@ -22,6 +22,24 @@ final class TeamSyncServiceTests: XCTestCase {
         XCTAssertEqual(store.state?.syncedBucketHashes, [:])
     }
 
+    func testUnavailableMachineReadKeepsAutomaticRecoveryReachable() async throws {
+        let state = TeamSyncPersistentState(serverURL: "https://team.example.com", deviceID: "device-one")
+        let store = MemoryTeamSyncStateStore(state: state)
+        let credentials = MemoryTeamSyncCredentialStore(values: ["device-one": "fixture_device_secret"])
+        let http = RecordingTeamSyncHTTPClient(responses: [])
+        let service = TeamSyncService(httpClient: http, credentialStore: credentials, stateStore: store,
+            requestClock: { Date(timeIntervalSince1970: 100) },
+            machineFingerprint: { throw TeamSyncProtocolError.machineIdentityUnavailable })
+        let loaded = await service.loadState()
+        XCTAssertEqual(loaded?.automaticRetryStopped, false)
+        XCTAssertNil(loaded?.terminalReason)
+        XCTAssertEqual(loaded?.nextAttemptAt, Date(timeIntervalSince1970: 160))
+        XCTAssertEqual(store.state, state)
+        XCTAssertNotNil(credentials.values["device-one"])
+        let requests = await http.requests
+        XCTAssertTrue(requests.isEmpty)
+    }
+
     func testUnavailableMachineDoesNotDeleteBindingOrSendRequest() async throws {
         let state = TeamSyncPersistentState(serverURL: "https://team.example.com", deviceID: "device-one")
         let store = MemoryTeamSyncStateStore(state: state)

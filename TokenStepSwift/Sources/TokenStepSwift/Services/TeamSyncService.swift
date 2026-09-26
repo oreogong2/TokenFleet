@@ -81,9 +81,19 @@ actor TeamSyncService {
         do { state = try machineState() ?? state }
         catch {
             var stopped = stateStore.load() ?? state
-            stopped.lastError = safeProtocolError(error).localizedDescription
-            stopped.automaticRetryStopped = true
-            stopped.terminalReason = .credentials
+            let reason = safeProtocolError(error)
+            stopped.lastError = reason.localizedDescription
+            if reason == .machineIdentityUnavailable {
+                // An unavailable hardware read is not a revoked credential.
+                // Keep the retry timer reachable; machineState still blocks
+                // every authenticated operation before any network request.
+                stopped.automaticRetryStopped = false
+                stopped.terminalReason = nil
+                stopped.nextAttemptAt = requestClock().addingTimeInterval(60)
+            } else {
+                stopped.automaticRetryStopped = true
+                stopped.terminalReason = .credentials
+            }
             return stopped
         }
         if state.retryPolicyVersion < 1 {
