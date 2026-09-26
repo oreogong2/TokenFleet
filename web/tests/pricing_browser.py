@@ -103,6 +103,10 @@ def main():
             assert "已计价部分 US$0.19" in rows.nth(1).inner_text()
             assert "已计价部分为 0 · 覆盖 0%" in rows.nth(2).inner_text()
             assert "费用榜只比较完整计价" not in page.locator(".community-privacy").inner_text()
+            for row in rows.all():
+                assert row.locator(".community-primary strong").evaluate(
+                    "el => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight"
+                ), "Cost headline must remain fully visible"
             assert_no_horizontal_overflow(page)
             page.screenshot(path=str(ARTIFACT_DIR / f"pricing-enabled-rank-{width}.png"), full_page=True)
             rows.nth(1).get_by_role("link", name="部分计价示例").click()
