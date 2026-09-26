@@ -23,7 +23,8 @@ final class UsageCollectorCCSwitchTests: XCTestCase {
         XCTAssertEqual(snapshot.sources["CC Switch Proxy"]?.status, "ok")
         XCTAssertEqual(snapshot.sources["CC Switch Proxy"]?.records, 2)
         XCTAssertEqual(snapshot.totals.tokens, 168)
-        XCTAssertEqual(snapshot.totals.cost, 0.46)
+        XCTAssertEqual(snapshot.totals.cost, 0)
+        XCTAssertEqual(snapshot.totals.unpricedTokens, 168)
 
         XCTAssertEqual(snapshot.daily.count, 1)
         XCTAssertEqual(snapshot.daily.first?.date, "2024-06-01")

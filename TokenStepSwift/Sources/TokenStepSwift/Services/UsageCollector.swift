@@ -610,7 +610,7 @@ enum UsageCollector {
         )
     }
 
-    static func collectCCSwitchProxyUsageSnapshot(databaseURL: URL, pricing: TokenPriceCatalogCache.Context? = TokenPricingCatalog.context) -> UsageSnapshot {
+    static func collectCCSwitchProxyUsageSnapshot(databaseURL: URL, pricing: TokenPriceCatalogCache.Context? = nil) -> UsageSnapshot {
         let result = collectCCSwitchProxyUsage(databaseURL: databaseURL)
         return aggregate(
             records: result.records,
@@ -619,7 +619,7 @@ enum UsageCollector {
         )
     }
 
-    static func collectClaudeCodeUsageSnapshot(rootURL: URL, pricing: TokenPriceCatalogCache.Context? = TokenPricingCatalog.context) -> UsageSnapshot {
+    static func collectClaudeCodeUsageSnapshot(rootURL: URL, pricing: TokenPriceCatalogCache.Context? = nil) -> UsageSnapshot {
         var cache = CollectorCache()
         var livePaths = Set<String>()
         let result = collectClaudeCode(cache: &cache, livePaths: &livePaths, rootURL: rootURL, modifiedSince: nil)
@@ -631,7 +631,7 @@ enum UsageCollector {
         cacheURL: URL? = nil,
         forceFullValidation: Bool = false,
         requiresDetailedRecords: Bool = false,
-        pricing: TokenPriceCatalogCache.Context? = TokenPricingCatalog.context
+        pricing: TokenPriceCatalogCache.Context? = nil
     ) -> UsageSnapshot {
         if let cacheURL {
             do {
@@ -748,7 +748,8 @@ enum UsageCollector {
         openClawRootURLs: [URL]? = nil,
         includeExperimentalAgentSources: Bool = false,
         historyDays: Int? = nil,
-        now: Date = Date()
+        now: Date = Date(),
+        pricing: TokenPriceCatalogCache.Context? = nil
     ) -> UsageSnapshot {
         let sourceCutoff = historyDays.flatMap {
             sourceFileCutoffDate(historyDays: $0, now: now)
@@ -875,7 +876,8 @@ enum UsageCollector {
                 "dsh": dsh.source,
                 "Pi": pi.source,
                 "OpenClaw": openClaw.source
-            ]
+            ],
+            pricing: pricing
         )
     }
 
