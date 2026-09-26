@@ -76,7 +76,8 @@ class WindowsRuntimeTests(unittest.TestCase):
                                         ("StopIfGoingOnBatteries", "false"), ("StartWhenAvailable", "true")):
                     self.assertEqual(document.findtext(f"t:Settings/t:{field}", namespaces=ns), expected)
                 self.assertIsNotNone(document.find("t:Triggers/t:LogonTrigger", ns))
-                self.assertEqual(document.findtext("t:Principals/t:Principal/t:RunLevel", namespaces=ns), "LeastPrivilege")
+                # Windows omits RunLevel when it equals the schema default.
+                self.assertEqual(document.findtext("t:Principals/t:Principal/t:RunLevel", default="LeastPrivilege", namespaces=ns), "LeastPrivilege")
             finally:
                 unregister(ignore_missing=True)
             self.assertFalse(is_registered(), TASK_NAME)
