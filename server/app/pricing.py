@@ -60,9 +60,11 @@ def find_price(
                and p.effective_from <= usage_date
                and normalize_model(p.model) == normalize_model(model)
                and (not public_only or p.public_estimate)]
-    # A verified official catalog supersedes legacy public estimates for the
-    # same model. Private negotiated prices retain their tool-specific scope.
-    if any(p.public_estimate and p.source_url and p.source_checked_at and p.effective_basis for p in matches):
+    # Once this organization has a verified catalog, public lookups use that
+    # same catalog as the Mac client. An unlisted model cannot fall back to a
+    # legacy public guess. Private negotiated prices retain their scope.
+    if any(p.org_id == org_id and p.public_estimate and p.source_url
+           and p.source_checked_at and p.effective_basis for p in prices):
         matches = [p for p in matches if not p.public_estimate
                    or (p.source_url and p.source_checked_at and p.effective_basis)]
     for target_tool in (normalize_tool(tool), '*'):
@@ -116,6 +118,8 @@ def reprice_usage(
     if organization is None:
         raise HTTPException(status_code=404, detail='organization not found')
     prices = load_prices(session, org_id)
+    verified_catalog = any(p.public_estimate and p.source_url and p.source_checked_at
+                           and p.effective_basis for p in prices)
     fingerprint = catalog_fingerprint(prices)
     cutoff = utcnow().astimezone(ZoneInfo(organization.default_timezone)).date() - timedelta(days=organization.retention_days)
     scope = {'org_id': org_id, 'start': start_date.isoformat(), 'end': end_date.isoformat(),
@@ -170,7 +174,13 @@ def reprice_usage(
                            usage_date=row.usage_date, catalog=prices, public_only=True)
         if price is None:
             no_price += 1
-            if old_priced:
+            if (not unpriced_only and verified_catalog and old_price is not None
+                    and old_price.public_estimate):
+                target = (None, None, None)
+                if (row.price_version_id, row.cost_microunits, row.cost_currency) != target:
+                    changed += 1
+                    changes.append((row, target))
+            elif old_priced:
                 after[row.cost_currency] += row.cost_microunits
                 after_priced_tokens += tokens
             continue

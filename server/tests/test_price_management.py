@@ -293,3 +293,53 @@ def test_full_public_correction_clears_guessed_cache_cost_but_weekly_preserves_i
     for key in before[rid]:
         if key not in ('price_version_id', 'cost_microunits', 'cost_currency', 'updated_at'):
             assert row[key] == before[rid][key]
+
+
+def test_verified_catalog_does_not_fall_back_to_an_unlisted_legacy_model(harness):
+    from .test_batch2_pricing import price
+    legacy = price(harness, model='gpt-5', rate='99')
+    from .test_pricing import _price_payload
+    other_payload = _price_payload(effective_from=date.today().isoformat())
+    other_payload['public_estimate'] = True
+    other = harness.client.post('/api/v1/prices', headers=harness.auth('b_admin'), json=other_payload)
+    assert other.status_code == 201
+    old, _ = uploaded_row(harness, model='gpt-5')
+    before = state(harness)
+    _, headers, _ = issue(harness)
+    response = harness.client.post('/api/v1/price-management/versions', headers=headers,
+        json=payload(effective_basis='official_date', effective_from=date.today().isoformat()))
+    assert response.status_code == 200 and state(harness)[old] == before[old]
+    new, _ = uploaded_row(harness, model='gpt-5')
+    row = state(harness)[new]
+    assert row['price_version_id'] is row['cost_microunits'] is row['cost_currency'] is None
+    assert before[old]['price_version_id'] == legacy
+    # Another organization's unverified catalog is not affected.
+    with harness.session_factory() as session:
+        from app.pricing import find_price
+        assert find_price(session, org_id=harness.users['b_admin'].org_id,
+            tool='Codex', model='gpt-5', usage_date=date.today()).id == other.json()['id']
+
+
+def test_full_correction_removes_legacy_estimate_for_unlisted_model_only(harness):
+    from .test_batch2_pricing import price, preview, apply_preview
+    price(harness, model='gpt-5', rate='99')
+    rid, day = uploaded_row(harness, model='gpt-5')
+    private_price = price(harness, model='private-model', public=False)
+    private, _ = uploaded_row(harness, model='private-model')
+    before = state(harness)
+    _, headers, _ = issue(harness)
+    assert harness.client.post('/api/v1/price-management/versions', headers=headers,
+        json=payload(effective_basis='official_date', effective_from=day.isoformat())).status_code == 200
+    weekly = preview(harness, day)
+    assert weekly['changed_rows'] == 0 and state(harness) == before
+    dry = preview(harness, day, unpriced_only=False)
+    assert dry['changed_rows'] == 1 and dry['no_price_rows'] == 1
+    assert dry['priced_tokens_after'] == '0' and state(harness) == before
+    apply_preview(harness, day, dry, unpriced_only=False)
+    after = state(harness)
+    assert after[rid]['price_version_id'] is after[rid]['cost_microunits'] is after[rid]['cost_currency'] is None
+    assert after[private] == before[private] and after[private]['price_version_id'] == private_price
+    for key in before[rid]:
+        if key not in ('price_version_id', 'cost_microunits', 'cost_currency', 'updated_at'):
+            assert after[rid][key] == before[rid][key]
+    assert preview(harness, day, unpriced_only=False)['changed_rows'] == 0
