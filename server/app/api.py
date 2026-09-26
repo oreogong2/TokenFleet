@@ -28,6 +28,7 @@ from .models import (
     InvitationBatch,
     Organization,
     PriceVersion,
+    PriceManagementCredential,
     User,
     UserRole,
     utcnow,
@@ -124,11 +125,13 @@ def readiness(
                 Organization.default_timezone,
                 Organization.retention_days,
                 Organization.ledger_version,
+                Organization.price_catalog_revision,
             ).limit(1)
         )
         # Touch the column introduced by the current Alembic head. Merely
         # checking the initial organization table would let a database that is
         # one migration behind advertise readiness and then fail on usage I/O.
+        session.execute(select(PriceManagementCredential.id, PriceManagementCredential.expires_at).limit(1))
         session.execute(
             select(
                 DailyUsage.is_deleted,
@@ -136,6 +139,9 @@ def readiness(
                 User.public_profile_enabled,
                 User.normalized_display_name,
                 PriceVersion.public_estimate,
+                PriceVersion.source_url,
+                PriceVersion.source_checked_at,
+                PriceVersion.effective_basis,
                 InvitationBatch.claimed_count,
                 CommunityShareGrant.expires_at,
             )
@@ -1389,6 +1395,7 @@ def create_price(
     session: Session = Depends(get_session),
 ) -> PriceVersion:
     require_admin(admin)
+    session.scalar(select(Organization).where(Organization.id == admin.org_id).with_for_update())
     price = PriceVersion(
         org_id=admin.org_id,
         tool=payload.tool,
@@ -1450,6 +1457,7 @@ def update_price_visibility(
     session: Session = Depends(get_session),
 ) -> PriceVersion:
     require_admin(admin)
+    session.scalar(select(Organization).where(Organization.id == admin.org_id).with_for_update())
     price = session.scalar(
         select(PriceVersion).where(
             PriceVersion.id == str(price_id),
@@ -1461,6 +1469,8 @@ def update_price_visibility(
     visibility_changed = price.public_estimate != payload.public_estimate
     price.public_estimate = payload.public_estimate
     if visibility_changed:
+        session.execute(update(Organization).where(Organization.id == price.org_id).values(
+            price_catalog_revision=Organization.price_catalog_revision + 1))
         _advance_public_projection_version(session, price.org_id)
     session.commit()
     session.refresh(price)

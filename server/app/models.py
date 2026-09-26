@@ -63,6 +63,7 @@ class Organization(Base):
     )
     retention_days: Mapped[int] = mapped_column(Integer, nullable=False, default=395)
     ledger_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    price_catalog_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
@@ -314,10 +315,32 @@ class PriceVersion(Base):
     cache_read_per_million: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     cache_write_per_million: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    # Legacy prices have no verified provenance until explicitly audited.
+    source_url: Mapped[str | None] = mapped_column(String(512))
+    source_checked_at: Mapped[date | None] = mapped_column(Date)
+    effective_basis: Mapped[str | None] = mapped_column(String(32))
     created_by_user_id: Mapped[str] = mapped_column(String(36), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
+
+
+class PriceManagementCredential(Base):
+    __tablename__ = "price_management_credentials"
+    __table_args__ = (
+        ForeignKeyConstraint(["created_by_user_id", "org_id"],
+                             ["users.id", "users.org_id"], ondelete="CASCADE"),
+        Index("uq_price_management_token_hash", "token_hash", unique=True),
+        Index("ix_price_management_org_active", "org_id", "is_active"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    org_id: Mapped[str] = mapped_column(String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
 
 class DailyUsage(Base):

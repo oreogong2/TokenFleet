@@ -60,6 +60,11 @@ def find_price(
                and p.effective_from <= usage_date
                and normalize_model(p.model) == normalize_model(model)
                and (not public_only or p.public_estimate)]
+    # A verified official catalog supersedes legacy public estimates for the
+    # same model. Private negotiated prices retain their tool-specific scope.
+    if any(p.public_estimate and p.source_url and p.source_checked_at and p.effective_basis for p in matches):
+        matches = [p for p in matches if not p.public_estimate
+                   or (p.source_url and p.source_checked_at and p.effective_basis)]
     for target_tool in (normalize_tool(tool), '*'):
         candidates = [p for p in matches if normalize_tool(p.tool) == target_tool]
         if not candidates:
@@ -79,7 +84,8 @@ def find_price(
 def catalog_fingerprint(prices: Sequence[PriceVersion]) -> str:
     fields = ('id', 'org_id', 'tool', 'model', 'currency', 'public_estimate',
               'input_per_million', 'output_per_million', 'cache_read_per_million',
-              'cache_write_per_million', 'effective_from')
+              'cache_write_per_million', 'effective_from', 'source_url',
+              'source_checked_at', 'effective_basis')
     rows = [{f: str(getattr(p, f)) for f in fields} for p in sorted(prices, key=lambda p: p.id)]
     return hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
