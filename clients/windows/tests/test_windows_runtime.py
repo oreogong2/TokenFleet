@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import socket
 import tempfile
+import time
 import subprocess
 import xml.etree.ElementTree as ET
 import unittest
@@ -59,7 +60,8 @@ class WindowsRuntimeTests(unittest.TestCase):
     def test_limited_scheduled_task_can_be_created_and_removed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             script = Path(temporary) / "tokenfleet_runtime_probe.py"
-            script.write_text("raise SystemExit(0)\n", encoding="utf-8")
+            receipt = Path(temporary) / "task-receipt.txt"
+            script.write_text(f"from pathlib import Path\nPath({str(receipt)!r}).write_text('scheduled-probe-ok', encoding='utf-8')\n", encoding="utf-8")
             unregister(ignore_missing=True)
             try:
                 register(script)
@@ -76,8 +78,19 @@ class WindowsRuntimeTests(unittest.TestCase):
                                         ("StopIfGoingOnBatteries", "false"), ("StartWhenAvailable", "true")):
                     self.assertEqual(document.findtext(f"t:Settings/t:{field}", namespaces=ns), expected)
                 self.assertIsNotNone(document.find("t:Triggers/t:LogonTrigger", ns))
-                # Windows omits RunLevel when it equals the schema default.
-                self.assertEqual(document.findtext("t:Principals/t:Principal/t:RunLevel", default="LeastPrivilege", namespaces=ns), "LeastPrivilege")
+                # Verify the COM value even when XML omits RunLevel.
+                # https://learn.microsoft.com/en-us/windows/win32/taskschd/principal-runlevel
+                command = "$svc = New-Object -ComObject Schedule.Service; $svc.Connect(); " + \
+                    f"[Console]::Write($svc.GetFolder('\\').GetTask('{TASK_NAME}').Definition.Principal.RunLevel)"
+                principal = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+                self.assertEqual(principal.stdout.strip(), "0")
+                subprocess.run(["schtasks.exe", "/Run", "/TN", TASK_NAME], check=True,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                deadline = time.monotonic() + 15
+                while not receipt.exists() and time.monotonic() < deadline:
+                    time.sleep(0.25)
+                self.assertEqual(receipt.read_text(encoding="utf-8"), "scheduled-probe-ok")
             finally:
                 unregister(ignore_missing=True)
             self.assertFalse(is_registered(), TASK_NAME)
