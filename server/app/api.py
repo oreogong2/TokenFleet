@@ -60,6 +60,7 @@ from .schemas import (
     PriceCreate,
     PriceResponse,
     PriceVisibilityUpdate,
+    RepriceRequest,
     PublicCapabilitiesResponse,
     PublicLeaderboardResponse,
     PublicLeaderboardResponseV2,
@@ -100,6 +101,7 @@ from .security import (
     verify_password,
 )
 from .services import ingest_daily_usage
+from .pricing import reprice_usage
 
 router = APIRouter()
 
@@ -1408,6 +1410,21 @@ def create_price(
         raise HTTPException(status_code=409, detail="price version already exists") from exc
     session.refresh(price)
     return price
+
+
+@router.post("/api/v1/prices/reprice")
+def reprice_history(
+    payload: RepriceRequest,
+    admin: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict[str, object]:
+    require_admin(admin)
+    result = reprice_usage(session, org_id=admin.org_id, **payload.model_dump())
+    if payload.apply:
+        session.commit()
+    else:
+        session.rollback()
+    return result
 
 
 @router.get("/api/v1/pricing", response_model=list[PriceResponse], include_in_schema=False)

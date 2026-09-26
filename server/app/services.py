@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from .models import DailyUsage, Device, Organization, PriceVersion, new_id, utcnow
 from .schemas import DailyUsageReport, UsageBucket
+from .pricing import find_price, load_prices
 
 USAGE_NATURAL_KEY_COLUMNS = [
     "org_id",
@@ -31,22 +32,6 @@ COMPLETENESS_RANK = {
 }
 COST_DECIMAL_PRECISION = 64
 COST_OVERFLOW_DETAIL = "derived cost exceeds the supported signed 64-bit range"
-
-
-def find_price(
-    session: Session, *, org_id: str, tool: str, model: str, usage_date
-) -> PriceVersion | None:
-    return session.scalar(
-        select(PriceVersion)
-        .where(
-            PriceVersion.org_id == org_id,
-            PriceVersion.tool == tool,
-            PriceVersion.model == model,
-            PriceVersion.effective_from <= usage_date,
-        )
-        .order_by(PriceVersion.effective_from.desc(), PriceVersion.created_at.desc())
-        .limit(1)
-    )
 
 
 def derived_cost_microunits(bucket: UsageBucket, price: PriceVersion) -> int:
@@ -273,6 +258,7 @@ def ingest_daily_usage(
             bucket.source,
         ),
     )
+    price_catalog = load_prices(session, device.org_id)
     for bucket in buckets:
         if bucket.date < retention_cutoff:
             # Retention is enforced at write time as well as by the purge job.
@@ -286,6 +272,7 @@ def ingest_daily_usage(
                 tool=bucket.tool,
                 model=bucket.model,
                 usage_date=bucket.date,
+                catalog=price_catalog,
             )
             if bucket.completeness == "exact" and not bucket.deleted
             else None

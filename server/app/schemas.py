@@ -465,6 +465,31 @@ class PriceVisibilityUpdate(StrictModel):
     public_estimate: Annotated[bool, Field(strict=True)]
 
 
+class RepriceRequest(StrictModel):
+    start_date: date
+    end_date: date
+    model: Trimmed128 | None = None
+    tool: Trimmed128 | None = None
+    unpriced_only: Annotated[bool, Field(strict=True)] = True
+    apply: Annotated[bool, Field(strict=True)] = False
+    expected_ledger_version: Annotated[int, Field(ge=0)] | None = None
+    expected_catalog_fingerprint: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    expected_plan_fingerprint: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+
+    @field_validator("tool", "model")
+    @classmethod
+    def safe_labels(cls, value: str | None) -> str | None:
+        return validate_label_characters(value) if value is not None else None
+
+    @model_validator(mode="after")
+    def valid_scope(self) -> "RepriceRequest":
+        if self.start_date > self.end_date:
+            raise ValueError("repricing start_date must not follow end_date")
+        if self.apply and (self.expected_ledger_version is None or self.expected_catalog_fingerprint is None or self.expected_plan_fingerprint is None):
+            raise ValueError("apply requires the ledger version, catalog and plan fingerprints from a preview")
+        return self
+
+
 class UsageRow(StrictModel):
     date: date
     timezone: str

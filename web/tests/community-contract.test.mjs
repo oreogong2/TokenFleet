@@ -37,7 +37,7 @@ test("partial public costs display coverage without becoming comparable totals",
   const unknown = normalizePublicMemberDetail({ public_id: "unknown", totals: {
     ...totals, priced_tokens: "0", priced_costs_microunits: {},
   } });
-  assert.equal(formatPublicCost(unknown.cost), "未定价 · 部分模型无公开价 · 已计价部分为 0 · 覆盖 0%");
+  assert.equal(formatPublicCost(unknown.cost), "未定价");
   const free = normalizePublicMemberDetail({ public_id: "free", totals: {
     ...totals, unpriced: false, priced_tokens: "1000", priced_costs_microunits: { USD: "0" },
   } });
@@ -262,7 +262,13 @@ test("entirely unpriced enriched totals distinguish zero priced cost from free u
       norm_tokens: "100", total_tokens: "100", unpriced: true, mixed_currency: false,
       estimated_cost_microunits: null, cost_currency: null, priced_tokens: "0", priced_costs_microunits: {} }
   }], metric: "cost" });
-  assert.match(formatPublicCost(board.participants[0].cost), /部分模型无公开价/);
-  assert.match(formatPublicCost(board.participants[0].cost), /已计价部分为 0 · 覆盖 0%/);
+  assert.equal(formatPublicCost(board.participants[0].cost), "未定价");
   assert.equal(board.participants[0].rank, 1);
+  const free = normalizePublicLeaderboard({ entries: [{
+    public_id: "synthetic-free", nickname: "Synthetic free", rank: 1, metric_value: "0",
+    totals: { input_tokens: "100", output_tokens: "0", cache_read_tokens: "0", cache_write_tokens: "0",
+      norm_tokens: "100", total_tokens: "100", unpriced: false, mixed_currency: false,
+      estimated_cost_microunits: "0", cost_currency: "USD", priced_tokens: "100", priced_costs_microunits: { USD: "0" } }
+  }], metric: "cost" });
+  assert.equal(formatPublicCost(free.participants[0].cost), "US$0.00 · 覆盖 100%");
 });
