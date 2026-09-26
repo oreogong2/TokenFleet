@@ -332,7 +332,7 @@ class TokenFleetClient:
         try:
             expires = datetime.fromisoformat(value["expires_at"].replace("Z", "+00:00"))
             seconds = (expires - datetime.now(timezone.utc)).total_seconds()
-            if not 0 < seconds <= 960:
+            if not 0 < seconds <= (15 + 5 + 1) * 60:
                 raise ValueError("invalid expiry")
         except (ValueError, TypeError) as error:
             raise ProtocolError("服务器返回的添加设备码无效") from error

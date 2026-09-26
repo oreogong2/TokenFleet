@@ -79,6 +79,23 @@ class MachineDeviceTests(unittest.TestCase):
         self.assertNotIn(code, self.state.path.read_text())
         self.assertEqual(self.state.load().device_public_id, self.initial.device_public_id)
 
+    def test_additional_code_accepts_clock_behind_and_rejects_unbounded_or_expired(self):
+        server_now = datetime(2026, 9, 27, tzinfo=timezone.utc)
+        local_now = server_now - timedelta(seconds=120)
+        with mock.patch("tokenfleet.client.datetime") as clock:
+            clock.now.return_value = local_now
+            clock.fromisoformat.side_effect = datetime.fromisoformat
+            for seconds, accepted in ((900, True), (-120, False), (1200, False)):
+                self.transport.post_bytes.return_value = {
+                    "enrollment_token": "T" * 43,
+                    "expires_at": (server_now + timedelta(seconds=seconds)).isoformat(),
+                }
+                if accepted:
+                    self.assertEqual(self.client.additional_device_code()["enrollment_token"], "T" * 43)
+                else:
+                    with self.assertRaises(ProtocolError):
+                        self.client.additional_device_code()
+
     def test_fingerprint_is_signed_using_cross_platform_canonical_contract(self):
         headers = signed_headers(device_id="fixture", device_secret="fixture-secret", body=b"{}",
             timestamp=1700000000, nonce="fixture_nonce_1234", machine_fingerprint=A)

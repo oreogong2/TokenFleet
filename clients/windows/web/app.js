@@ -50,6 +50,7 @@ let deviceCodeExpiry = 0;
 let deviceCodeTimer;
 function clearDeviceCode() {
   $("#device-code").value = "";
+  $("#device-code-expiry").textContent = "";
   $("#copy-device-code").disabled = true;
   deviceCodeExpiry = 0;
   clearTimeout(deviceCodeTimer);

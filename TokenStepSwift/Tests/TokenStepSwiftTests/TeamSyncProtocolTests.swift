@@ -4,6 +4,28 @@ import XCTest
 @testable import TokenStepSwift
 
 final class TeamSyncProtocolTests: XCTestCase {
+    func testAdditionalCodeAllowsSignedClockSkewAndFractionalServerDates() throws {
+        let code = String(repeating: "T", count: 43)
+        let now = Date(timeIntervalSince1970: 100)
+        for expiry in ["1970-01-01T00:18:40Z", "1970-01-01T00:18:40.123456Z"] {
+            let data = try JSONSerialization.data(withJSONObject: ["enrollment_token": code, "expires_at": expiry])
+            let result = try TeamSyncAdditionalDeviceCode.decode(data, now: now)
+            XCTAssertEqual(result.token, code)
+            XCTAssertGreaterThan(result.expiresAt.timeIntervalSince(now), 960)
+        }
+        for expiry in ["1970-01-01T00:01:40Z", "1970-01-01T00:23:00Z"] {
+            let data = try JSONSerialization.data(withJSONObject: ["enrollment_token": code, "expires_at": expiry])
+            XCTAssertThrowsError(try TeamSyncAdditionalDeviceCode.decode(data, now: now))
+        }
+    }
+
+    func testMachineFingerprintMatchesCrossPlatformSigningVector() {
+        let headers = TeamSyncProtocol.signedHeaders(deviceID: "fixture", deviceSecret: "fixture-secret",
+            timestamp: 1700000000, nonce: "fixture_nonce_1234", method: "POST",
+            path: "/api/v1/usage/daily", body: Data("{}".utf8), machineFingerprint: String(repeating: "a", count: 64))
+        XCTAssertEqual(headers.signature, "c63de2bbae0eeca61442531f7ba52c5744e8edc8664caa9086ae709831796751")
+    }
+
     func testEnrichedPublicTotalsShowPartialCostWithoutClaimingFullPricing() throws {
         let data = Data(#"{"input_tokens":"100","output_tokens":"0","cache_read_tokens":"0","cache_write_tokens":"0","norm_tokens":"100","total_tokens":"100","estimated_cost_microunits":null,"cost_currency":null,"unpriced":true,"mixed_currency":false,"priced_tokens":"50","priced_costs_microunits":{"USD":"1200000"}}"#.utf8)
         var totals = try JSONDecoder().decode(TeamSyncPublicUsageTotals.self, from: data)

@@ -247,7 +247,7 @@ struct TeamSyncAdditionalDeviceCode: Decodable {
         }
         guard let code = try? decoder.decode(Self.self, from: data),
               code.token.range(of: "^[A-Za-z0-9_-]{32,256}$", options: .regularExpression) != nil,
-              code.expiresAt > now, code.expiresAt.timeIntervalSince(now) <= 16 * 60 else {
+              code.expiresAt > now, code.expiresAt.timeIntervalSince(now) <= (15 + 5 + 1) * 60 else {
             throw TeamSyncProtocolError.invalidAdditionalDeviceResponse
         }
         return code

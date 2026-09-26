@@ -41,6 +41,7 @@ final class AppState: ObservableObject {
     private var foregroundTimer: Timer?
     private var teamSyncTimer: Timer?
     private var initialUsageRefreshTask: Task<Void, Never>?
+    private var teamSyncStateLoadTask: Task<Void, Never>?
     private var foregroundRefreshSurfaces = Set<String>()
     private var pendingRefreshAfterCurrent = false
     private var pendingForcedRefresh = false
@@ -90,6 +91,7 @@ final class AppState: ObservableObject {
     private init(communityServerOrigin: URL?) {
         fixedCommunityServerOrigin = communityServerOrigin
         load()
+        loadInitialTeamSyncState()
         scheduleInitialUsageRefresh()
         applyDefaultAutostartIfNeeded()
         configureTimer()
@@ -103,6 +105,7 @@ final class AppState: ObservableObject {
         foregroundTimer?.invalidate()
         teamSyncTimer?.invalidate()
         initialUsageRefreshTask?.cancel()
+        teamSyncStateLoadTask?.cancel()
     }
 
     var today: DailyUsage {
@@ -285,6 +288,22 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func loadInitialTeamSyncState() {
+        // Connection status must pass the same machine guard as networking.
+        teamSyncStateLoadTask?.cancel()
+        teamSyncStateLoadTask = Task {
+            guard !Task.isCancelled else { return }
+            let loadedState = await TeamSyncService.live.loadState()
+            guard !Task.isCancelled else { return }
+            teamSyncState = loadedState
+            if teamSyncState?.isEnrolled != true {
+                communityRank = nil
+                additionalDeviceCode = nil
+            }
+            configureTeamSyncTimer()
+        }
+    }
+
     func load() {
         defer { MemoryPressure.relieveAllocatorPressure() }
         let loadedSettings = DataService.loadSettings()
@@ -292,7 +311,6 @@ final class AppState: ObservableObject {
         TokenStepThemeRuntime.apply(loadedSettings.theme)
         settings = loadedSettings
         snapshot = (try? DataService.loadSnapshot()) ?? .empty
-        teamSyncState = FileTeamSyncStateStore().load()
         cursorImportedUsageRecordCount = CursorUsageImportStore.recordCount()
         showsUsageRecalibrationNotice = DataService.hasPendingUsageRecalibrationNotice(for: snapshot)
         showsPricingReestimationNotice = DataService.hasPendingPricingReestimationNotice(for: snapshot)
@@ -759,6 +777,12 @@ final class AppState: ObservableObject {
             } catch let error as TeamSyncProtocolError
                 where error == .operationCancelled {
                 return
+            } catch let error as TeamSyncProtocolError
+                where error == .machineChanged {
+                teamSyncState = await TeamSyncService.live.loadState()
+                communityRank = nil
+                additionalDeviceCode = nil
+                communityRankError = error.localizedDescription
             } catch {
                 guard isCommunitySyncEnrollmentCompatible else { return }
                 communityRankError = L("暂时无法读取社群排名")
@@ -839,6 +863,7 @@ final class AppState: ObservableObject {
         }
         precondition(rank.isValid, "Community render fixture rank is invalid")
         precondition(leaderboard.isValid, "Community render fixture leaderboard is invalid")
+        teamSyncStateLoadTask?.cancel()
 
         teamSyncState = TeamSyncPersistentState(
             serverURL: fixedCommunityServerOrigin.absoluteString,

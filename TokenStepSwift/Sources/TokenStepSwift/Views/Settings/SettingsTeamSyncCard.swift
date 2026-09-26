@@ -164,6 +164,12 @@ struct SettingsTeamSyncCard: View {
                     .font(.caption).foregroundStyle(.secondary)
                 if let code = appState.additionalDeviceCode, code.expiresAt > Date(), !isScreenshotRendering {
                     SecureField(L("添加设备码"), text: .constant(code.token)).textFieldStyle(.roundedBorder)
+                        .task(id: code.expiresAt) {
+                            try? await Task.sleep(for: .seconds(max(0, code.expiresAt.timeIntervalSinceNow)))
+                            guard !Task.isCancelled,
+                                  appState.additionalDeviceCode?.expiresAt == code.expiresAt else { return }
+                            appState.additionalDeviceCode = nil
+                        }
                     Button(L("复制添加设备码")) {
                         guard code.expiresAt > Date() else { appState.additionalDeviceCode = nil; return }
                         NSPasteboard.general.clearContents()
