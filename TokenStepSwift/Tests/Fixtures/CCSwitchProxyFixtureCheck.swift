@@ -26,7 +26,7 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(snapshot.sources["CC Switch Proxy"]?.status, "ok", "source status")
         try assertEqual(snapshot.sources["CC Switch Proxy"]?.records, 2, "source records")
         try assertEqual(snapshot.totals.tokens, 168, "total tokens")
-        try assertEqual(snapshot.totals.cost, 0.46, "total cost")
+        try assertEqual(snapshot.totals.cost, 0, "source invoice does not override a missing official catalog")
         try assertEqual(snapshot.daily.first?.date, "2024-06-01", "daily date")
         try assertEqual(snapshot.daily.first?.tools["Claude Code via CC Switch"], 155, "claude tool tokens")
         try assertEqual(snapshot.daily.first?.tools["Codex via CC Switch"], 13, "codex tool tokens")
@@ -255,10 +255,10 @@ struct CCSwitchProxyFixtureCheck {
 
         let snapshot = UsageCollector.collectClaudeCodeUsageSnapshot(rootURL: root)
         try assertEqual(snapshot.totals.tokens, 4_000_000, "claude opus cost tokens")
-        try assertEqual(snapshot.totals.cost, 30.5, "claude opus known component cost")
-        try assertEqual(snapshot.daily.first?.cost, 30.5, "claude opus known daily cost")
-        try assertEqual(snapshot.totals.pricedTokens, 3_000_000, "claude priced tokens")
-        try assertEqual(snapshot.totals.unpricedTokens, 1_000_000, "claude unpriced cache write")
+        try assertEqual(snapshot.totals.cost, 0, "missing official catalog stays unpriced")
+        try assertEqual(snapshot.daily.first?.cost, 0, "missing official daily catalog stays unpriced")
+        try assertEqual(snapshot.totals.pricedTokens, 0, "claude priced tokens")
+        try assertEqual(snapshot.totals.unpricedTokens, 4_000_000, "missing catalog coverage")
     }
 
     private static func runCrossSourceDedupeChecks() throws {
@@ -385,7 +385,7 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(snapshot.daily.first?.tools["ZCode"], 40, "zcode tool tokens")
         try assertEqual(snapshot.daily.first?.tools["Hermes Agent"], 32, "hermes tool tokens")
         try assertEqual(snapshot.daily.first?.tools["WorkBuddy"], 120, "workbuddy tool tokens")
-        try assertEqual(snapshot.totals.cost, 0.42, "hermes actual cost")
+        try assertEqual(snapshot.totals.cost, 0, "raw source invoice is retained but does not override official estimates")
 
         let work = try unwrap(snapshot.agentWork.first, "experimental agent work")
         try assertEqual(work.totalTokens, 192, "experimental agent work tokens")
@@ -502,7 +502,7 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(source?.possibleOverlapRecords, 0, "resolved duplicates leave no uncertain overlap")
         try assertEqual(source?.strategy, "request_level_dedupe", "claude dedupe strategy")
         try assertEqual(snapshot.totals.tokens, 143, "claude dedupe total tokens")
-        try assertEqual(snapshot.totals.cost, 0.42, "claude dedupe total cost")
+        try assertEqual(snapshot.totals.cost, 0, "raw source invoice is retained but does not override official estimates")
         try assertEqual(snapshot.daily.first?.tools["Claude Code"], 113, "claude native tokens")
         try assertEqual(snapshot.daily.first?.tools["Claude Code via CC Switch"], 24, "claude proxy residual tokens")
         try assertEqual(snapshot.daily.first?.tools["Gemini via CC Switch"], 6, "gemini proxy residual tokens")
@@ -569,7 +569,7 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(source?.dedupedRecords, 0, "similar requests without a shared ID are not deduplicated")
         try assertEqual(source?.possibleOverlapRecords, 1, "similar requests are retained and diagnosed")
         try assertEqual(snapshot.totals.tokens, 70, "native and independent proxy Codex requests both count")
-        try assertEqual(snapshot.totals.cost, 0.45, "independent Codex request total cost")
+        try assertEqual(snapshot.totals.cost, 0, "raw source invoice is retained but does not override official estimates")
         try assertEqual(snapshot.daily.first?.tools["Codex"], 35, "independent native Codex tokens")
         try assertEqual(
             snapshot.daily.first?.tools["Codex via CC Switch"],
@@ -644,7 +644,7 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(source?.dedupedRecords, 0, "a session ID alone never deletes a request")
         try assertEqual(source?.possibleOverlapRecords, 1, "shared-session similarity is diagnostic only")
         try assertEqual(snapshot.totals.tokens, 70, "distinct request IDs are both retained")
-        try assertEqual(snapshot.totals.cost, 0.45, "retained proxy request keeps its source cost")
+        try assertEqual(snapshot.totals.cost, 0, "raw source invoice is retained but does not override official estimates")
 
         let incremental = UsageCollector.collectIncrementalCodexAndProxySnapshotForTests(
             codexRoots: [root],
@@ -668,7 +668,7 @@ struct CCSwitchProxyFixtureCheck {
             "incremental shared-session similarity remains diagnostic"
         )
         try assertEqual(incremental.totals.tokens, 70, "incremental distinct request IDs are retained")
-        try assertEqual(incremental.totals.cost, 0.45, "incremental retained proxy cost remains visible")
+        try assertEqual(incremental.totals.cost, 0, "raw source invoice is retained but does not override official estimates")
     }
 
     private static func codexLines(sessionID: String, totalTokens: Int) -> [String] {

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "normalization_version": 1,
+  "revision": 2,
+  "basis": "standard_api_equivalent",
+  "prices": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "tool": "*",
+      "model": "gpt-6-sol",
+      "currency": "USD",
+      "input_per_million": "1.25",
+      "output_per_million": "2.5",
+      "cache_read_per_million": "0.125",
+      "cache_write_per_million": "0.5",
+      "effective_from": "2026-01-01",
+      "source_url": "https://developers.openai.com/api/docs/pricing",
+      "source_checked_at": "2026-09-26",
+      "effective_basis": "ledger_first_seen"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "tool": "*",
+      "model": "gpt-6-sol",
+      "currency": "USD",
+      "input_per_million": "1.5",
+      "output_per_million": "3",
+      "cache_read_per_million": "0.125",
+      "cache_write_per_million": "0.5",
+      "effective_from": "2026-09-01",
+      "source_url": "https://developers.openai.com/api/docs/pricing",
+      "source_checked_at": "2026-09-26",
+      "effective_basis": "ledger_first_seen"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "tool": "*",
+      "model": "claude-fable-5.1",
+      "currency": "USD",
+      "input_per_million": "1",
+      "output_per_million": "2",
+      "cache_read_per_million": "0.1",
+      "cache_write_per_million": "0.5",
+      "effective_from": "2026-01-01",
+      "source_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "source_checked_at": "2026-09-26",
+      "effective_basis": "ledger_first_seen"
+    }
+  ],
+  "version": "ec28857bc08d82deb90b7f947c24ab5589a86b54d74fc0d42044bdc7ffc5fad2"
+}

@@ -865,7 +865,7 @@ struct CodexCumulativeFixtureCheck {
 
             let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home)
             try expectEqual(snapshot.totals.tokens, 1_200_000, "processed total is input plus output only")
-            try expectEqual(snapshot.totals.cost, 4.6, "cached and reasoning subsets are not double-priced")
+            try expectEqual(snapshot.totals.cost, 0, "without a server catalog there is no generic fallback")
             try expectEqual(snapshot.sources["Codex"]?.tokenBreakdown?.cachedInputTokens, 400_000, "cached subset retained")
             try expectEqual(snapshot.sources["Codex"]?.tokenBreakdown?.reasoningTokens, 100_000, "reasoning subset retained")
             try expectEqual(snapshot.sources["Codex"]?.tokenBreakdown?.uncachedInputTokens, 600_000, "uncached input derived once")

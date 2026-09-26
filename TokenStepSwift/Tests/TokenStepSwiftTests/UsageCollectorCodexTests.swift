@@ -204,16 +204,16 @@ final class UsageCollectorCodexTests: XCTestCase {
         try writeCodexSession(
             [
                 codexMetaLine(id: "pricing-session", timestamp: "2026-07-13T12:00:00Z"),
-                codexContextLine(model: "gpt-5.4", timestamp: "2026-07-13T12:00:01Z"),
+                codexContextLine(model: "gpt-6-sol", timestamp: "2026-07-13T12:00:01Z"),
                 codexTokenLine(timestamp: "2026-07-13T12:01:00Z", cumulative: usage, last: usage)
             ],
             to: root.appendingPathComponent("pricing.jsonl")
         )
 
-        let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home)
+        let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, pricing: try TokenPriceCatalogFixture.context)
 
         XCTAssertEqual(snapshot.totals.tokens, 1_200_000)
-        XCTAssertEqual(snapshot.totals.cost, 4.6, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.totals.cost, 1.3, accuracy: 0.0001)
         XCTAssertEqual(snapshot.sources["Codex"]?.tokenBreakdown?.cachedInputTokens, 400_000)
         XCTAssertEqual(snapshot.sources["Codex"]?.tokenBreakdown?.reasoningTokens, 100_000)
     }

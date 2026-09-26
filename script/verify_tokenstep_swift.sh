@@ -331,6 +331,8 @@ CLANG_MODULE_CACHE_PATH="$MODULE_CACHE" \
 SWIFT_MODULECACHE_PATH="$MODULE_CACHE" \
 TOKENFLEET_SWIFT_TEST_ARCHITECTURE="$TEST_ARCHITECTURE" \
   bash "$ROOT_DIR/script/test_usage_recalibration_migration.sh"
+TOKENFLEET_SWIFT_TEST_ARCHITECTURE="$TEST_ARCHITECTURE" \
+  bash "$ROOT_DIR/script/test_server_price_catalog.sh"
 
 python3 "$ROOT_DIR/script/check_localization.py"
 python3 "$ROOT_DIR/script/check_language_refresh.py"

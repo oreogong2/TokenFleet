@@ -35,7 +35,7 @@ final class UsageCollectorClaudeCodeTests: XCTestCase {
         XCTAssertEqual(opus.totalTokens, 322)
     }
 
-    func testClaudeOpusUsesCurrentOpusPricing() throws {
+    func testClaudeUsesFetchedPricesForTheSameCompleteBucket() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("TokenStepClaudeCostTests-\(UUID().uuidString)", isDirectory: true)
         let project = root.appendingPathComponent("project", isDirectory: true)
@@ -49,7 +49,7 @@ final class UsageCollectorClaudeCodeTests: XCTestCase {
             uuid: "opus-cost",
             messageID: "msg_opus_cost",
             timestamp: "2026-06-21T08:00:00Z",
-            model: "claude-opus-4-8",
+            model: "claude-fable-5.1",
             stopReason: "end_turn",
             input: 1_000_000,
             output: 1_000_000,
@@ -58,15 +58,35 @@ final class UsageCollectorClaudeCodeTests: XCTestCase {
         )
         try line.write(to: log, atomically: true, encoding: .utf8)
 
-        let snapshot = UsageCollector.collectClaudeCodeUsageSnapshot(rootURL: root)
+        let snapshot = UsageCollector.collectClaudeCodeUsageSnapshot(rootURL: root, pricing: try TokenPriceCatalogFixture.context)
 
         XCTAssertEqual(snapshot.totals.tokens, 4_000_000)
-        XCTAssertEqual(snapshot.totals.cost, 30.5)
-        XCTAssertEqual(snapshot.daily.first?.cost, 30.5)
-        XCTAssertEqual(snapshot.totals.pricedTokens, 3_000_000)
-        XCTAssertEqual(snapshot.totals.unpricedTokens, 1_000_000)
-        XCTAssertEqual(snapshot.daily.first?.pricedTokens, 3_000_000)
-        XCTAssertEqual(snapshot.daily.first?.unpricedTokens, 1_000_000)
+        XCTAssertEqual(snapshot.totals.cost, 3.6)
+        XCTAssertEqual(snapshot.daily.first?.cost, 3.6)
+        XCTAssertEqual(snapshot.totals.pricedTokens, 4_000_000)
+        XCTAssertEqual(snapshot.totals.unpricedTokens, 0)
+        XCTAssertEqual(snapshot.daily.first?.pricedTokens, 4_000_000)
+        XCTAssertEqual(snapshot.daily.first?.unpricedTokens, 0)
+    }
+
+    func testRoundingOccursAfterCompleteRecordsAreCombinedIntoTheServerBucket() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let project = root.appendingPathComponent("project")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let lines = (1...2).map { index in
+            assistantLine(uuid: "round-\(index)", messageID: "msg_round_\(index)",
+                timestamp: "2026-09-26T08:00:0\(index)Z", model: "gpt-6-sol",
+                stopReason: "end_turn", input: 1, output: 0, cacheRead: 0)
+        }
+        try lines.joined(separator: "\n").write(to: project.appendingPathComponent("round.jsonl"), atomically: true, encoding: .utf8)
+        let snapshot = UsageCollector.collectClaudeCodeUsageSnapshot(rootURL: root, pricing: try TokenPriceCatalogFixture.context)
+        XCTAssertEqual(snapshot.totals.tokens, 2)
+        XCTAssertEqual(snapshot.daily.first?.atomicUsage?.count, 1)
+        XCTAssertEqual(snapshot.daily.first?.atomicUsage?.first?.inputTokens, 2)
+        XCTAssertEqual(snapshot.daily.first?.cost ?? -1, 0.000003, accuracy: 0.00000001)
+        XCTAssertEqual(snapshot.totals.pricedTokens, 2)
+        XCTAssertEqual(snapshot.totals.unpricedTokens, 0)
     }
 
     private var fixtureLines: [String] {

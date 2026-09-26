@@ -66,7 +66,7 @@ enum DataService {
         )
         let existingCheckpoint = loadCollectionCheckpoint()
         if CollectionCheckpointPolicy.shouldSkipCollection(
-            force: force,
+            force: force || TokenPricingCatalog.shouldReestimate(storedVersion: previousSnapshot?.totals.pricingVersion),
             hasSnapshot: previousSnapshot != nil,
             checkpoint: existingCheckpoint,
             state: beforeState,

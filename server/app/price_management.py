@@ -47,6 +47,7 @@ OFFICIAL_PAGES = {
 
 class OfficialPriceImport(PriceCreate):
     tool: Literal['*'] = '*'
+    currency: Literal['USD'] = 'USD'
     public_estimate: Literal[True] = True
     effective_from: date | None = None
     effective_basis: Literal['official_date', 'ledger_first_seen']
