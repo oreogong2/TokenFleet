@@ -66,6 +66,22 @@ class LocalDashboardTests(unittest.TestCase):
         self.assertIn(b"Cache-Control: no-store", response)
         client.additional_device_code.assert_called_once()
 
+    def test_machine_check_precedes_cached_rank_and_preserves_local_view(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            paths = SimpleNamespace(settings=root / "settings.json", credential=root / "credential.dpapi",
+                cursor_usage=root / "cursor.json", rank_cache=root / "rank.json")
+            paths.credential.write_bytes(b"fixture-only")
+            paths.rank_cache.write_text('{"cached_at":9999999999,"rank":{"rank":1}}')
+            client = mock.Mock()
+            client.validate_machine_binding.side_effect = RuntimeError("fixture-only")
+            client.preview.return_value = CollectionResult([], CollectionDiagnostics())
+            result = dashboard_data(paths, client)
+            self.assertIsNone(result["rank"])
+            self.assertTrue(result["sync"]["last_error"])
+            client.community_rank.assert_not_called()
+            client.preview.assert_called_once()
+
     def test_dashboard_summarizes_today_week_tool_model_and_rank(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

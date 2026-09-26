@@ -338,6 +338,9 @@ class TokenFleetClient:
             raise ProtocolError("服务器返回的添加设备码无效") from error
         return value
 
+    def validate_machine_binding(self) -> None:
+        self._machine_state()
+
     def _machine_state(self) -> ClientState:
         fingerprint = self.machine_fingerprint()
         if not isinstance(fingerprint, str) or not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
