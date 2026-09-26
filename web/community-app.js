@@ -215,7 +215,7 @@ function totalsCells(person) {
 }
 
 function privacyNotice() {
-  return `<aside class="community-privacy" aria-label="公开范围说明"><strong>金额与公开范围</strong><p>金额是 API 等价估算，不是订阅费或实付账单。覆盖率表示有公开价格的 Token 占比，不代表估算准确度；未定价不等于 0 元。费用榜只比较完整计价、币种一致的记录。</p><p>这里只展示管理员已开启榜单的昵称、排名、四类 Token、公开标准价估算、工具/模型与日趋势。不展示邮箱、内部 ID、设备、小时、会话或消息；Token 不代表绩效。</p></aside>`;
+  return `<aside class="community-privacy" aria-label="公开范围说明"><strong>金额与公开范围</strong><p>金额是 API 等价估算，不是订阅费或实付账单。覆盖率表示有公开价格的 Token 占比，不代表估算准确度；未定价不等于 0 元。费用榜按当前公开计价口径排列，不混合不同币种。</p><p>这里只展示管理员已开启榜单的昵称、排名、四类 Token、公开标准价估算、工具/模型与日趋势。不展示邮箱、内部 ID、设备、小时、会话或消息；Token 不代表绩效。</p></aside>`;
 }
 
 function timezoneNotice(value) {

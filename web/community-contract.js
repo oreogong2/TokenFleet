@@ -113,7 +113,7 @@ function normalizePublicCost(value = {}) {
     const partiallyUnpriced = totals.unpriced === true || BigInt(pricedTokens) < totalTokens;
     const mixedCurrency = totals.mixed_currency === true || amounts.length > 1;
     return {
-      // Keep incomplete and mixed-currency estimates out of cost ranking/charts.
+      // Charts require complete comparable amounts; ranking uses server metric_value.
       unpriced: partiallyUnpriced || mixedCurrency || amounts.length !== 1,
       mixedCurrency,
       partiallyUnpriced,
