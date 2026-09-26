@@ -197,7 +197,7 @@ enum CollectorPerformanceLogger {
 }
 
 enum UsageCollector {
-    static let codexAccountingRevision = 8
+    static let codexAccountingRevision = 9
 
     private static let timezone = TimeZone(identifier: "Asia/Shanghai") ?? .current
     private static let maxRelevantLineBytes = 1_048_576
@@ -1621,7 +1621,7 @@ enum UsageCollector {
             let processedSize = try forEachCompleteLine(
                 in: path,
                 fromOffset: offset,
-                matchingAny: ["session_meta", "turn_context", "token_count"]
+                matchingAny: ["session_meta", "turn_context", "token_count", "thread_settings_applied"]
             ) { line in
                 autoreleasepool {
                     relevantLineNumber += 1
@@ -1630,7 +1630,7 @@ enum UsageCollector {
                     else { return }
                     let type = obj["type"] as? String
                     let payload = obj["payload"] as? [String: Any]
-                    if type == "session_meta" {
+                    if type == "session_meta" || (type == "event_msg" && payload?["type"] as? String == "thread_settings_applied") {
                         encounteredSessionMetadata = true
                         return
                     }
@@ -1679,15 +1679,22 @@ enum UsageCollector {
         var canonicalSessionID: String?
         var createdAt: String?
         var parentSessionID: String?
+        var forkedFromSessionID: String?
+        var cliVersion: String?
+        var inheritedEventCount: Int?
+        var sawOwnBoundary = false
+        var unsafePrefix = false
         var currentModel = "unknown"
         var events: [CodexTokenEvent] = []
         var relevantLineNumber = 0
 
         do {
-            try forEachLine(in: path, matchingAny: ["session_meta", "turn_context", "token_count"]) { line in
+            try forEachLine(in: path, matchingAny: ["session_meta", "turn_context", "token_count", "thread_settings_applied"], onSkippedLine: {
+                if !sawOwnBoundary { unsafePrefix = true }
+            }) { line in
                 autoreleasepool {
                     relevantLineNumber += 1
-                    guard let obj = jsonObject(line) else { return }
+                    guard let obj = jsonObject(line) else { if !sawOwnBoundary { unsafePrefix = true }; return }
                     let type = obj["type"] as? String
                     let payload = obj["payload"] as? [String: Any]
 
@@ -1697,7 +1704,19 @@ enum UsageCollector {
                         createdAt = nonEmptyString(obj["timestamp"] as? String)
                             ?? nonEmptyString(payload?["timestamp"] as? String)
                         parentSessionID = codexParentSessionID(from: payload)
+                        forkedFromSessionID = nonEmptyString(payload?["forked_from_id"] as? String)
+                        cliVersion = nonEmptyString(payload?["cli_version"] as? String)
                     }
+                    if type == "event_msg", payload?["type"] as? String == "thread_settings_applied",
+                       payload?["thread_id"] as? String == canonicalSessionID, !sawOwnBoundary {
+                        sawOwnBoundary = true
+                        if forkedFromSessionID != nil, codexSupportsOwnedForkBoundary(cliVersion), !unsafePrefix,
+                           events.allSatisfy({ $0.cumulativePresent && $0.cumulative.map { isCodexBreakdownConsistent($0, total: $0.totalTokens) } == true }) {
+                            inheritedEventCount = events.count
+                        }
+                    }
+                    if type == "event_msg", payload?["type"] as? String == "token_count",
+                       !(payload?["info"] is [String: Any]), !sawOwnBoundary { unsafePrefix = true }
                     if type == "turn_context" {
                         currentModel = modelKey(payload?["model"] as? String ?? currentModel)
                     }
@@ -1737,11 +1756,32 @@ enum UsageCollector {
             sourcePath: path.path,
             events: events,
             finalModel: currentModel,
-            relevantLineCount: relevantLineNumber
+            relevantLineCount: relevantLineNumber,
+            forkedFromSessionID: forkedFromSessionID,
+            inheritedEventCount: inheritedEventCount
         )
     }
 
+    private static func codexSupportsOwnedForkBoundary(_ version: String?) -> Bool {
+        guard let version else { return false }
+        let text = version.split(separator: "+", maxSplits: 1).first.map(String.init) ?? ""
+        let parts = text.split(separator: "-", maxSplits: 1)
+        let coreParts = parts[0].split(separator: ".", omittingEmptySubsequences: false)
+        let core = coreParts.compactMap { Int($0) }
+        guard coreParts.count == 3, core.count == 3, core.allSatisfy({ $0 >= 0 }) else { return false }
+        let floor = [0, 158, 0]
+        if core != floor { return floor.lexicographicallyPrecedes(core) }
+        guard parts.count == 2 else { return true }
+        let pre = parts[1].split(separator: ".")
+        guard pre.first == "alpha", pre.count >= 2, pre.count <= 3 else { return false }
+        let numbers = pre.dropFirst().compactMap { Int($0) }
+        guard numbers.count == pre.count - 1, numbers.allSatisfy({ $0 >= 0 }) else { return false }
+        let value = [numbers[0], numbers.count > 1 ? numbers[1] : 0]
+        return value == [15, 1] || [15, 1].lexicographicallyPrecedes(value)
+    }
+
     private static func codexParentSessionID(from payload: [String: Any]?) -> String? {
+        if let fork = nonEmptyString(payload?["forked_from_id"] as? String) { return fork }
         if let source = payload?["source"] as? [String: Any],
            let subagent = source["subagent"] as? [String: Any],
            let threadSpawn = subagent["thread_spawn"] as? [String: Any],
@@ -1855,11 +1895,21 @@ enum UsageCollector {
 
         var startIndex = 0
         var previous: TokenUsageCounts?
-        if let parentAnchor,
+        if let inheritedCount = scan.inheritedEventCount {
+            // Official Copied persistence appends this thread's settings event
+            // after the inherited items in the same initial append.
+            startIndex = inheritedCount
+            if inheritedCount > 0 {
+                previous = scan.events[inheritedCount - 1].cumulative
+                diagnostics.inheritedRecords = inheritedCount
+                diagnostics.inheritedTokens = previous?.totalTokens ?? 0
+            }
+        } else if let parentAnchor,
            parentAnchor.totalTokens > 0,
            let anchorIndex = scan.events.firstIndex(where: {
                $0.cumulativePresent && $0.cumulative == parentAnchor
            }) {
+            // Unconfirmed formats retain the existing exact-anchor behavior.
             previous = parentAnchor
             startIndex = anchorIndex + 1
             diagnostics.inheritedRecords = scan.events[...anchorIndex].filter(\.cumulativePresent).count
@@ -5701,7 +5751,7 @@ enum UsageCollector {
         }
     }
 
-    private static func forEachLine(in url: URL, matchingAny markers: [String] = [], _ body: (String) -> Void) throws {
+    private static func forEachLine(in url: URL, matchingAny markers: [String] = [], onSkippedLine: (() -> Void)? = nil, _ body: (String) -> Void) throws {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
 
@@ -5712,6 +5762,8 @@ enum UsageCollector {
         var discardingOversizedLine = false
 
         func processLine(_ lineData: Data) {
+            if onSkippedLine != nil, lineData.count > maxRelevantLineBytes { onSkippedLine?(); return }
+            if lineMatches(lineData, markers: markerData), String(data: lineData, encoding: .utf8) == nil { onSkippedLine?(); return }
             guard lineMatches(lineData, markers: markerData),
                   let line = String(data: lineData, encoding: .utf8),
                   !line.isEmpty
@@ -5748,6 +5800,7 @@ enum UsageCollector {
             }
 
             if buffer.count > maxRelevantLineBytes {
+                onSkippedLine?()
                 discardingOversizedLine = true
                 buffer.removeAll(keepingCapacity: true)
             }
@@ -6401,7 +6454,7 @@ private enum CodexIncrementalStoreError: LocalizedError {
 }
 
 private final class CodexIncrementalStore {
-    private static let schemaVersion: Int32 = 6
+    private static let schemaVersion: Int32 = 7
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     private var database: OpaquePointer?
@@ -6911,8 +6964,8 @@ private final class CodexIncrementalStore {
             """
         )
         if current > 0, current < Self.schemaVersion {
-            // v0.1.48 is the first public incremental-cache release. Recreate
-            // older development schemas so interim payloads cannot survive.
+            // Rebuild derived contributions when accounting changes. Raw
+            // sessions and uploaded bucket labels are never modified.
             try execute("DROP TABLE IF EXISTS codex_sessions")
             try execute("DROP TABLE IF EXISTS codex_staged_scans")
             try execute("DROP TABLE IF EXISTS codex_staged_sessions")
@@ -7104,6 +7157,8 @@ private struct CodexSessionScan: Codable {
     var events: [CodexTokenEvent]
     var finalModel: String? = nil
     var relevantLineCount: Int? = nil
+    var forkedFromSessionID: String? = nil
+    var inheritedEventCount: Int? = nil
 }
 
 private struct CodexTokenEvent: Codable {

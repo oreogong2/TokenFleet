@@ -163,7 +163,7 @@ final class TeamSyncProtocolTests: XCTestCase {
         XCTAssertEqual(object["enrollment_token"] as? String, "one-time-token")
         XCTAssertEqual(object["device_public_id"] as? String, "anonymous-uuid")
         XCTAssertEqual(object["platform"] as? String, "macos")
-        XCTAssertEqual(object["collector_version"] as? String, "0.2.2")
+        XCTAssertEqual(object["collector_version"] as? String, TeamSyncProtocolConfiguration.collectorVersion)
     }
 
     func testCommunityRankRequestIsCredentialedGETWithoutQueryOrBody() throws {
