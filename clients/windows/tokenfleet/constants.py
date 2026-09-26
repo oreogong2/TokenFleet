@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "0.1.0-beta.13"
-COLLECTOR_VERSION = "0.2.0-windows.4"
+APP_VERSION = "0.1.0-beta.14"
+COLLECTOR_VERSION = "0.2.0-windows.5"
 SCHEMA_VERSION = 1
 
 ENROLLMENT_PATH = "/api/v1/devices/enroll"

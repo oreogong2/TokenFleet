@@ -169,7 +169,7 @@ def dashboard_data(paths: ClientPaths, client: TokenFleetClient) -> dict[str, An
             "imported": paths.cursor_usage.is_file(),
             "records": collection.diagnostics.exact_records.get("Cursor", 0),
         },
-        "privacy": "只从本机记录中提取结构化 usage 并展示日聚合；只披露固定扫描根目录，不保存、展示或上传 prompt、回复、代码、具体记录路径或设备凭据。",
+        "privacy": "设备身份含用于识别换机的机器标识摘要，原始标识不上传；只从本机记录中提取结构化 usage 并展示日聚合；只披露固定扫描根目录，不保存、展示或上传 prompt、回复、代码、具体记录路径或设备凭据。",
     }
 
 

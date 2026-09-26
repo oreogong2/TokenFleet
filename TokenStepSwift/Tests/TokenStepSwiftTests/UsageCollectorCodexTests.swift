@@ -1,8 +1,200 @@
 import Foundation
+import SQLite3
 import XCTest
 @testable import TokenStepSwift
 
 final class UsageCollectorCodexTests: XCTestCase {
+    private func inheritanceTime(_ second: Int) -> String {
+        String(format: "2026-09-26T10:00:%02dZ", second)
+    }
+
+    private func inheritanceVector(_ total: Int) -> CodexUsageParts {
+        CodexUsageParts(input: total, output: 0, cached: 0, reasoning: 0)
+    }
+
+    private func inheritanceRoot(_ home: URL) throws -> URL {
+        let root = home.appendingPathComponent(".codex/sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    private func inheritanceEvent(_ second: Int, _ total: Int, _ last: Int?) -> String {
+        codexTokenLine(timestamp: inheritanceTime(second), cumulative: inheritanceVector(total),
+            last: last.map(inheritanceVector))
+    }
+
+    private func inheritedBoundary(_ owner: String, _ second: Int) -> String {
+        jsonLine(["type": "event_msg", "timestamp": inheritanceTime(second),
+            "payload": ["type": "thread_settings_applied", "thread_id": owner]])
+    }
+
+    func testCopiedForkUsesSnapshotBeforeParentAdvancedAndSurvivesCacheAppendRebuild() throws {
+        let home = try makeTemporaryHome("older-fork"), root = try inheritanceRoot(home)
+        let cache = home.appendingPathComponent("cache/codex.sqlite3")
+        try writeCodexSession([
+            codexMetaLine(id: "parent", timestamp: inheritanceTime(0)),
+            codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(0)),
+            inheritanceEvent(10, 100, 100), inheritanceEvent(19, 120, 20)
+        ], to: root.appendingPathComponent("parent.jsonl"))
+        let child = root.appendingPathComponent("child.jsonl")
+        let initial = [
+            codexMetaLine(id: "child", timestamp: inheritanceTime(20), forkID: "parent"),
+            codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(0)),
+            inheritedBoundary("parent", 22), inheritanceEvent(23, 100, 100), inheritedBoundary("child", 25), inheritanceEvent(30, 105, 5)
+        ]
+        try writeCodexSession(initial, to: child)
+        for snapshot in [
+            UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home),
+            UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache),
+            UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache),
+            UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache, forceFullValidation: true)
+        ] {
+            XCTAssertEqual(snapshot.totals.tokens, 125)
+            XCTAssertEqual(snapshot.sources["Codex"]?.inheritedTokens, 100)
+            let buckets = try TeamSyncProtocol.dailyBucketBuild(snapshot: snapshot).buckets
+            XCTAssertEqual(buckets.count, 1)
+            XCTAssertEqual(buckets.first?.tool, "Codex")
+            XCTAssertEqual(buckets.first?.model, "gpt-6-sol")
+        }
+        try writeCodexSession(initial + [inheritanceEvent(40, 108, 3)], to: child)
+        let appended = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+        let rebuilt = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home,
+            cacheURL: home.appendingPathComponent("cache/rebuilt.sqlite3"))
+        XCTAssertEqual(appended.totals.tokens, 128)
+        XCTAssertEqual(rebuilt.totals.tokens, 128)
+        XCTAssertEqual(appended.sources["Codex"]?.inheritedTokens, 100)
+    }
+
+    func testReferencedForkWithoutPrefixRetainsUnconfirmedUsageAcrossAppend() throws {
+        let home = try makeTemporaryHome("referenced-fork"), root = try inheritanceRoot(home)
+        let cache = home.appendingPathComponent("cache/codex.sqlite3")
+        let child = root.appendingPathComponent("child.jsonl")
+        let initial = [codexMetaLine(id: "child", timestamp: inheritanceTime(20), forkID: "missing-parent"),
+            codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(20)), inheritedBoundary("child", 25), inheritanceEvent(30, 105, 5)]
+        try writeCodexSession(initial, to: child)
+        XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home).totals.tokens, 105)
+        XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 105)
+        try writeCodexSession(initial + [inheritanceEvent(40, 108, 3)], to: child)
+        let appended = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+        XCTAssertEqual(appended.totals.tokens, 108)
+        XCTAssertEqual(appended.sources["Codex"]?.inheritedTokens, 0)
+        XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 108)
+    }
+
+    func testParentOnlyAndEmptyForkSeedDoNotGainNewDeductions() throws {
+        for explicit in [false, true] {
+            let home = try makeTemporaryHome("fresh-thread"), root = try inheritanceRoot(home)
+            try writeCodexSession([
+                codexMetaLine(id: "child", timestamp: inheritanceTime(20), parentID: "parent",
+                    forkID: explicit ? "parent" : nil),
+                codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(20)),
+                inheritanceEvent(30, explicit ? 5 : 105, 5)
+            ], to: root.appendingPathComponent("child.jsonl"))
+            XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home).totals.tokens, explicit ? 5 : 105)
+        }
+    }
+
+    func testFirstOwnUsageMatchingParentCountIsNotMistakenForCopiedPrefix() throws {
+        for (parentTotal, ownTotal, ownLast, expected) in [(105, 105, 5, 210), (5, 5, 5, 10)] {
+            let home = try makeTemporaryHome("coinciding-count"), root = try inheritanceRoot(home)
+            try writeCodexSession([
+                codexMetaLine(id: "parent", timestamp: inheritanceTime(0)),
+                codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(0)),
+                inheritanceEvent(10, parentTotal, parentTotal)
+            ], to: root.appendingPathComponent("parent.jsonl"))
+            try writeCodexSession([
+                codexMetaLine(id: "child", timestamp: inheritanceTime(20), forkID: "parent"),
+                codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(20)),
+                inheritedBoundary("child", 25), inheritanceEvent(30, ownTotal, ownLast)
+            ], to: root.appendingPathComponent("child.jsonl"))
+            XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home).totals.tokens, expected)
+        }
+    }
+
+    func testMissingOrInvalidBreakdownCannotEstablishInheritedSeed() throws {
+        for invalidComponents in [false, true] {
+            let home = try makeTemporaryHome("invalid-seed"), root = try inheritanceRoot(home)
+            let last = invalidComponents ? CodexUsageParts(input: 5, output: 0, cached: 2, reasoning: 0) : nil
+            try writeCodexSession([
+                codexMetaLine(id: "child", timestamp: inheritanceTime(20), forkID: "parent"),
+                codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(20)),
+                codexTokenLine(timestamp: inheritanceTime(30), cumulative: inheritanceVector(105), last: last)
+            ], to: root.appendingPathComponent("child.jsonl"))
+            XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home).totals.tokens, 105)
+        }
+    }
+
+    func testInheritedSeedDoesNotGetDeductedAgainAfterReset() throws {
+        let home = try makeTemporaryHome("fork-reset"), root = try inheritanceRoot(home)
+        try writeCodexSession([
+            codexMetaLine(id: "child", timestamp: inheritanceTime(20), forkID: "parent"),
+            codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(20)),
+            inheritanceEvent(21, 100, 100), inheritedBoundary("child", 25), inheritanceEvent(30, 105, 5), inheritanceEvent(40, 3, 3), inheritanceEvent(50, 7, 4)
+        ], to: root.appendingPathComponent("child.jsonl"))
+        XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home).totals.tokens, 12)
+    }
+
+    func testNestedForksDeductEachThreadsOwnSeedExactlyOnceWithoutRecoveringUnknownModel() throws {
+        let home = try makeTemporaryHome("nested-fork"), root = try inheritanceRoot(home)
+        try writeCodexSession([codexMetaLine(id: "parent", timestamp: inheritanceTime(0)),
+            codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(0)), inheritanceEvent(10, 100, 100)
+        ], to: root.appendingPathComponent("parent.jsonl"))
+        try writeCodexSession([codexMetaLine(id: "child", timestamp: inheritanceTime(20), forkID: "parent"),
+            codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(20)), inheritanceEvent(21, 100, 100), inheritedBoundary("child", 25), inheritanceEvent(30, 125, 25)
+        ], to: root.appendingPathComponent("child.jsonl"))
+        try writeCodexSession([codexMetaLine(id: "grandchild", timestamp: inheritanceTime(40), forkID: "child"),
+            inheritanceEvent(41, 125, 25), inheritedBoundary("grandchild", 45), inheritanceEvent(50, 131, 6)
+        ], to: root.appendingPathComponent("grandchild.jsonl"))
+        let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home)
+        XCTAssertEqual(snapshot.totals.tokens, 131)
+        let buckets = try TeamSyncProtocol.dailyBucketBuild(snapshot: snapshot).buckets
+        XCTAssertTrue(buckets.contains { $0.model == "unknown" })
+    }
+
+    func testDerivedCacheRevisionRebuildsContributionsWithoutTouchingRawSessions() throws {
+        let home = try makeTemporaryHome("old-cache"), root = try inheritanceRoot(home)
+        let cache = home.appendingPathComponent("cache/codex.sqlite3"), child = root.appendingPathComponent("child.jsonl")
+        try writeCodexSession([codexMetaLine(id: "child", timestamp: inheritanceTime(20), forkID: "parent"),
+            codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(20)), inheritanceEvent(21, 100, 100), inheritedBoundary("child", 25), inheritanceEvent(30, 105, 5)
+        ], to: child)
+        XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 5)
+        let rawBefore = try Data(contentsOf: child)
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(cache.path, &database), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(database,
+            "UPDATE codex_sessions SET records = '[]', summary_records = '[]', record_count = 0; PRAGMA user_version = 6;",
+            nil, nil, nil), SQLITE_OK)
+        sqlite3_close(database)
+        XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 5)
+        XCTAssertEqual(try Data(contentsOf: child), rawBefore)
+    }
+
+    func testBoundaryArrivingAfterPartialCachedPrefixForcesRescan() throws {
+        let home = try makeTemporaryHome("partial-fork"), root = try inheritanceRoot(home)
+        let cache = home.appendingPathComponent("cache/codex.sqlite3"), child = root.appendingPathComponent("child.jsonl")
+        let prefix = [codexMetaLine(id: "child", timestamp: inheritanceTime(20), forkID: "missing-parent"),
+            codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(20)), inheritanceEvent(21, 100, 100)]
+        try writeCodexSession(prefix, to: child)
+        XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 100)
+        try writeCodexSession(prefix + [inheritedBoundary("child", 25), inheritanceEvent(30, 105, 5)], to: child)
+        XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 5)
+        XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 5)
+    }
+
+    func testOldCreationVersionAndCorruptPrefixDoNotEnableNewDeduction() throws {
+        for shape in 0..<3 {
+            let home = try makeTemporaryHome("unsafe-fork"), root = try inheritanceRoot(home)
+            var metadata = codexMetaLine(id: "child", timestamp: inheritanceTime(20), forkID: "missing-parent")
+            if shape == 0 { metadata = metadata.replacingOccurrences(of: "0.158.0-alpha.15.1", with: "0.151.0-alpha.7.2") }
+            var lines = [metadata, codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(20)), inheritanceEvent(21, 100, 100)]
+            if shape == 1 { lines.append("{\"type\":\"token_count\",broken}") }
+            if shape == 2 { lines.append("{\"type\":\"token_count\",\"padding\":\"" + String(repeating: "x", count: 1_100_000) + "\"}") }
+            lines += [inheritedBoundary("child", 25), inheritanceEvent(30, 105, 5)]
+            try writeCodexSession(lines, to: root.appendingPathComponent("child.jsonl"))
+            XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home).totals.tokens, 105)
+        }
+    }
+
     func testTotalOnlyCodexUsageIsPreservedButNotMarkedExact() throws {
         let home = try makeTemporaryHome("total-only")
         let root = home.appendingPathComponent(".codex/sessions/2026/06/22", isDirectory: true)
@@ -381,8 +573,9 @@ final class UsageCollectorCodexTests: XCTestCase {
         try (lines.joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .utf8)
     }
 
-    private func codexMetaLine(id: String, timestamp: String, parentID: String? = nil) -> String {
+    private func codexMetaLine(id: String, timestamp: String, parentID: String? = nil, forkID: String? = nil) -> String {
         var payload: [String: Any] = ["id": id]
+        if let forkID { payload["forked_from_id"] = forkID; payload["cli_version"] = "0.158.0-alpha.15.1" }
         if let parentID {
             payload["source"] = [
                 "subagent": [

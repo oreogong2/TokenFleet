@@ -12,7 +12,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Callable
 
 try:
     import zstandard
@@ -251,6 +251,8 @@ class CodexScan:
     created_at: datetime | None
     parent_session_id: str | None
     events: list[CodexEvent]
+    forked_from_id: str | None = None
+    inherited_event_count: int | None = None
 
 
 def collect_usage(
@@ -457,21 +459,24 @@ def _jsonl_files(root: Path, cutoff: datetime) -> list[Path]:
 
 
 def _json_lines(
-    path: Path, *, matching_any: tuple[bytes, ...] = ()
+    path: Path, *, matching_any: tuple[bytes, ...] = (), on_skipped_line: Callable[[], None] | None = None
 ) -> Iterable[dict[str, Any]]:
     try:
         with path.open("rb") as handle:
             for raw_line in handle:
                 if len(raw_line) > MAX_RELEVANT_LINE_BYTES:
+                    if on_skipped_line: on_skipped_line()
                     continue
                 if matching_any and not any(marker in raw_line for marker in matching_any):
                     continue
                 try:
                     value = json.loads(raw_line)
                 except (UnicodeError, json.JSONDecodeError):
+                    if on_skipped_line: on_skipped_line()
                     continue
                 if isinstance(value, dict):
                     yield value
+                elif on_skipped_line: on_skipped_line()
     except OSError:
         return
 
@@ -573,6 +578,9 @@ def _model(value: Any) -> str:
 
 
 def _parent_session_id(payload: dict[str, Any]) -> str | None:
+    fork = payload.get("forked_from_id")
+    if isinstance(fork, str) and fork.strip():
+        return fork.strip()
     source = payload.get("source")
     if isinstance(source, dict):
         subagent = source.get("subagent")
@@ -589,15 +597,40 @@ def _parent_session_id(payload: dict[str, Any]) -> str | None:
     return None
 
 
+def _supports_codex_fork_boundary(version: Any) -> bool:
+    if not isinstance(version, str): return False
+    text = version.split("+", 1)[0]
+    parts = text.split("-", 1)
+    try:
+        core = tuple(int(x) for x in parts[0].split("."))
+        if len(core) != 3 or min(core) < 0: return False
+        if core != (0, 158, 0): return core > (0, 158, 0)
+        if len(parts) == 1: return True
+        pre = parts[1].split(".")
+        if pre[0] != "alpha" or len(pre) not in (2, 3): return False
+        values = tuple(int(x) for x in pre[1:])
+        return min(values) >= 0 and (values[0], values[1] if len(values) == 2 else 0) >= (15, 1)
+    except ValueError: return False
+
+
 def _scan_codex(path: Path) -> CodexScan:
     session_id: str | None = None
     created_at: datetime | None = None
     parent: str | None = None
+    forked_from_id: str | None = None
+    cli_version = None
+    inherited_event_count = None
+    saw_own_boundary = False
+    unsafe_prefix = False
+    def skipped_line():
+        nonlocal unsafe_prefix
+        if not saw_own_boundary: unsafe_prefix = True
     model = "unknown"
     events: list[CodexEvent] = []
     for obj in _json_lines(
         path,
-        matching_any=(b'"session_meta"', b'"turn_context"', b'"token_count"'),
+        matching_any=(b'"session_meta"', b'"turn_context"', b'"token_count"', b'"thread_settings_applied"'),
+        on_skipped_line=skipped_line,
     ):
         kind = obj.get("type")
         payload = obj.get("payload")
@@ -611,6 +644,17 @@ def _scan_codex(path: Path) -> CodexScan:
                 payload.get("timestamp")
             )
             parent = _parent_session_id(payload)
+            cli_version = payload.get("cli_version")
+            fork = payload.get("forked_from_id")
+            if isinstance(fork, str) and fork.strip():
+                forked_from_id = fork.strip()
+        if (kind == "event_msg" and payload.get("type") == "thread_settings_applied"
+            and payload.get("thread_id") == session_id and not saw_own_boundary):
+            saw_own_boundary = True
+            if forked_from_id and _supports_codex_fork_boundary(cli_version) and not unsafe_prefix and all(e.cumulative_present and e.cumulative is not None for e in events):
+                inherited_event_count = len(events)
+        if kind == "event_msg" and payload.get("type") == "token_count" and not isinstance(payload.get("info"), dict) and not saw_own_boundary:
+            unsafe_prefix = True
         if kind == "turn_context":
             model = _model(payload.get("model", model))
         if kind != "event_msg" or payload.get("type") != "token_count":
@@ -637,7 +681,7 @@ def _scan_codex(path: Path) -> CodexScan:
             session_id = str(uuid.UUID(path.stem))
         except ValueError:
             session_id = path.stem
-    return CodexScan(session_id, created_at, parent, events)
+    return CodexScan(session_id, created_at, parent, events, forked_from_id, inherited_event_count)
 
 
 def _collect_codex(
@@ -712,7 +756,11 @@ def _codex_records(
 
     previous: UsageCounts | None = None
     start = 0
-    if parent_anchor is not None:
+    if scan.inherited_event_count is not None:
+        start = scan.inherited_event_count
+        if start:
+            previous = scan.events[start - 1].cumulative
+    elif parent_anchor is not None:
         for index, event in enumerate(scan.events):
             if event.cumulative_present and event.cumulative == parent_anchor:
                 previous = parent_anchor

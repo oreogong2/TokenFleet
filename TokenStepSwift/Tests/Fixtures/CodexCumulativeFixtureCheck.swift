@@ -5,6 +5,7 @@ import Foundation
 struct CodexCumulativeFixtureCheck {
     static func main() {
         do {
+            try checkConfirmedForkSeeds()
             try checkCumulativeDeduplicationAndCompaction()
             try checkCredibleCounterReset()
             try checkLegacyFallback()
@@ -29,6 +30,36 @@ struct CodexCumulativeFixtureCheck {
         } catch {
             fputs("Codex cumulative collector fixture failed: \(error)\n", stderr)
             exit(1)
+        }
+    }
+
+    private static func checkConfirmedForkSeeds() throws {
+        func flat(_ n: Int) -> UsageVector { UsageVector(input: n, output: 0, cached: 0, reasoning: 0) }
+        func event(_ second: Int, _ total: Int, _ last: Int) -> String {
+            tokenCount(timestamp: String(format: "2026-09-26T10:00:%02dZ", second), cumulative: flat(total), last: flat(last))
+        }
+        try withFixtureHome("older-snapshot") { home in
+            try writeSession(home: home, filename: "parent.jsonl", lines: [
+                sessionMeta(id: "parent", timestamp: "2026-09-26T10:00:00Z"),
+                turnContext(model: "gpt-6-sol", timestamp: "2026-09-26T10:00:00Z"), event(10, 100, 100), event(19, 120, 20)])
+            let child = try writeSession(home: home, filename: "child.jsonl", lines: [
+                sessionMeta(id: "child", timestamp: "2026-09-26T10:00:20Z", forkID: "parent"),
+                turnContext(model: "gpt-6-sol", timestamp: "2026-09-26T10:00:22Z"), event(23, 100, 100),
+                jsonLine(["type":"event_msg", "timestamp":"2026-09-26T10:00:25Z", "payload":["type":"thread_settings_applied", "thread_id":"child"]]), event(30, 105, 5)])
+            let cache = home.appendingPathComponent("cache/codex.sqlite3")
+            try expectEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home).totals.tokens, 125, "older copied snapshot")
+            try expectEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 125, "older snapshot incremental")
+            try expectEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 125, "inherited seed not deducted twice")
+            try appendLine(event(40, 108, 3), to: child)
+            try expectEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 128, "fork append cursor")
+        }
+        for (explicit, total, last, expected) in [(true, 105, 5, 105), (true, 5, 5, 5), (false, 105, 5, 105)] {
+            try withFixtureHome("referenced-or-fresh") { home in
+                try writeSession(home: home, filename: "child.jsonl", lines: [
+                    sessionMeta(id: "child", timestamp: "2026-09-26T10:00:20Z", parentID: "missing", forkID: explicit ? "missing" : nil),
+                    turnContext(model: "gpt-6-sol", timestamp: "2026-09-26T10:00:20Z"), event(30, total, last)])
+                try expectEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home).totals.tokens, expected, "explicit seed versus fresh child")
+            }
         }
     }
 
@@ -952,8 +983,9 @@ struct CodexCumulativeFixtureCheck {
         return lines
     }
 
-    private static func sessionMeta(id: String, timestamp: String, parentID: String? = nil) -> String {
+    private static func sessionMeta(id: String, timestamp: String, parentID: String? = nil, forkID: String? = nil) -> String {
         var payload: [String: Any] = ["id": id]
+        if let forkID { payload["forked_from_id"] = forkID; payload["cli_version"] = "0.158.0-alpha.15.1" }
         if let parentID {
             payload["source"] = [
                 "subagent": [

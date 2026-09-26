@@ -18,11 +18,10 @@ TokenFleet 包含原生 macOS 菜单栏 App 和轻量 Windows 参赛端，用来
 
 ## 当前发布方式
 
-> **当前发布版本是 beta.13（tag `v0.1.0-beta.13`）。** 这是源码分发版本，不会自动安装到老用户电脑。beta.13 修复同步恢复、坏记录隔离及金额显示；原位升级保留设备身份，Windows 需重跑安装器更新计划任务。macOS 与 Windows 的实验 Agent 来源仍默认开启（包括老用户），自动扫描已披露的固定目录并最多补计 180 天历史；用户可随时关闭，beta.11 及后续版本中的显式关闭会永久尊重。
+> **当前发布版本是 beta.14（tag `v0.1.0-beta.14`）。** 这是源码分发版本，不会自动升级老用户电脑。本次一次升级包含服务端价格目录、本机机器绑定、自助添加第二台设备，以及具备官方边界的 Codex 复制型分叉计数修复。请在原设备原位升级，不卸载、不清状态、不重复创建昵称；详见 [beta.14 升级说明](docs/UPGRADE-beta.14.md)。实验 Agent 默认及用户显式关闭的选择保持原有规则。
 > 新成员请按[正式加入指南](https://scn2sjohx0z1.feishu.cn/docx/I6rCdR1sKoQ3l7x7TgpcRp2lnLc)
 > 安装时，客户端固定检出本次 GitHub Release 标注的完整 commit SHA。Windows 检测到 ZCode 用量库后会自动采集且不受实验开关控制；实验来源可在 macOS 设置或 Windows 本机页／CLI 随时关闭。Cursor 仍需主动导入 CSV，Copilot OTel 仍需自行开启 exporter。
-> 线上成员 Web 会在发布 tag 基础上滚动部署经复核的服务端/网页热修；这些服务器热修不修改
-> 客户端固定提交、同步协议、昵称、设备身份或历史数据，也不要求成员更新客户端。
+> 服务端与网页会独立部署经复核的更新；客户端始终固定到 GitHub Release 的完整提交。是否需要成员升级，以该版本的升级说明为准。
 
 TokenFleet 当前只提供**经过复核的源码安装**，不要求 Apple Developer 付费账号，也没有可下载的官方 DMG。不要把上游 TokenStep 的 DMG 当成 TokenFleet 安装包。
 
@@ -197,7 +196,7 @@ TokenStepSwift/dist/TokenFleet.app
 Developer ID 签名 + Apple 公证：
 
 ```bash
-TOKENFLEET_VERSION=0.1.0-beta.13 \
+TOKENFLEET_VERSION=0.1.0-beta.14 \
 TOKENFLEET_BUNDLE_ID="com.yourcompany.TokenFleet" \
 TOKENFLEET_TEAM_ID="ABCDE12345" \
 TOKENFLEET_UPDATE_API_URL="https://updates.example.com/tokenfleet/latest" \
