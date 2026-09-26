@@ -1,6 +1,8 @@
 # TokenFleet 社群成员安装与多设备登记
 
-状态：当前发布版本为 beta.12（tag `v0.1.0-beta.12`），源码安装固定检出本次 GitHub Release 标注的完整 commit SHA。源码版不会自动更新；线上成员 Web 的滚动热修不修改同步协议、昵称、设备身份或历史数据。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
+状态：当前发布版本为 beta.13（tag `v0.1.0-beta.13`），源码安装固定检出本次 GitHub Release 标注的完整 commit SHA。源码版不会自动更新；线上成员 Web 的滚动热修不修改同步协议、昵称、设备身份或历史数据。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
+
+> **beta.13 升级提醒：** 修复同步永久停止和坏记录导致正常用量漏报。老用户原位升级，不要卸载、清数据或重新领取设备码；Windows 需重跑安装器更新计划任务。完整升级与验收步骤见 [beta.13 升级说明](UPGRADE-beta.13.md)。本轮仍沿用旧费用榜排法，统一价格和历史重算将在后续版本完成。
 
 > **beta.12 macOS 优化：** 已降低采集 helper 与 sqlite3 查询的系统优先级，并把冷启动后的首次自动采集延后约 105 秒；用户手动“立即刷新”仍会立即执行。老用户在原设备原位升级即可，不要卸载、清数据或重新领取设备码。
 
