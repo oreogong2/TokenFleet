@@ -38,6 +38,23 @@ final class TeamSyncServiceTests: XCTestCase {
         XCTAssertEqual(store.state?.uploadNotBeforeDate, "2026-08-09")
     }
 
+    func testMigrationWithOnlyOlderBucketsSendsNoRequestAndKeepsCutoff() async throws {
+        let origin = "https://team.example.com"
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T10:00:00Z"))
+        let store = MemoryTeamSyncStateStore(state: TeamSyncPersistentState(serverURL: origin,
+            machineFingerprint: String(repeating: "b", count: 64), uploadNotBeforeDate: "2026-08-09", deviceID: "new-device"))
+        let credentials = MemoryTeamSyncCredentialStore(values: ["new-device": "fixture_device_secret"])
+        let http = RecordingTeamSyncHTTPClient(responses: [])
+        let service = TeamSyncService(httpClient: http, credentialStore: credentials, stateStore: store,
+            requestClock: { now }, machineFingerprint: { String(repeating: "b", count: 64) })
+        let result = try await service.synchronize(snapshot: authoritativeSnapshot(date: "2026-08-08"), serverURL: origin, force: true, now: now)
+        let requests = await http.requests
+        XCTAssertTrue(requests.isEmpty)
+        XCTAssertEqual(result.lastSyncAt, now)
+        XCTAssertEqual(result.uploadNotBeforeDate, "2026-08-09")
+        XCTAssertTrue(result.syncedBucketHashes.isEmpty)
+    }
+
     func testSameMachineUpgradeHasNoHistoryCutoffAndInvalidCutoffCannotDecode() async throws {
         let state = TeamSyncPersistentState(serverURL: "https://team.example.com", machineFingerprint: String(repeating: "a", count: 64), deviceID: "device-one")
         let store = MemoryTeamSyncStateStore(state: state)

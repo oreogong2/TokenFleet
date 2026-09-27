@@ -1680,7 +1680,7 @@ enum UsageCollector {
         }
     }
 
-    #if TOKENSTEP_TESTING
+    #if DEBUG || TOKENSTEP_TESTING
     private static let codexFullScanCountLock = NSLock()
     private static var codexFullScanCounts: [String: Int] = [:]
     static func codexFullScanCountForTests(at path: URL) -> Int {
@@ -1691,7 +1691,7 @@ enum UsageCollector {
     #endif
 
     private static func scanCodexSessionFile(at path: URL) -> CodexSessionScan? {
-        #if TOKENSTEP_TESTING
+        #if DEBUG || TOKENSTEP_TESTING
         codexFullScanCountLock.lock()
         codexFullScanCounts[path.path, default: 0] += 1
         codexFullScanCountLock.unlock()
