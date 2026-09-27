@@ -348,6 +348,24 @@ class PriceManagementCredential(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
 
+class EnrollmentManagementCredential(Base):
+    __tablename__ = "enrollment_management_credentials"
+    __table_args__ = (
+        ForeignKeyConstraint(["created_by_user_id", "org_id"],
+                             ["users.id", "users.org_id"], ondelete="CASCADE"),
+        Index("uq_enrollment_management_token_hash", "token_hash", unique=True),
+        Index("ix_enrollment_management_org_active", "org_id", "is_active"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    org_id: Mapped[str] = mapped_column(String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
 class DailyUsage(Base):
     __tablename__ = "daily_usage"
     __table_args__ = (
