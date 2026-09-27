@@ -576,6 +576,9 @@ def main():
         batch_form.locator('input[name="public_profile_enabled"]').check()
         batch_form.get_by_role("button", name="确认昵称并领取设备码").click()
         page.get_by_text("浏览器成员，你的设备码已经生成", exact=True).wait_for()
+        assert "若从未连接成功，请换一个新昵称" in page.inner_text("body")
+        assert "原来仍已连接的设备" in page.inner_text("body")
+        assert "不要发送日志或凭据" in page.inner_text("body")
         page.screenshot(
             path=str(ARTIFACT_DIR / "tokenfleet-batch-success.png"),
             full_page=True,
@@ -758,6 +761,7 @@ def main():
         assert "不会重复创建成员" in enrollment.inner_text()
         assert "不占自助批次名额" in enrollment.inner_text()
         assert "旧码会立即失效" in enrollment.inner_text()
+        assert "新码 24 小时有效" in enrollment.inner_text()
         assert "已使用码及其审计记录不会改变" in enrollment.inner_text()
         option_values = enrollment.locator('select[name="user_id"] option').evaluate_all(
             "options => options.map(option => option.value).filter(Boolean)"
@@ -765,7 +769,7 @@ def main():
         assert "u-demo-admin" not in option_values
         enrollment.locator('select[name="user_id"]').select_option(index=1)
         enrollment.get_by_role(
-            "button", name="确认补发 60 分钟设备码"
+            "button", name="确认补发 24 小时设备码"
         ).click()
         page.wait_for_timeout(50)
         page.goto(f"{base}/rank?demo=1", wait_until="networkidle")

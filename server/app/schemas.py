@@ -232,7 +232,7 @@ class OrganizationSettingsResponse(StrictModel):
 
 class EnrollmentTokenCreate(StrictModel):
     user_id: UUID
-    expires_in_minutes: Annotated[int, Field(strict=True, ge=1, le=1_440)] = 60
+    expires_in_minutes: Annotated[int, Field(strict=True, ge=1, le=1_440)] = 1_440
 
 
 class EnrollmentTokenResponse(StrictModel):

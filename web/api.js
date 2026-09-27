@@ -239,7 +239,7 @@ export function createApiClient({
         body: JSON.stringify({
           user_id: payload.user_id,
           expires_in_minutes:
-            payload.expires_in_minutes || Number(payload.expires_in_hours || 1) * 60,
+            payload.expires_in_minutes || Number(payload.expires_in_hours || 24) * 60,
         }),
       }),
     pricing: () => request("/api/v1/pricing"),
