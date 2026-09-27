@@ -183,6 +183,7 @@ actor TeamSyncService {
                 serverURL: normalizedServerURL,
                 devicePublicID: devicePublicID,
                 machineFingerprint: try currentMachineFingerprint(),
+                uploadNotBeforeDate: previousState?.uploadNotBeforeDate,
                 deviceID: serverDeviceID,
                 enrolledAt: now
             )
@@ -509,6 +510,7 @@ actor TeamSyncService {
             let bucketBuild = try TeamSyncProtocol.dailyBucketBuild(snapshot: snapshot)
             var pending: [(bucket: TeamSyncDailyBucket, hash: String)] = []
             for bucket in bucketBuild.buckets {
+                if let earliest = state.uploadNotBeforeDate, bucket.date < earliest { continue }
                 let hash = try TeamSyncProtocol.contentHash(for: bucket)
                 if force || state.syncedBucketHashes[bucket.naturalKey] != hash {
                     pending.append((bucket, hash))
@@ -668,7 +670,8 @@ actor TeamSyncService {
                     TeamSyncPersistentState(
                         serverURL: "",
                         devicePublicID: devicePublicID,
-                        machineFingerprint: previousState?.machineFingerprint
+                        machineFingerprint: previousState?.machineFingerprint,
+                        uploadNotBeforeDate: previousState?.uploadNotBeforeDate
                     )
                 )
             } else {
@@ -707,7 +710,10 @@ actor TeamSyncService {
     private func resetMachineBinding(fingerprint: String) throws {
         let previous = stateStore.load()
         try credentialStore.clearDeviceSecret(deviceID: previous?.deviceID)
-        var replacement = TeamSyncPersistentState(serverURL: previous?.serverURL ?? "", machineFingerprint: fingerprint)
+        var replacement = TeamSyncPersistentState(
+            serverURL: previous?.serverURL ?? "", machineFingerprint: fingerprint,
+            uploadNotBeforeDate: DateFormatter.tokenStepDay.string(from: requestClock())
+        )
         replacement.lastError = TeamSyncProtocolError.machineChanged.localizedDescription
         replacement.automaticRetryStopped = true
         replacement.terminalReason = .credentials

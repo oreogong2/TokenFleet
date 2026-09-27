@@ -3,6 +3,75 @@ import XCTest
 @testable import TokenStepSwift
 
 final class TeamSyncServiceTests: XCTestCase {
+    func testMachineMigrationRestrictsDatesAcrossReconnectionForceAndDisconnect() async throws {
+        let origin = "https://team.example.com"
+        let clock = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-08T16:30:00Z"))
+        let state = TeamSyncPersistentState(serverURL: origin, machineFingerprint: String(repeating: "a", count: 64), deviceID: "old-device")
+        let store = MemoryTeamSyncStateStore(state: state)
+        let credentials = MemoryTeamSyncCredentialStore(values: ["old-device": "fixture_device_secret"])
+        let detect = TeamSyncService(httpClient: RecordingTeamSyncHTTPClient(responses: []), credentialStore: credentials,
+            stateStore: store, requestClock: { clock }, machineFingerprint: { String(repeating: "b", count: 64) })
+        _ = await detect.loadState()
+        XCTAssertEqual(store.state?.uploadNotBeforeDate, "2026-08-09")
+        // Persist and load a fresh instance, as happens between detecting migration and reconnecting.
+        store.state = try JSONDecoder().decode(TeamSyncPersistentState.self, from: JSONEncoder().encode(store.state!))
+        let publicID = try XCTUnwrap(store.state?.devicePublicID)
+        let enrollment = try JSONSerialization.data(withJSONObject: ["device_id": "new-device", "device_public_id": publicID,
+            "device_secret": "fixture_device_secret_1234567890", "signing_key_derivation": TeamSyncProtocolConfiguration.signingKeyDerivation])
+        let receipt = Data(#"{"created":2,"updated":0,"unchanged":0,"ledger_version":2}"#.utf8)
+        let http = RecordingTeamSyncHTTPClient(responses: [TeamSyncHTTPResponse(data: enrollment, statusCode: 201),
+            TeamSyncHTTPResponse(data: receipt, statusCode: 200), TeamSyncHTTPResponse(data: receipt, statusCode: 200)])
+        let service = TeamSyncService(httpClient: http, credentialStore: credentials, stateStore: store,
+            requestClock: { clock.addingTimeInterval(86400 * 2) }, machineFingerprint: { String(repeating: "b", count: 64) })
+        let connected = try await service.enroll(serverURL: origin, enrollmentToken: "fixture-enrollment-code")
+        XCTAssertEqual(connected.uploadNotBeforeDate, "2026-08-09")
+        var snapshot = authoritativeSnapshot(date: "2026-08-08")
+        snapshot.daily += authoritativeSnapshot(date: "2026-08-09").daily + authoritativeSnapshot(date: "2026-08-10").daily
+        for _ in 0..<2 {
+            _ = try await service.synchronize(snapshot: snapshot, serverURL: origin, force: true)
+            let requests = await http.requests
+            let payload = try JSONDecoder().decode(TeamSyncDailyPayload.self, from: try XCTUnwrap(requests.last?.httpBody))
+            XCTAssertEqual(payload.buckets.map(\.date), ["2026-08-09", "2026-08-10"])
+        }
+        XCTAssertEqual(snapshot.daily.count, 3)
+        try await service.clear()
+        XCTAssertEqual(store.state?.uploadNotBeforeDate, "2026-08-09")
+    }
+
+    func testMigrationWithOnlyOlderBucketsSendsNoRequestAndKeepsCutoff() async throws {
+        let origin = "https://team.example.com"
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T10:00:00Z"))
+        let store = MemoryTeamSyncStateStore(state: TeamSyncPersistentState(serverURL: origin,
+            machineFingerprint: String(repeating: "b", count: 64), uploadNotBeforeDate: "2026-08-09", deviceID: "new-device"))
+        let credentials = MemoryTeamSyncCredentialStore(values: ["new-device": "fixture_device_secret"])
+        let http = RecordingTeamSyncHTTPClient(responses: [])
+        let service = TeamSyncService(httpClient: http, credentialStore: credentials, stateStore: store,
+            requestClock: { now }, machineFingerprint: { String(repeating: "b", count: 64) })
+        let result = try await service.synchronize(snapshot: authoritativeSnapshot(date: "2026-08-08"), serverURL: origin, force: true, now: now)
+        let requests = await http.requests
+        XCTAssertTrue(requests.isEmpty)
+        XCTAssertEqual(result.lastSyncAt, now)
+        XCTAssertEqual(result.uploadNotBeforeDate, "2026-08-09")
+        XCTAssertTrue(result.syncedBucketHashes.isEmpty)
+    }
+
+    func testSameMachineUpgradeHasNoHistoryCutoffAndInvalidCutoffCannotDecode() async throws {
+        let state = TeamSyncPersistentState(serverURL: "https://team.example.com", machineFingerprint: String(repeating: "a", count: 64), deviceID: "device-one")
+        let store = MemoryTeamSyncStateStore(state: state)
+        let credentials = MemoryTeamSyncCredentialStore(values: ["device-one": "fixture_device_secret"])
+        let http = RecordingTeamSyncHTTPClient(responses: [TeamSyncHTTPResponse(data: Data(#"{"created":1,"updated":0,"unchanged":0,"ledger_version":2}"#.utf8), statusCode: 200)])
+        let service = TeamSyncService(httpClient: http, credentialStore: credentials, stateStore: store,
+            machineFingerprint: { String(repeating: "a", count: 64) })
+        _ = try await service.synchronize(snapshot: authoritativeSnapshot(date: "2026-08-09"), serverURL: state.serverURL, force: true)
+        XCTAssertNil(store.state?.uploadNotBeforeDate)
+        let requests = await http.requests
+        XCTAssertEqual(requests.count, 1)
+        for bad in ["2026-02-30", "2026-8-9", ""] {
+            let data = try JSONSerialization.data(withJSONObject: ["server_url": state.serverURL, "upload_not_before_date": bad])
+            XCTAssertThrowsError(try JSONDecoder().decode(TeamSyncPersistentState.self, from: data))
+        }
+    }
+
     func testStartupLoadChecksMachineBeforeExposingConnectedState() async {
         let store = MemoryTeamSyncStateStore(state: TeamSyncPersistentState(serverURL: "https://team.example.com",
             machineFingerprint: String(repeating: "a", count: 64), deviceID: "device-one"))

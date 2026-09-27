@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from .collectors import CollectionResult, collect_usage
+from .collectors import CollectionResult, SHANGHAI, collect_usage
 from .constants import (
     APP_VERSION,
     COLLECTOR_VERSION,
@@ -95,6 +95,7 @@ class TokenFleetClient:
         settings_store: SettingsStore | None = None,
         cursor_archive: Path | None = None,
         machine_fingerprint: Callable[[], str] = current_machine_fingerprint,
+        clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
         self.credential_store = credential_store
         self.state_store = state_store
@@ -106,6 +107,7 @@ class TokenFleetClient:
         self.settings_store = settings_store
         self.cursor_archive = cursor_archive
         self.machine_fingerprint = machine_fingerprint
+        self.clock = clock
 
     def connect(self, *, enrollment_token: str) -> DeviceCredential:
         state = self._machine_state()
@@ -185,7 +187,9 @@ class TokenFleetClient:
         credential = self._credential_for_pinned_origin()
         result = self.preview(history_days=history_days)
         generated = generated_at()
-        if not result.buckets:
+        floor = self.state_store.load().upload_not_before_date
+        buckets_to_upload = [bucket for bucket in result.buckets if floor is None or bucket["date"] >= floor]
+        if not buckets_to_upload:
             state = self.state_store.load()
             state.last_sync_at = generated
             state.last_bucket_count = 0
@@ -198,7 +202,7 @@ class TokenFleetClient:
         acknowledged_count = 0
         acknowledged_tokens = 0
         omitted_count = 0
-        chunks = self._chunks(result.buckets, generated=generated)
+        chunks = self._chunks(buckets_to_upload, generated=generated)
         for index, buckets in enumerate(chunks):
             if index and index % 11 == 0:
                 # The server's default authenticated device budget is 12/min.
@@ -359,6 +363,7 @@ class TokenFleetClient:
         self.credential_store.clear()
         state = ClientState.new()
         state.machine_fingerprint = fingerprint
+        state.upload_not_before_date = self.clock().astimezone(SHANGHAI).date().isoformat()
         state.reconnect_required = True
         state.last_sync_error = "这是一台新设备，请用原设备的添加设备码重新连接"
         self.state_store.save(state)

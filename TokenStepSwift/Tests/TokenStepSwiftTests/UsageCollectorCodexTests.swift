@@ -65,6 +65,51 @@ final class UsageCollectorCodexTests: XCTestCase {
         XCTAssertEqual(appended.sources["Codex"]?.inheritedTokens, 100)
     }
 
+    func testRepeatedSettingsAppendAvoidsFullScanAfterOwnedBoundary() throws {
+        let home = try makeTemporaryHome("repeated-settings"), root = try inheritanceRoot(home)
+        let cache = home.appendingPathComponent("cache/codex.sqlite3"), child = root.appendingPathComponent("child.jsonl")
+        var lines = [codexMetaLine(id: "child", timestamp: inheritanceTime(20), forkID: "missing-parent"),
+            codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(20)), inheritanceEvent(23, 100, 100)]
+        try writeCodexSession(lines, to: child)
+        _ = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+        let beforeBoundary = UsageCollector.codexFullScanCountForTests(at: child)
+        lines += [inheritedBoundary("parent", 24), inheritedBoundary("child", 25), inheritanceEvent(30, 105, 5)]
+        try writeCodexSession(lines, to: child)
+        let resolved = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+        XCTAssertEqual(resolved.totals.tokens, 5)
+        let afterBoundary = UsageCollector.codexFullScanCountForTests(at: child)
+        XCTAssertEqual(afterBoundary, beforeBoundary + 1)
+        for (second, total) in [(40, 108), (50, 112)] {
+            lines += [inheritedBoundary("child", second - 1), inheritanceEvent(second, total, total == 108 ? 3 : 4)]
+            try writeCodexSession(lines, to: child)
+            let appended = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+            XCTAssertEqual(appended.totals.tokens, total - 100)
+            XCTAssertEqual(appended.sources["Codex"]?.inheritedTokens, 100)
+            XCTAssertEqual(UsageCollector.codexFullScanCountForTests(at: child), afterBoundary)
+        }
+        let rebuilt = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: home.appendingPathComponent("cache/rebuilt.sqlite3"))
+        XCTAssertEqual(rebuilt.totals.tokens, 12)
+    }
+
+    func testHistoryBaseKeepsOldAnchorRuleForOwnedBoundaryAndAppend() throws {
+        for base in [["thread_id": "parent"], [:] as [String: String], NSNull()] as [Any] {
+            let home = try makeTemporaryHome("history-base"), root = try inheritanceRoot(home)
+            let cache = home.appendingPathComponent("cache/codex.sqlite3")
+            try writeCodexSession([codexMetaLine(id: "parent", timestamp: inheritanceTime(0)),
+                codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(0)), inheritanceEvent(10, 105, 105)], to: root.appendingPathComponent("parent.jsonl"))
+            var metadata = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(codexMetaLine(id: "child", timestamp: inheritanceTime(20), forkID: "parent").utf8)) as? [String: Any])
+            var payload = try XCTUnwrap(metadata["payload"] as? [String: Any]); payload["history_base"] = base; metadata["payload"] = payload
+            let child = root.appendingPathComponent("child.jsonl")
+            let initial = [jsonLine(metadata), codexContextLine(model: "gpt-6-sol", timestamp: inheritanceTime(20)), inheritedBoundary("child", 25), inheritanceEvent(30, 105, 5)]
+            try writeCodexSession(initial, to: child)
+            XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home).totals.tokens, 105)
+            XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 105)
+            try writeCodexSession(initial + [inheritedBoundary("child", 39), inheritanceEvent(40, 108, 3)], to: child)
+            XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 108)
+            XCTAssertEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: home.appendingPathComponent("rebuilt.sqlite3")).totals.tokens, 108)
+        }
+    }
+
     func testReferencedForkWithoutPrefixRetainsUnconfirmedUsageAcrossAppend() throws {
         let home = try makeTemporaryHome("referenced-fork"), root = try inheritanceRoot(home)
         let cache = home.appendingPathComponent("cache/codex.sqlite3")
