@@ -657,7 +657,7 @@ export function mountCommunityApp({
         error: unavailable
           ? "这个批次链接已失效、已关闭或名额已满，请联系管理员。"
           : nicknameConflict
-            ? "这个昵称已被使用，请换一个昵称再试。"
+            ? "这个昵称已被使用。如果是别人的昵称，请换一个；如果是你领过码但从未连接成功的昵称，可换新昵称重领；如果你以前连接成功过，请保留原昵称，在已连接设备上生成“添加另一台设备”码。没有可用的已连接设备时，将原昵称和客户端截图私发管理员，不发送日志或凭据。"
             : error?.message || "领取失败，请稍后再试。",
       });
       applyCommunityDemoBanner(root, demoMode, documentRef);
@@ -726,7 +726,7 @@ export function mountCommunityApp({
     }
     if (action === "copy-batch-enrollment-code") {
       if (!issuedEnrollmentCode) {
-        showToast(root, "个人设备码已失效，请重新领取或请管理员补发", true, active);
+        showToast(root, "个人设备码已失效。请按页面说明处理：从未连接成功可换昵称重领；老成员保留原昵称，用已连接设备加设备码，无法自助再私发昵称和截图给管理员。", true, active);
         return;
       }
       const currentCode = issuedEnrollmentCode;

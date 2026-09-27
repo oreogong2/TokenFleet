@@ -571,6 +571,16 @@ def main():
         )["entries"]
         assert all(BATCH_INVITATION not in entry["url"] for entry in batch_history)
 
+        page.route("**/api/v1/public/invitation-batches/claim", lambda route: route.fulfill(
+            status=409, json={"detail": "nickname unavailable"}))
+        conflict_form = page.locator('[data-community-action="claim-batch"]')
+        conflict_form.locator('input[name="display_name"]').fill("原昵称")
+        conflict_form.locator('input[name="public_profile_enabled"]').check()
+        conflict_form.get_by_role("button", name="确认昵称并领取设备码").click()
+        page.get_by_text("这个昵称已被使用。", exact=False).wait_for()
+        assert "如果你以前连接成功过，请保留原昵称" in page.inner_text("body")
+        assert "从未连接成功的昵称，可换新昵称重领" in page.inner_text("body")
+        page.unroute("**/api/v1/public/invitation-batches/claim")
         batch_form = page.locator('[data-community-action="claim-batch"]')
         batch_form.locator('input[name="display_name"]').fill("浏览器成员")
         batch_form.locator('input[name="public_profile_enabled"]').check()

@@ -25,6 +25,7 @@ from .models import (
     CommunityShareGrant,
     Device,
     EnrollmentToken,
+    EnrollmentManagementCredential,
     InvitationBatch,
     Organization,
     PriceVersion,
@@ -134,6 +135,7 @@ def readiness(
         # one migration behind advertise readiness and then fail on usage I/O.
         session.execute(select(Device.machine_fingerprint).limit(1))
         session.execute(select(PriceManagementCredential.id, PriceManagementCredential.expires_at).limit(1))
+        session.execute(select(EnrollmentManagementCredential.id, EnrollmentManagementCredential.expires_at).limit(1))
         session.execute(
             select(
                 DailyUsage.is_deleted,
