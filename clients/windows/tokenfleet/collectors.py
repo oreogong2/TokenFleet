@@ -621,6 +621,7 @@ def _scan_codex(path: Path) -> CodexScan:
     cli_version = None
     inherited_event_count = None
     saw_own_boundary = False
+    has_history_base = False
     unsafe_prefix = False
     def skipped_line():
         nonlocal unsafe_prefix
@@ -645,13 +646,14 @@ def _scan_codex(path: Path) -> CodexScan:
             )
             parent = _parent_session_id(payload)
             cli_version = payload.get("cli_version")
+            has_history_base = "history_base" in payload
             fork = payload.get("forked_from_id")
             if isinstance(fork, str) and fork.strip():
                 forked_from_id = fork.strip()
         if (kind == "event_msg" and payload.get("type") == "thread_settings_applied"
             and payload.get("thread_id") == session_id and not saw_own_boundary):
             saw_own_boundary = True
-            if forked_from_id and _supports_codex_fork_boundary(cli_version) and not unsafe_prefix and all(e.cumulative_present and e.cumulative is not None for e in events):
+            if forked_from_id and not has_history_base and _supports_codex_fork_boundary(cli_version) and not unsafe_prefix and all(e.cumulative_present and e.cumulative is not None for e in events):
                 inherited_event_count = len(events)
         if kind == "event_msg" and payload.get("type") == "token_count" and not isinstance(payload.get("info"), dict) and not saw_own_boundary:
             unsafe_prefix = True

@@ -66,6 +66,14 @@ class CodexInheritanceTests(unittest.TestCase):
             handle.write(json.dumps(event(40, 108, 3)) + "\n")
         self.assertEqual(sum(r.counts.total for r in self.collect(parent, child)), 128)
 
+    def test_history_base_keeps_old_anchor_rule_even_with_own_settings(self):
+        parent = self.write("parent", [meta("parent", 0), context(0), event(10, 105, 105)])
+        for base in ({"thread_id": "parent"}, {}, None):
+            child_meta = meta("child", 20, fork="parent")
+            child_meta["payload"]["history_base"] = base
+            child = self.write("child", [child_meta, context(20), boundary("child"), event(30, 105, 5), event(40, 108, 3)])
+            self.assertEqual(sum(r.counts.total for r in self.collect(parent, child)), 108)
+
     def test_referenced_explicit_fork_without_prefix_does_not_guess_seed(self):
         child = self.write("child", [meta("child", 20, fork="absent-parent"), context(20), boundary("child"),
                                     event(30, 105, 5), event(40, 108, 3)])

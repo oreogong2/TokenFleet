@@ -197,7 +197,7 @@ enum CollectorPerformanceLogger {
 }
 
 enum UsageCollector {
-    static let codexAccountingRevision = 9
+    static let codexAccountingRevision = 10
 
     private static let timezone = TimeZone(identifier: "Asia/Shanghai") ?? .current
     private static let maxRelevantLineBytes = 1_048_576
@@ -1154,7 +1154,8 @@ enum UsageCollector {
                         relevantLineNumber: item.scan.relevantLineCount ?? item.scan.events.count,
                         hasCumulativeSchema: result.cursor.hasCumulativeSchema,
                         previousCumulative: result.cursor.previousCumulative,
-                        epoch: result.cursor.epoch
+                        epoch: result.cursor.epoch,
+                        pendingOwnForkBoundary: item.scan.pendingOwnForkBoundary
                     ),
                     diagnostics: result.diagnostics
                 )
@@ -1630,7 +1631,12 @@ enum UsageCollector {
                     else { return }
                     let type = obj["type"] as? String
                     let payload = obj["payload"] as? [String: Any]
-                    if type == "session_meta" || (type == "event_msg" && payload?["type"] as? String == "thread_settings_applied") {
+                    // Once the first owned boundary has been accounted for,
+                    // later per-turn settings cannot change inherited counts.
+                    let firstOwnBoundary = cursor.pendingOwnForkBoundary.map {
+                        type == "event_msg" && payload?["type"] as? String == "thread_settings_applied" && payload?["thread_id"] as? String == $0
+                    } ?? false
+                    if type == "session_meta" || firstOwnBoundary {
                         encounteredSessionMetadata = true
                         return
                     }
@@ -1674,7 +1680,22 @@ enum UsageCollector {
         }
     }
 
+    #if TOKENSTEP_TESTING
+    private static let codexFullScanCountLock = NSLock()
+    private static var codexFullScanCounts: [String: Int] = [:]
+    static func codexFullScanCountForTests(at path: URL) -> Int {
+        codexFullScanCountLock.lock()
+        defer { codexFullScanCountLock.unlock() }
+        return codexFullScanCounts[path.path, default: 0]
+    }
+    #endif
+
     private static func scanCodexSessionFile(at path: URL) -> CodexSessionScan? {
+        #if TOKENSTEP_TESTING
+        codexFullScanCountLock.lock()
+        codexFullScanCounts[path.path, default: 0] += 1
+        codexFullScanCountLock.unlock()
+        #endif
         guard FileManager.default.isReadableFile(atPath: path.path) else { return nil }
         var canonicalSessionID: String?
         var createdAt: String?
@@ -1683,6 +1704,7 @@ enum UsageCollector {
         var cliVersion: String?
         var inheritedEventCount: Int?
         var sawOwnBoundary = false
+        var hasHistoryBase = false
         var unsafePrefix = false
         var currentModel = "unknown"
         var events: [CodexTokenEvent] = []
@@ -1706,11 +1728,12 @@ enum UsageCollector {
                         parentSessionID = codexParentSessionID(from: payload)
                         forkedFromSessionID = nonEmptyString(payload?["forked_from_id"] as? String)
                         cliVersion = nonEmptyString(payload?["cli_version"] as? String)
+                        hasHistoryBase = payload?.keys.contains("history_base") == true
                     }
                     if type == "event_msg", payload?["type"] as? String == "thread_settings_applied",
                        payload?["thread_id"] as? String == canonicalSessionID, !sawOwnBoundary {
                         sawOwnBoundary = true
-                        if forkedFromSessionID != nil, codexSupportsOwnedForkBoundary(cliVersion), !unsafePrefix,
+                        if forkedFromSessionID != nil, !hasHistoryBase, codexSupportsOwnedForkBoundary(cliVersion), !unsafePrefix,
                            events.allSatisfy({ $0.cumulativePresent && $0.cumulative.map { isCodexBreakdownConsistent($0, total: $0.totalTokens) } == true }) {
                             inheritedEventCount = events.count
                         }
@@ -1758,7 +1781,8 @@ enum UsageCollector {
             finalModel: currentModel,
             relevantLineCount: relevantLineNumber,
             forkedFromSessionID: forkedFromSessionID,
-            inheritedEventCount: inheritedEventCount
+            inheritedEventCount: inheritedEventCount,
+            pendingOwnForkBoundary: forkedFromSessionID != nil && !hasHistoryBase && codexSupportsOwnedForkBoundary(cliVersion) && !sawOwnBoundary ? canonicalSessionID : nil
         )
     }
 
@@ -6454,7 +6478,7 @@ private enum CodexIncrementalStoreError: LocalizedError {
 }
 
 private final class CodexIncrementalStore {
-    private static let schemaVersion: Int32 = 7
+    private static let schemaVersion: Int32 = 8
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     private var database: OpaquePointer?
@@ -7159,6 +7183,7 @@ private struct CodexSessionScan: Codable {
     var relevantLineCount: Int? = nil
     var forkedFromSessionID: String? = nil
     var inheritedEventCount: Int? = nil
+    var pendingOwnForkBoundary: String? = nil
 }
 
 private struct CodexTokenEvent: Codable {
@@ -7189,6 +7214,7 @@ private struct CodexSessionCursor: Codable, Equatable {
     var hasCumulativeSchema: Bool
     var previousCumulative: TokenUsageCounts?
     var epoch: Int
+    var pendingOwnForkBoundary: String? = nil
 }
 
 private struct CodexSessionTail {

@@ -9,6 +9,8 @@ struct TeamSyncPersistentState: Codable, Equatable {
     var serverURL: String
     var devicePublicID: String
     var machineFingerprint: String?
+    // A migrated installation must never replay pre-migration daily buckets.
+    var uploadNotBeforeDate: String?
     var deviceID: String?
     var enrolledAt: Date?
     var lastSyncAt: Date?
@@ -26,6 +28,7 @@ struct TeamSyncPersistentState: Codable, Equatable {
         case serverURL = "server_url"
         case devicePublicID = "device_public_id"
         case machineFingerprint = "machine_fingerprint"
+        case uploadNotBeforeDate = "upload_not_before_date"
         case deviceID = "device_id"
         case enrolledAt = "enrolled_at"
         case lastSyncAt = "last_sync_at"
@@ -44,6 +47,7 @@ struct TeamSyncPersistentState: Codable, Equatable {
         serverURL: String,
         devicePublicID: String = UUID().uuidString.lowercased(),
         machineFingerprint: String? = nil,
+        uploadNotBeforeDate: String? = nil,
         deviceID: String? = nil,
         enrolledAt: Date? = nil,
         lastSyncAt: Date? = nil,
@@ -60,6 +64,7 @@ struct TeamSyncPersistentState: Codable, Equatable {
         self.serverURL = serverURL
         self.devicePublicID = devicePublicID
         self.machineFingerprint = machineFingerprint
+        self.uploadNotBeforeDate = uploadNotBeforeDate
         self.deviceID = deviceID
         self.enrolledAt = enrolledAt
         self.lastSyncAt = lastSyncAt
@@ -80,6 +85,13 @@ struct TeamSyncPersistentState: Codable, Equatable {
         devicePublicID = try container.decodeIfPresent(String.self, forKey: .devicePublicID)
             ?? UUID().uuidString.lowercased()
         machineFingerprint = try container.decodeIfPresent(String.self, forKey: .machineFingerprint)
+        uploadNotBeforeDate = try container.decodeIfPresent(String.self, forKey: .uploadNotBeforeDate)
+        if let day = uploadNotBeforeDate {
+            guard let parsed = DateFormatter.tokenStepDay.date(from: day),
+                  DateFormatter.tokenStepDay.string(from: parsed) == day else {
+                throw DecodingError.dataCorruptedError(forKey: .uploadNotBeforeDate, in: container, debugDescription: "Invalid upload date boundary")
+            }
+        }
         deviceID = try container.decodeIfPresent(String.self, forKey: .deviceID)
         enrolledAt = try container.decodeIfPresent(Date.self, forKey: .enrolledAt)
         lastSyncAt = try container.decodeIfPresent(Date.self, forKey: .lastSyncAt)
