@@ -1686,14 +1686,14 @@ enum UsageCollector {
     static func codexFullScanCountForTests(at path: URL) -> Int {
         codexFullScanCountLock.lock()
         defer { codexFullScanCountLock.unlock() }
-        return codexFullScanCounts[path.path, default: 0]
+        return codexFullScanCounts[path.resolvingSymlinksInPath().path, default: 0]
     }
     #endif
 
     private static func scanCodexSessionFile(at path: URL) -> CodexSessionScan? {
         #if DEBUG || TOKENSTEP_TESTING
         codexFullScanCountLock.lock()
-        codexFullScanCounts[path.path, default: 0] += 1
+        codexFullScanCounts[path.resolvingSymlinksInPath().path, default: 0] += 1
         codexFullScanCountLock.unlock()
         #endif
         guard FileManager.default.isReadableFile(atPath: path.path) else { return nil }
