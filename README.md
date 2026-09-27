@@ -19,7 +19,7 @@ TokenFleet 包含原生 macOS 菜单栏 App 和轻量 Windows 参赛端，用来
 ## 当前发布方式
 
 > **当前发布版本是 beta.15（tag `v0.1.0-beta.15`）。** 这是源码分发版本，不会自动升级老用户电脑。本次补上换机后的历史上传日期限制，修正 Mac Codex 增量采集和引用式 fork 计数规则；同时包含 beta.14 的统一价格、机器绑定和自助添加第二台设备。请在原设备原位升级，不卸载、不清状态、不重复创建昵称；详见 [beta.15 升级说明](docs/UPGRADE-beta.15.md)。实验 Agent 默认及用户显式关闭的选择保持原有规则。
-> 新成员请按[正式加入指南](https://scn2sjohx0z1.feishu.cn/docx/I6rCdR1sKoQ3l7x7TgpcRp2lnLc)
+> 新成员加入方式请联系社群管理员获取安装指南。
 > 安装时，客户端固定检出本次 GitHub Release 标注的完整 commit SHA。Windows 检测到 ZCode 用量库后会自动采集且不受实验开关控制；实验来源可在 macOS 设置或 Windows 本机页／CLI 随时关闭。Cursor 仍需主动导入 CSV，Copilot OTel 仍需自行开启 exporter。
 > 服务端与网页会独立部署经复核的更新；客户端始终固定到 GitHub Release 的完整提交。是否需要成员升级，以该版本的升级说明为准。
 
