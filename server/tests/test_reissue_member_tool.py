@@ -57,6 +57,7 @@ def test_http_error_never_prints_raw_body_or_credential(monkeypatch):
 def test_wrong_expiry_is_rejected_without_copying(monkeypatch, hours):
     class Response:
         status = 201
+        headers = {}
         def __enter__(self): return self
         def __exit__(self, *args): pass
         def read(self, limit):
@@ -66,3 +67,47 @@ def test_wrong_expiry_is_rejected_without_copying(monkeypatch, hours):
         def open(self, request, timeout): return Response()
     monkeypatch.setattr(tool.urllib.request, "build_opener", lambda _: Opener())
     with pytest.raises(tool.SafeError): tool.fetch_code("https://community.example", "unused", "member")
+
+
+@pytest.mark.parametrize("origin", ["http://community.example", "https://user@community.example.test", "https://community.example:444", "https://community.example/path", "https://community.example/?foo=1", "https://community.example/#part"])
+def test_configuration_rejects_unsafe_origins(tmp_path, origin):
+    tmp_path.chmod(0o700)
+    for name, value in {"credential": "tfreissue_" + secrets.token_urlsafe(32), "metadata.json": json.dumps({"origin": origin, "scope": "members:reissue-only"})}.items():
+        path = tmp_path / name; path.write_text(value); path.chmod(0o600)
+    with pytest.raises(tool.SafeError): tool.configuration(tmp_path)
+
+
+def test_configuration_checks_directory_scope_and_git_location(tmp_path):
+    tmp_path.chmod(0o700)
+    credential = "tfreissue_" + secrets.token_urlsafe(32)
+    metadata = {"origin": "https://community.example", "scope": "members:reissue-only"}
+    for name, value in {"credential": credential, "metadata.json": json.dumps(metadata)}.items():
+        path = tmp_path / name; path.write_text(value); path.chmod(0o600)
+    assert tool.configuration(tmp_path) == (metadata["origin"], credential)
+    tmp_path.chmod(0o755)
+    with pytest.raises(tool.SafeError): tool.configuration(tmp_path)
+    tmp_path.chmod(0o700)
+    metadata["scope"] = "prices:missing-only"
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata))
+    with pytest.raises(tool.SafeError): tool.configuration(tmp_path)
+    metadata["scope"] = "members:reissue-only"
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata))
+    tool.subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    with pytest.raises(tool.SafeError): tool.configuration(tmp_path)
+
+
+def test_expiry_uses_https_server_clock(monkeypatch):
+    from email.utils import format_datetime
+    clock = datetime.now(timezone.utc) + timedelta(hours=2)
+    code = secrets.token_urlsafe(32)
+    class Response:
+        status = 201
+        headers = {"Date": format_datetime(clock, usegmt=True)}
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self, limit):
+            return json.dumps({"enrollment_token": code, "expires_at": (clock + timedelta(hours=24)).isoformat()}).encode()
+    class Opener:
+        def open(self, request, timeout): return Response()
+    monkeypatch.setattr(tool.urllib.request, "build_opener", lambda _: Opener())
+    assert tool.fetch_code("https://community.example", "unused", "member") == code

@@ -125,7 +125,7 @@ def verify_desktop(page: Page) -> dict[str, int]:
     assert "不占自助批次名额" in dialog_text
     assert "原始码不会在后台显示或保存" in dialog_text
     dialog.locator('select[name="user_id"]').select_option(index=1)
-    dialog.get_by_role("button", name="确认补发 60 分钟设备码").click()
+    dialog.get_by_role("button", name="确认补发 24 小时设备码").click()
     token_dialog = page.locator("dialog.token-dialog")
     token_dialog.wait_for(state="visible")
     assert token_dialog.locator("code").inner_text() == "••••••••••••"
@@ -433,7 +433,7 @@ def verify_mock_states(page: Page) -> dict[str, object]:
     wait_for_page(page, "成员")
     assert "/api/v1/admin/invitation-batches" in seen_paths, seen_paths
     page.locator("tbody tr", has_text="边界参赛者").get_by_role(
-        "button", name="补发设备码", exact=True
+        "button", name="补发 / 添加设备码", exact=True
     ).click()
     enrollment_dialog = page.locator("#enrollment-dialog")
     enrollment_select = enrollment_dialog.locator('select[name="user_id"]')
@@ -442,13 +442,13 @@ def verify_mock_states(page: Page) -> dict[str, object]:
     assert "不会重复创建成员" in enrollment_dialog.inner_text()
     assert "不占自助批次名额" in enrollment_dialog.inner_text()
     enrollment_submit = enrollment_dialog.get_by_role(
-        "button", name="确认补发 60 分钟设备码"
+        "button", name="确认补发 24 小时设备码"
     )
     enrollment_submit.evaluate("button => { button.click(); button.click(); }")
     page.locator("dialog.token-dialog").wait_for(state="visible")
     assert mutation_counts["enrollment"] == 1, mutation_counts
     assert enrollment_payloads == [
-        {"user_id": "edge-participant", "expires_in_minutes": 60}
+        {"user_id": "edge-participant", "expires_in_minutes": 1440}
     ], enrollment_payloads
     assert "edge_once_only" not in page.content()
     page.locator("dialog.token-dialog").get_by_role("button", name="关闭").click()

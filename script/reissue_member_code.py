@@ -6,6 +6,7 @@ Secrets and codes never become command arguments, stdout, or exception text.
 from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import json
 import os
 from pathlib import Path
@@ -48,6 +49,13 @@ def private_file(path: Path) -> str:
 
 
 def configuration(directory: Path) -> tuple[str, str]:
+    try:
+        directory_info = directory.lstat()
+        if (not stat.S_ISDIR(directory_info.st_mode) or directory_info.st_uid != os.getuid()
+                or stat.S_IMODE(directory_info.st_mode) != 0o700):
+            raise SafeError("本地配置目录必须由当前用户拥有，且权限为 0700")
+    except OSError:
+        raise SafeError("无法读取本地受保护配置目录") from None
     # Refuse any config kept inside a Git checkout, including ignored files.
     result = subprocess.run(["git", "-C", str(directory), "rev-parse", "--is-inside-work-tree"],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
@@ -79,6 +87,8 @@ def fetch_code(origin: str, credential: str, nickname: str) -> str:
             if response.status != 201 or len(raw) > MAX_BYTES:
                 raise SafeError("补发响应不符合预期，未复制；请核查服务状态")
             body = json.loads(raw)
+            server_date = response.headers.get("Date")
+            now = parsedate_to_datetime(server_date) if server_date else datetime.now(timezone.utc)
         if set(body) != {"enrollment_token", "expires_at"}:
             raise ValueError()
         code = body["enrollment_token"]
@@ -86,8 +96,8 @@ def fetch_code(origin: str, credential: str, nickname: str) -> str:
         if not isinstance(code, str) or not re.fullmatch(r"[A-Za-z0-9_-]{20,256}", code):
             raise ValueError()
         expiry = datetime.fromisoformat(body["expires_at"].replace("Z", "+00:00"))
-        hours = (expiry - datetime.now(timezone.utc)).total_seconds() / 3600
-        if not 23.9 <= hours <= 24.1:
+        hours = (expiry - now).total_seconds() / 3600
+        if not (23.9 <= hours <= 24.1 if server_date else 23 <= hours <= 25):
             raise ValueError()
         return code
     except urllib.error.HTTPError as error:

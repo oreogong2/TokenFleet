@@ -188,7 +188,7 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
     wait_for_heading(page, "成员")
 
     page.locator("tbody tr", has_text=new_member_name).get_by_role(
-        "button", name="补发设备码", exact=True
+        "button", name="补发 / 添加设备码", exact=True
     ).click()
     enrollment_dialog = page.locator("#enrollment-dialog")
     enrollment_dialog.wait_for(state="visible")
@@ -204,7 +204,7 @@ def verify_live_dashboard(page: Page) -> dict[str, int]:
         member_options.first.get_attribute("value")
     )
     enrollment_dialog.get_by_role(
-        "button", name="确认补发 60 分钟设备码"
+        "button", name="确认补发 24 小时设备码"
     ).click()
     token_dialog = page.locator("dialog.token-dialog")
     token_dialog.wait_for(state="visible")
