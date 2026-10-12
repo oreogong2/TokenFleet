@@ -90,7 +90,8 @@ class PriceAdminClient:
         self._opener = opener if opener is not None else build_opener(NoRedirect())
 
     def request(self, endpoint: str, payload: dict | None = None) -> dict:
-        allowed = {'missing': '/api/v1/price-management/missing',
+        allowed = {'catalog': '/api/v1/price-management/catalog',
+                   'missing': '/api/v1/price-management/missing',
                    'versions': '/api/v1/price-management/versions'}
         if endpoint not in allowed:
             raise MaintenanceError('endpoint is outside the price-only workflow')
@@ -137,6 +138,8 @@ def main(argv=None) -> int:
     parser.add_argument('--server', required=True)
     parser.add_argument('--credential-file', type=Path, required=True)
     sub = parser.add_subparsers(dest='action', required=True)
+    catalog = sub.add_parser('catalog')
+    catalog.add_argument('--output', type=Path, required=True)
     inventory = sub.add_parser('inventory')
     inventory.add_argument('--output', type=Path, required=True)
     add = sub.add_parser('import')
@@ -146,7 +149,14 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     try:
         client = PriceAdminClient(args.server, read_credential(args.credential_file))
-        if args.action == 'inventory':
+        if args.action == 'catalog':
+            body = client.request('catalog')
+            if set(body) != {'schema_version', 'normalization_version', 'revision', 'basis', 'prices', 'version'}:
+                raise MaintenanceError('price API returned an unexpected catalog')
+            write_private(args.output, body)
+            print(json.dumps({'catalog_revision': body['revision'], 'price_versions': len(body['prices']),
+                              'catalog_saved': True}))
+        elif args.action == 'inventory':
             body = client.request('missing')
             if set(body) != {'models', 'retention_cutoff'}:
                 raise MaintenanceError('price API returned an unexpected inventory')

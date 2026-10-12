@@ -431,3 +431,150 @@ def test_one_hour_claude_estimate_prices_old_unsplit_writes_and_records_note(har
     claimed = body.pop('version')
     canonical = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
     assert hashlib.sha256(canonical).hexdigest() == claimed
+
+
+@pytest.mark.parametrize('host', ['cursor.com', 'prod.cursor.com'])
+@pytest.mark.parametrize('model', ['composer-2.5', 'composer-2.5-fast'])
+def test_cursor_official_page_accepts_only_billed_variants(host, model):
+    from app.price_management import OfficialPriceImport
+    result = OfficialPriceImport.model_validate(payload(
+        tool='Cursor', model=model,
+        source_url=f'https://{host}/docs/models/cursor-composer-2-5',
+        cache_write_per_million=None))
+    assert result.tool == 'Cursor' and result.model == model
+
+
+@pytest.mark.parametrize('overrides', [
+    {'tool': '*'}, {'tool': 'Codex'}, {'model': 'composer-2.5-thinking'},
+    {'model': 'composer-2.6'}, {'model': 'cursor-composer-2.5'},
+    {'model': 'gpt-6-astra'},
+    {'source_url': 'https://cursor.com.evil.test/docs/models/cursor-composer-2-5'},
+    {'source_url': 'https://cursor.com/docs/models/cursor-composer-2-5?invite_token=example'},
+    {'source_url': 'https://cursor.com/docs/models'},
+    {'source_url': 'https://cursor.com/blog/composer-2-5'},
+    {'source_url': 'https://developers.openai.com/api/docs/pricing'},
+])
+def test_cursor_source_rejects_ambiguous_models_and_widened_scope(harness, overrides):
+    _, headers, _ = issue(harness)
+    request = payload(tool='Cursor', model='composer-2.5',
+        source_url='https://cursor.com/docs/models/cursor-composer-2-5',
+        cache_write_per_million=None)
+    request.update(overrides)
+    before = state(harness)
+    response = harness.client.post('/api/v1/price-management/versions', headers=headers, json=request)
+    assert response.status_code == 422 and state(harness) == before
+
+
+def test_cursor_standard_and_fast_backfill_only_matching_unpriced_exact_rows(harness):
+    harness.app.state.settings = replace(harness.app.state.settings, public_org_slug='alpha')
+
+    def upload(model, *, tool='Cursor', completeness='exact', cache_write=0):
+        device = harness.enroll(admin_name='a_admin', user_name='a_member')
+        report = harness.usage_payload()
+        report['buckets'][0].update(tool=tool, model=model, completeness=completeness,
+            input_tokens=1_000_000, output_tokens=1_000_000,
+            cache_read_tokens=1_000_000, cache_write_tokens=cache_write)
+        assert harness.signed_post(device, report).status_code == 200
+        with harness.session_factory() as session:
+            row = session.scalar(select(DailyUsage).where(DailyUsage.device_id == device.id))
+            return row.id, row.usage_date
+
+    standard, day = upload('composer-2.5')
+    fast, _ = upload('composer-2.5-fast')
+    sdk, _ = upload('composer-2.5', tool='Codex')
+    cache_unknown, _ = upload('composer-2.5', cache_write=1)
+    fallback, _ = upload('composer-2.5', completeness='fallback_estimate')
+    other_variant, _ = upload('composer-2.5-thinking')
+    existing, _ = upload('composer-2.5')
+    deleted, _ = upload('composer-2.5-fast')
+    with harness.session_factory() as session:
+        row = session.get(DailyUsage, existing)
+        row.cost_currency, row.cost_microunits = 'USD', 777
+        session.get(DailyUsage, deleted).is_deleted = True
+        session.commit()
+    before = state(harness)
+    _, headers, _ = issue(harness)
+    requests = [payload(tool='Cursor', model=model,
+        input_per_million=input_rate, output_per_million=output_rate,
+        cache_read_per_million=read_rate, cache_write_per_million=None,
+        effective_basis='official_date', effective_from=day.isoformat(),
+        source_url='https://cursor.com/docs/models/cursor-composer-2-5')
+        for model, input_rate, output_rate, read_rate in (
+            ('composer-2.5', '0.5', '2.5', '0.2'),
+            ('composer-2.5-fast', '3', '15', '0.5'))]
+    for request in requests:
+        result = harness.client.post('/api/v1/price-management/versions', headers=headers, json=request)
+        assert result.status_code == 200, result.text
+        assert result.json()['backfill']['changed_rows'] == 1
+        assert result.json()['backfill']['unpriced_only'] is True
+    after = state(harness)
+    assert after[standard]['cost_microunits'] == 3_200_000
+    assert after[fast]['cost_microunits'] == 18_500_000
+    for rid in (sdk, cache_unknown, fallback, other_variant, existing, deleted):
+        assert after[rid] == before[rid]
+    for rid in (standard, fast):
+        for field in before[rid]:
+            if field not in ('price_version_id', 'cost_microunits', 'cost_currency', 'updated_at'):
+                assert after[rid][field] == before[rid][field]
+    catalog = harness.client.get('/api/v1/price-management/catalog', headers=headers).json()
+    assert {(p['tool'], p['model']) for p in catalog['prices']} == {
+        ('Cursor', 'composer-2.5'), ('Cursor', 'composer-2.5-fast')}
+    assert all(p['cache_write_per_million'] is None for p in catalog['prices'])
+    for request in requests:
+        retry = harness.client.post('/api/v1/price-management/versions', headers=headers, json=request)
+        assert retry.status_code == 200 and not retry.json()['created']
+        assert retry.json()['backfill']['changed_rows'] == 0
+    assert state(harness) == after
+
+
+def test_new_sources_do_not_break_beta15_catalog_hash_etag_or_other_price_updates(harness):
+    import hashlib
+    import json
+    from urllib.parse import urlsplit
+    from app.price_management import LEGACY_CLIENT_SOURCE_HOSTS
+
+    harness.app.state.settings = replace(harness.app.state.settings, public_org_slug='alpha')
+
+    _, day = uploaded_row(harness, model='gpt-6-astra')
+    _, headers, _ = issue(harness)
+    assert harness.client.post('/api/v1/price-management/versions', headers=headers,
+        json=payload(effective_basis='official_date',
+                     effective_from=(day - timedelta(days=1)).isoformat())).status_code == 200
+    initial = harness.client.get('/api/v1/public/price-catalog')
+    cursor = payload(tool='Cursor', model='composer-2.5',
+        cache_write_per_million=None, effective_basis='official_date',
+        effective_from=day.isoformat(), source_url='https://cursor.com/docs/models/cursor-composer-2-5')
+    assert harness.client.post('/api/v1/price-management/versions', headers=headers,
+                               json=cursor).status_code == 200
+    full = harness.client.get('/api/v1/price-management/catalog', headers=headers).json()
+    public = harness.client.get('/api/v1/public/price-catalog')
+    body = public.json()
+    assert len(full['prices']) == 2 and len(body['prices']) == 1
+    assert body['prices'] == initial.json()['prices']
+    assert body['revision'] == full['revision'] > initial.json()['revision']
+    assert body['version'] != full['version']
+    assert all(urlsplit(p['source_url']).hostname in LEGACY_CLIENT_SOURCE_HOSTS for p in body['prices'])
+    unsigned = {k: v for k, v in body.items() if k != 'version'}
+    assert hashlib.sha256(json.dumps(unsigned, ensure_ascii=False, sort_keys=True,
+        separators=(',', ':')).encode()).hexdigest() == body['version']
+    assert public.headers['etag'] == '"' + body['version'] + '"'
+    assert harness.client.get('/api/v1/public/price-catalog',
+        headers={'If-None-Match': initial.headers['etag']}).status_code == 200
+    assert harness.client.get('/api/v1/public/price-catalog',
+        headers={'If-None-Match': public.headers['etag']}).status_code == 304
+    a = harness.enroll(admin_name='a_admin', user_name='a_member')
+    b = harness.enroll(admin_name='b_admin', user_name='b_member')
+    assert harness.signed_get(a, '/api/v1/device/price-catalog').json() == body
+    assert harness.signed_get(b, '/api/v1/device/price-catalog').json()['prices'] == []
+    assert harness.client.get('/api/v1/price-management/catalog',
+        headers=harness.auth('b_admin')).json()['prices'] == []
+    assert all(k not in public.text for k in ('org_id', 'user_id', 'device_id', 'email', 'token_hash'))
+    # A later supported-source price still reaches the unchanged beta.15 endpoint.
+    updated = payload(effective_basis='first_observed', effective_from=day.isoformat(),
+                      source_checked_at=day.isoformat(), input_per_million='11')
+    assert harness.client.post('/api/v1/price-management/versions', headers=headers,
+                               json=updated).status_code == 200
+    after = harness.client.get('/api/v1/public/price-catalog').json()
+    assert len(after['prices']) == 2 and after['revision'] > body['revision']
+    assert after['version'] != body['version']
+    assert all(p['model'] == 'gpt-6-astra' for p in after['prices'])
