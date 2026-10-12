@@ -81,3 +81,28 @@ def test_receipt_is_private_and_import_cannot_accept_broad_repricing(tmp_path):
     with pytest.raises(maintenance.MaintenanceError): maintenance.import_versions(client, [{}])
     reply['credential'] = 'example-secret'
     with pytest.raises(maintenance.MaintenanceError): maintenance.import_versions(client, [{}])
+
+
+def test_full_catalog_readback_uses_only_dedicated_price_endpoint(tmp_path, capsys, monkeypatch):
+    body = dict(schema_version=1, normalization_version=1, revision=59,
+                basis='standard_api_equivalent', prices=[], version='example')
+    fake = FakeOpener(body=body)
+    client = maintenance.PriceAdminClient('https://example.com', 'example', fake)
+    assert client.request('catalog') == body
+    assert fake.requests[0].full_url == 'https://example.com/api/v1/price-management/catalog'
+    credential = tmp_path / 'credential'
+    credential.write_text('tfprice_' + 'a' * 43)
+    credential.chmod(0o600)
+    output = tmp_path / 'catalog.json'
+    monkeypatch.setattr(maintenance, 'PriceAdminClient', lambda *args: client)
+    args = ['--server', 'https://example.com', '--credential-file', str(credential),
+            'catalog', '--output', str(output)]
+    assert maintenance.main(args) == 0
+    assert json.loads(output.read_text()) == body
+    assert output.stat().st_mode & 0o777 == 0o600
+    assert json.loads(capsys.readouterr().out) == {
+        'catalog_revision': 59, 'price_versions': 0, 'catalog_saved': True}
+    body['credential'] = 'example-secret'
+    assert maintenance.main(args) == 1
+    assert json.loads(output.read_text()) != body
+    assert 'example-secret' not in capsys.readouterr().err

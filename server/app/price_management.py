@@ -46,11 +46,22 @@ OFFICIAL_PAGES = {
     'platform.minimax.io': ('/docs/guides/pricing-paygo',),
     'platform.kimi.ai': ('/docs/pricing/chat',),
     'docs.x.ai': ('/developers/pricing',),
+    'cursor.com': ('/docs/models/cursor-composer-2-5',),
+    'prod.cursor.com': ('/docs/models/cursor-composer-2-5',),
 }
 
 
+# Frozen to the source allowlist shipped in beta.15. New official sources stay
+# in the server/management catalog until a client can validate them.
+LEGACY_CLIENT_SOURCE_HOSTS = frozenset({
+    'developers.openai.com', 'platform.openai.com', 'openai.com',
+    'platform.claude.com', 'docs.anthropic.com', 'docs.z.ai',
+    'api-docs.deepseek.com', 'platform.minimax.io', 'platform.kimi.ai', 'docs.x.ai',
+})
+
+
 class OfficialPriceImport(PriceCreate):
-    tool: Literal['*'] = '*'
+    tool: Literal['*', 'Cursor'] = '*'
     currency: Literal['USD'] = 'USD'
     public_estimate: Literal[True] = True
     # Explicit null means the official page/available bucket does not determine
@@ -94,9 +105,17 @@ class OfficialPriceImport(PriceCreate):
             'docs.z.ai': ('glm-',), 'api-docs.deepseek.com': ('deepseek-',),
             'platform.minimax.io': ('minimax-',), 'platform.kimi.ai': ('kimi-',),
             'docs.x.ai': ('grok-',),
+            'cursor.com': ('composer-',), 'prod.cursor.com': ('composer-',),
         }.get(host, ())
         if not canonical.startswith(families) or not re.fullmatch(r'[a-z0-9][a-z0-9._-]{0,127}', canonical):
             raise ValueError('model family does not match the official price source')
+        if host in ('cursor.com', 'prod.cursor.com'):
+            # Cursor CSV retains the billed variant. An SDK's bare model ID
+            # may resolve to Fast, so never price other tools from this page.
+            if self.tool != 'Cursor' or canonical not in ('composer-2.5', 'composer-2.5-fast'):
+                raise ValueError('Cursor prices require the Cursor tool and an exact billed Composer 2.5 variant')
+        elif self.tool != '*':
+            raise ValueError('other official sources require wildcard tool scope')
         if (self.effective_basis != 'ledger_first_seen') != (self.effective_from is not None):
             raise ValueError('explicit basis requires a date; ledger_first_seen is resolved by the server')
         if self.effective_basis == 'first_observed' and self.effective_from != self.source_checked_at:
@@ -183,8 +202,10 @@ def verified_prices(session: Session, org_id: str) -> list[PriceVersion]:
             if p.public_estimate and p.source_url and p.source_checked_at and p.effective_basis]
 
 
-def public_catalog(session: Session, org_id: str) -> dict:
+def public_catalog(session: Session, org_id: str, *, legacy_client: bool = False) -> dict:
     prices = verified_prices(session, org_id)
+    if legacy_client:
+        prices = [p for p in prices if urlsplit(p.source_url).hostname in LEGACY_CLIENT_SOURCE_HOSTS]
     fields = ('id', 'tool', 'model', 'currency', 'input_per_million', 'output_per_million',
               'cache_read_per_million', 'cache_write_per_million', 'effective_from',
               'source_url', 'source_checked_at', 'effective_basis')
@@ -210,7 +231,7 @@ def read_public_catalog(request: Request, session: Session = Depends(get_session
                         settings: Settings = Depends(get_settings)) -> Response:
     _consume_public_read_limit(request)
     org = resolve_public_organization(session, settings.public_org_slug)
-    result = public_catalog(session, org.id)
+    result = public_catalog(session, org.id, legacy_client=True)
     headers = {'ETag': '"' + result['version'] + '"', 'Cache-Control': 'public, max-age=60'}
     if request.headers.get('If-None-Match') == headers['ETag']:
         return Response(status_code=304, headers=headers)
@@ -220,7 +241,7 @@ def read_public_catalog(request: Request, session: Session = Depends(get_session
 @router.get('/api/v1/device/price-catalog')
 def read_device_catalog(principal: DevicePrincipal = Depends(get_device_principal),
                         session: Session = Depends(get_session)) -> dict:
-    return public_catalog(session, principal.device.org_id)
+    return public_catalog(session, principal.device.org_id, legacy_client=True)
 
 
 def first_seen_dates(session: Session, org_id: str) -> dict[str, date]:
@@ -298,7 +319,7 @@ def import_price(payload: OfficialPriceImport, actor: PricePrincipal = Depends(g
         values[f'cache_{kind}_price_known'] = values[key] is not None
         if values[key] is None:
             values[key] = Decimal(0)  # inert storage; known flag forbids charging it
-    candidates = [p for p in load_prices(session, actor.org_id) if normalize_tool(p.tool) == '*'
+    candidates = [p for p in load_prices(session, actor.org_id) if normalize_tool(p.tool) == normalize_tool(payload.tool)
                   and normalize_model(p.model) == model and p.effective_from == effective]
     verified_history = [p for p in verified_prices(session, actor.org_id)
                         if normalize_model(p.model) == model]
@@ -342,10 +363,11 @@ def import_price(payload: OfficialPriceImport, actor: PricePrincipal = Depends(g
     start = today - timedelta(days=org.retention_days)
     # Preview and apply hold one organization lock and transaction. The caller
     # cannot opt into repricing existing rows or widen organization/model scope.
+    tool_scope = payload.tool if payload.tool != '*' else None
     preview = reprice_usage(session, org_id=actor.org_id, start_date=start,
-                            end_date=today + timedelta(days=2), model=model)
+                            end_date=today + timedelta(days=2), model=model, tool=tool_scope)
     result = reprice_usage(session, org_id=actor.org_id, start_date=start,
-        end_date=today + timedelta(days=2), model=model, apply=True,
+        end_date=today + timedelta(days=2), model=model, tool=tool_scope, apply=True,
         expected_ledger_version=preview['ledger_version_before'],
         expected_catalog_fingerprint=preview['catalog_fingerprint'],
         expected_plan_fingerprint=preview['plan_fingerprint'])

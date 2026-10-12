@@ -84,6 +84,19 @@ M3 表中划线的是原价，本表采用旁列的永久折后公开价。Prior
 
 来源：[官方 API 价格页](https://docs.x.ai/developers/pricing)。Standard、Global、短上下文美元/百万 Token：grok-4.5 输入2、输出6、缓存读0.3；grok-4.6 输入2、输出6、缓存读0.5。缓存写入未列出，保留未知。Build、Fast 与自定义路由标签不能直接删除后套价。
 
+## Cursor Composer
+
+来源：[Cursor 官方模型价格页](https://cursor.com/docs/models/cursor-composer-2-5)（官方页面也可由 `prod.cursor.com` 提供）与 [2026-05-18 官方发布说明](https://cursor.com/changelog/composer-2-5)。美元/百万 Token，公开按量估算，不等于订阅套餐账单。
+
+| Cursor CSV 计费型号 | 档位 | 输入 | 输出 | 缓存读 | 缓存写 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| composer-2.5 | Standard | 0.5 | 2.5 | 0.2 | 未列出 |
+| composer-2.5-fast | Fast | 3 | 15 | 0.5 | 未列出 |
+
+Mac 和 Windows 的 Cursor CSV 导入保留 `Model` 计费标签，不把 Fast 合并成 Standard。官方说明 SDK 未指定参数的裸 `composer-2.5` 请求可能实际按 Fast 计费，因此这里的价格只匹配工具 `Cursor` 的两个精确计费型号，不用于其他工具的 SDK 模型裸名，不新增别名、不改账本标签。缓存写入的横线保留为未知；写入计数非零且无官方单价的行继续未定价。
+
+官方发布说明明确了两档输入、输出价；缓存读取页只有当前价，未注明整套费率的历史生效日期。没有更早已核对版本时，完整费率由服务端按 `ledger_first_seen` 解析账本首次出现日，并保留这项依据；以后改价按 `first_observed`，已有金额不动。
+
 ## 其他已核对的官方页面
 
 [Gemini价格页](https://ai.google.dev/gemini-api/docs/pricing)对2.5 Flash的音频与文字输入列不同价格；现有汇总没有模态条件，不任选一项。[阿里云价格页](https://www.alibabacloud.com/help/en/model-studio/model-pricing)分区域、输入长度、推理模式；不猜上报渠道。[MiMo价格页](https://mimo.mi.com/docs/en-US/pricing)分国内人民币与海外美元；不把人民币隐式换成美元，也不把 free 后缀当免费型号证明。以上属于有公开价但条件不足；真正在官方公开页找不到的型号标“无公开价”。
