@@ -24,16 +24,18 @@ PEM = re.compile(rb"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", re
 
 def private_output(output: Path, *, create: bool = False) -> Path:
     """Use only caller-owned output beneath trusted directory ancestors."""
-    output = output.absolute()
+    if not output.is_absolute():
+        raise ValueError("TLS policy directory must be absolute")
     if output.is_symlink():
         raise ValueError("TLS policy directory must not be a symlink")
     # Resolve parent aliases once and use the canonical path thereafter.
-    parent = output.parent.resolve(strict=True)
+    parent = output.parent.resolve(strict=not create)
     uid = os.geteuid()
-    for ancestor in (parent, *parent.parents):
+    for ancestor in reversed((parent, *parent.parents)):
+        if create:
+            ancestor.mkdir(mode=0o700, exist_ok=True)
         info = ancestor.stat()
-        shared_sticky = info.st_uid == 0 and bool(info.st_mode & stat.S_ISVTX)
-        if info.st_uid not in {0, uid} or (info.st_mode & 0o022 and not shared_sticky):
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid not in {0, uid} or info.st_mode & 0o022:
             raise ValueError("TLS policy parent is not trusted")
     output = parent / output.name
     if create:
@@ -46,6 +48,12 @@ def private_output(output: Path, *, create: bool = False) -> Path:
     finally:
         os.close(fd)
     return output
+
+def private_entry(path: Path, *, directory: bool = False) -> None:
+    info = path.lstat()
+    expected_type = stat.S_ISDIR if directory else stat.S_ISREG
+    if not expected_type(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+        raise ValueError("TLS policy entry must be owned and writable only by this user")
 
 def roots(data: bytes) -> dict[str, bytes]:
     result = {}
@@ -76,9 +84,10 @@ def atomic_write(path: Path, data: bytes) -> None:
 def check(output: Path) -> dict[str, str]:
     output = private_output(output)
     bundle, empty = output / "ca-bundle.pem", output / "empty-ca-dir"
-    if output.is_symlink() or bundle.is_symlink() or empty.is_symlink():
-        raise ValueError("TLS policy paths must not be symlinks")
-    if not empty.is_dir() or any(empty.iterdir()):
+    private_entry(bundle)
+    private_entry(output / "manifest.json")
+    private_entry(empty, directory=True)
+    if any(empty.iterdir()):
         raise ValueError("TLS CA directory must remain empty")
     data = bundle.read_bytes()
     if set(roots(data)) & DENIED:
@@ -90,12 +99,17 @@ def check(output: Path) -> dict[str, str]:
     return {"SSL_CERT_FILE": str(bundle), "SSL_CERT_DIR": str(empty), "REQUESTS_CA_BUNDLE": str(bundle)}
 
 def prepare(source: Path, output: Path) -> dict[str, str]:
-    source, output = source.absolute(), output.absolute()
+    source = source.absolute()
+    if not output.is_absolute():
+        raise ValueError("TLS policy directory must be absolute")
     if source.resolve() == (output / "ca-bundle.pem").resolve():
         raise ValueError("TLS policy must be refreshed from its original source")
     output = private_output(output, create=True)
     fd = os.open(output / ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o644)
     with os.fdopen(fd, "w") as lock:
+        info = os.fstat(lock.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+            raise ValueError("TLS policy lock is not private")
         fcntl.flock(lock, fcntl.LOCK_EX)
         original = source.read_bytes()
         certs = roots(original)
