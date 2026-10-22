@@ -73,4 +73,25 @@ class TLSPolicyTests(unittest.TestCase):
         POLICY["prepare"](self.source, self.output)
         with self.assertRaises(ValueError): POLICY["prepare"](self.output / "ca-bundle.pem", self.output)
 
+    def test_rejects_writable_output_and_parent(self):
+        self.output.mkdir(mode=0o700)
+        self.output.chmod(0o777)
+        with self.assertRaises(ValueError): POLICY["prepare"](self.source, self.output)
+        self.output.chmod(0o700)
+        self.root.chmod(0o777)
+        try:
+            with self.assertRaises(ValueError): POLICY["prepare"](self.source, self.output)
+        finally:
+            self.root.chmod(0o700)
+
+    def test_check_rejects_permissions_changed_after_prepare(self):
+        POLICY["prepare"](self.source, self.output)
+        self.output.chmod(0o777)
+        with self.assertRaises(ValueError): POLICY["check"](self.output)
+
+    def test_new_output_is_private(self):
+        POLICY["prepare"](self.source, self.output)
+        self.assertEqual(self.output.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(self.output.stat().st_uid, os.geteuid())
+
 if __name__ == "__main__": unittest.main()

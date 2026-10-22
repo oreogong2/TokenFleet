@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import ssl
+import stat
 import tempfile
 
 DENIED = frozenset({
@@ -20,6 +21,31 @@ DENIED = frozenset({
     "d7a7a0fb5d7e2731d771e9484ebcdef71d5f0c3e0a2948782bc83ee0ea699ef4",
 })
 PEM = re.compile(rb"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", re.S)
+
+def private_output(output: Path, *, create: bool = False) -> Path:
+    """Use only caller-owned output beneath trusted directory ancestors."""
+    output = output.absolute()
+    if output.is_symlink():
+        raise ValueError("TLS policy directory must not be a symlink")
+    # Resolve parent aliases once and use the canonical path thereafter.
+    parent = output.parent.resolve(strict=True)
+    uid = os.geteuid()
+    for ancestor in (parent, *parent.parents):
+        info = ancestor.stat()
+        shared_sticky = info.st_uid == 0 and bool(info.st_mode & stat.S_ISVTX)
+        if info.st_uid not in {0, uid} or (info.st_mode & 0o022 and not shared_sticky):
+            raise ValueError("TLS policy parent is not trusted")
+    output = parent / output.name
+    if create:
+        output.mkdir(mode=0o700, exist_ok=True)
+    fd = os.open(output, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(fd)
+        if info.st_uid != uid or info.st_mode & 0o022:
+            raise ValueError("TLS policy directory must be owned and writable only by this user")
+    finally:
+        os.close(fd)
+    return output
 
 def roots(data: bytes) -> dict[str, bytes]:
     result = {}
@@ -48,6 +74,7 @@ def atomic_write(path: Path, data: bytes) -> None:
             os.unlink(name)
 
 def check(output: Path) -> dict[str, str]:
+    output = private_output(output)
     bundle, empty = output / "ca-bundle.pem", output / "empty-ca-dir"
     if output.is_symlink() or bundle.is_symlink() or empty.is_symlink():
         raise ValueError("TLS policy paths must not be symlinks")
@@ -66,11 +93,7 @@ def prepare(source: Path, output: Path) -> dict[str, str]:
     source, output = source.absolute(), output.absolute()
     if source.resolve() == (output / "ca-bundle.pem").resolve():
         raise ValueError("TLS policy must be refreshed from its original source")
-    if output.is_symlink():
-        raise ValueError("TLS policy directory must not be a symlink")
-    output.mkdir(mode=0o755, parents=True, exist_ok=True)
-    if output.stat().st_mode & 0o022:
-        raise ValueError("TLS policy directory must not be writable by others")
+    output = private_output(output, create=True)
     fd = os.open(output / ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o644)
     with os.fdopen(fd, "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)

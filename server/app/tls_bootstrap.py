@@ -10,5 +10,5 @@ from .tls_policy import activate
 
 def initialize_tls_policy() -> None:
     source = Path(os.environ.get("TOKENFLEET_TLS_SOURCE") or ssl.get_default_verify_paths().openssl_cafile)
-    output = Path(os.environ.get("TOKENFLEET_TLS_OUTPUT") or str(Path(tempfile.gettempdir()) / "tokenfleet-tls-policy"))
+    output = Path(os.environ.get("TOKENFLEET_TLS_OUTPUT") or tempfile.mkdtemp(prefix="tokenfleet-tls-"))
     activate(source, output)
