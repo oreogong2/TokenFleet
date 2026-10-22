@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .tls_bootstrap import initialize_tls_policy as _initialize_tls_policy
+
+_initialize_tls_policy()
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse

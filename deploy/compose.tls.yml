@@ -1,0 +1,13 @@
+# A dedicated mount lives as long as the container and is outside shared /tmp.
+x-tls-environment: &tls-environment
+  TOKENFLEET_TLS_OUTPUT: /run/tokenfleet-tls/policy
+  SSL_CERT_FILE: /run/tokenfleet-tls/policy/ca-bundle.pem
+  SSL_CERT_DIR: /run/tokenfleet-tls/policy/empty-ca-dir
+  REQUESTS_CA_BUNDLE: /run/tokenfleet-tls/policy/ca-bundle.pem
+
+services:
+  app:
+    environment:
+      <<: *tls-environment
+    tmpfs:
+      - /run/tokenfleet-tls:size=4m,mode=0700,uid=10001,gid=10001

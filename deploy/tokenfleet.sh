@@ -19,7 +19,7 @@ require_env() {
 
 compose() {
   docker compose --project-name "$PROJECT_NAME" \
-    --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+    --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$SCRIPT_DIR/compose.tls.yml" "$@"
 }
 
 wait_until_ready() {

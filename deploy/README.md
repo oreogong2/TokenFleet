@@ -55,6 +55,8 @@ cd /opt/tokenfleet
 ./deploy/tokenfleet.sh create-admin 'OPC 社群' admin@example.com
 ```
 
+部署入口会同时加载 `compose.prod.yml` 和 `compose.tls.yml`，为应用建立仅其运行用户可写的独立证书目录。直接调用 Docker Compose 时也必须同时指定这两个文件；证书目录不能放在共享 `/tmp`。详见 [证书策略](../docs/tls-policy.md)。
+
 最后一条命令会在终端无回显地询问管理员密码。密码至少 12 位，不写入环境模板。
 服务使用单 worker，符合当前进程内登录、公开读取、批次领取和设备登记四类限流
 的发布边界。通过 schema 校验的批次领取请求在查询批次 token 前消费独立来源 IP
