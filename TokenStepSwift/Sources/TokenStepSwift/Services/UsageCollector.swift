@@ -213,7 +213,7 @@ enum UsageCollector {
         workBuddyRootURLs: [URL]? = nil,
         codeBuddyRootURLs: [URL]? = nil,
         qoderRootURL: URL? = nil,
-        kimiCodeRootURL: URL? = nil,
+        kimiCodeRootURLs: [URL]? = nil,
         openCodeRootURL: URL? = nil,
         grokBuildRootURL: URL? = nil,
         qwenCodeRootURL: URL? = nil,
@@ -288,7 +288,7 @@ enum UsageCollector {
         }
         let kimi = measured("Kimi") {
             includeExperimentalAgentSources
-                ? collectKimiCodeUsage(rootURL: kimiCodeRootURL, modifiedSince: sourceCutoff)
+                ? collectKimiCodeUsage(rootURLs: kimiCodeRootURLs, modifiedSince: sourceCutoff)
                 : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
         }
         let openCode = measured("OpenCode") {
@@ -437,10 +437,14 @@ enum UsageCollector {
                 homeURL.appendingPathComponent(".codebuddy/projects", isDirectory: true),
                 homeURL.appendingPathComponent(".codebuddy/sessions", isDirectory: true),
                 homeURL.appendingPathComponent(".qoder/projects", isDirectory: true),
-                homeURL.appendingPathComponent(".kimi-code/sessions", isDirectory: true),
                 grokBuildDefaultRoot(homeURL: homeURL).appendingPathComponent("sessions", isDirectory: true),
                 qwenCodeDefaultRoot(homeURL: homeURL).appendingPathComponent("usage", isDirectory: true)
             ].flatMap { jsonlFiles(under: $0, modifiedSince: cutoff) })
+            urls.append(contentsOf: kimiCodeDefaultRoots(homeURL: homeURL).flatMap {
+                jsonlFiles(under: $0.appendingPathComponent("sessions", isDirectory: true), modifiedSince: cutoff)
+                    .filter { $0.lastPathComponent == "wire.jsonl" }
+                    .map { $0.resolvingSymlinksInPath().standardizedFileURL }
+            })
             urls.append(contentsOf: [
                 homeURL.appendingPathComponent(".gemini/antigravity/brain", isDirectory: true),
                 homeURL.appendingPathComponent(".gemini/antigravity-cli/brain", isDirectory: true),
@@ -731,7 +735,7 @@ enum UsageCollector {
         workBuddyRootURLs: [URL]? = nil,
         codeBuddyRootURLs: [URL]? = nil,
         qoderRootURL: URL? = nil,
-        kimiCodeRootURL: URL? = nil,
+        kimiCodeRootURLs: [URL]? = nil,
         openCodeRootURL: URL? = nil,
         grokBuildRootURL: URL? = nil,
         qwenCodeRootURL: URL? = nil,
@@ -789,8 +793,7 @@ enum UsageCollector {
                 ?? CollectorResult(records: [], source: SourceInfo(status: "missing", files: 0, records: 0))
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
         let kimi = includeExperimentalAgentSources
-            ? kimiCodeRootURL.map { collectKimiCodeUsage(rootURL: $0, modifiedSince: nil) }
-                ?? CollectorResult(records: [], source: SourceInfo(status: "missing", files: 0, records: 0))
+            ? collectKimiCodeUsage(rootURLs: kimiCodeRootURLs ?? [], modifiedSince: sourceCutoff)
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
         let openCode = includeExperimentalAgentSources
             ? openCodeRootURL.map { collectOpenCodeUsage(rootURL: $0) }
@@ -2890,27 +2893,49 @@ enum UsageCollector {
         )
     }
 
+    static func kimiCodeDefaultRoots(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [URL] {
+        [
+            homeURL.appendingPathComponent(".kimi-code", isDirectory: true),
+            homeURL.appendingPathComponent(
+                "Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home",
+                isDirectory: true
+            )
+        ]
+    }
+
     private static func collectKimiCodeUsage(
-        rootURL: URL? = nil,
+        rootURLs: [URL]? = nil,
         modifiedSince cutoffDate: Date?
     ) -> CollectorResult {
-        let root = rootURL ?? FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".kimi-code", isDirectory: true)
-        guard FileManager.default.fileExists(atPath: root.path) else {
+        let roots = rootURLs ?? kimiCodeDefaultRoots()
+        let discoveredRoots = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
+        guard !discoveredRoots.isEmpty else {
             return CollectorResult(
                 records: [],
                 source: SourceInfo(status: "missing", files: 0, records: 0)
             )
         }
 
-        let sessions = root.appendingPathComponent("sessions", isDirectory: true)
-        let files = jsonlFiles(under: sessions, modifiedSince: cutoffDate)
-            .filter { $0.lastPathComponent == "wire.jsonl" }
-        let fallbackModel = kimiCodeDefaultModel(rootURL: root)
+        var inputs: [(file: URL, fallbackModel: String)] = []
+        var seenFiles = Set<String>()
+        for root in discoveredRoots {
+            let sessions = root.appendingPathComponent("sessions", isDirectory: true)
+            let rootFiles = jsonlFiles(under: sessions, modifiedSince: cutoffDate)
+                .filter { $0.lastPathComponent == "wire.jsonl" }
+            let fallbackModel = kimiCodeDefaultModel(rootURL: root)
+            for candidate in rootFiles {
+                let file = candidate.resolvingSymlinksInPath().standardizedFileURL
+                guard seenFiles.insert(file.path).inserted else { continue }
+                inputs.append((file, fallbackModel))
+            }
+        }
+
+        let files = inputs.map(\.file)
         var records: [UsageRecord] = []
         var seenEvents = Set<String>()
-
-        for file in files {
+        for (file, fallbackModel) in inputs {
             var fileModel = fallbackModel
             var matchedLineNumber = 0
             try? forEachLine(

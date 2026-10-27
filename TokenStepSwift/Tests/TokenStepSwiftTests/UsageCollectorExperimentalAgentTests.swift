@@ -544,7 +544,7 @@ final class UsageCollectorExperimentalAgentTests: XCTestCase {
         )
 
         let snapshot = UsageCollector.collectUsageSnapshotForTests(
-            kimiCodeRootURL: root,
+            kimiCodeRootURLs: [root],
             includeExperimentalAgentSources: true
         )
 
@@ -562,6 +562,103 @@ final class UsageCollectorExperimentalAgentTests: XCTestCase {
         XCTAssertEqual(work.outputTokens, 30)
         XCTAssertEqual(work.modelRequestCount, 2)
         XCTAssertEqual(work.sources.first?.source, "Kimi")
+    }
+
+    func testKimiWorkDefaultLocationIsCollectedAndTrackedForRefresh() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TokenStepKimiWork-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        let cli = home.appendingPathComponent(".kimi-code", isDirectory: true)
+        try FileManager.default.createDirectory(at: cli, withIntermediateDirectories: true)
+        let work = home.appendingPathComponent(
+            "Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home",
+            isDirectory: true
+        )
+        let event = #"{"type":"context.append_loop_event","event":{"type":"step.end","uuid":"work-step","model":"k2d8-preview","usage":{"inputOther":50,"output":10,"inputCacheCreation":3,"inputCacheRead":40}},"time":1717207200000}"#
+        let wire = try writeKimiWire(root: work, lines: [event])
+        let roots = UsageCollector.kimiCodeDefaultRoots(homeURL: home)
+
+        let oldScope = UsageCollector.collectUsageSnapshotForTests(
+            kimiCodeRootURLs: [cli], includeExperimentalAgentSources: true
+        )
+        XCTAssertEqual(oldScope.sources["Kimi"]?.status, "discovered_no_usage")
+        let snapshot = UsageCollector.collectUsageSnapshotForTests(
+            kimiCodeRootURLs: roots, includeExperimentalAgentSources: true
+        )
+        XCTAssertEqual(snapshot.sources["Kimi"]?.status, "ok")
+        XCTAssertEqual(snapshot.sources["Kimi"]?.files, 1)
+        XCTAssertEqual(snapshot.sources["Kimi"]?.records, 1)
+        XCTAssertEqual(snapshot.totals.tokens, 103)
+        XCTAssertEqual(snapshot.daily.first?.models["k2d8-preview"], 103)
+
+        let before = UsageCollector.collectionState(
+            historyDays: 180, includeExperimentalAgentSources: true, homeURL: home
+        )
+        XCTAssertTrue(before.files.contains { $0.path == wire.resolvingSymlinksInPath().path })
+        try (event + "\n" + event + "\n").write(to: wire, atomically: true, encoding: .utf8)
+        let after = UsageCollector.collectionState(
+            historyDays: 180, includeExperimentalAgentSources: true, homeURL: home
+        )
+        XCTAssertNotEqual(before, after)
+        let disabledState = UsageCollector.collectionState(
+            historyDays: 180, includeExperimentalAgentSources: false, homeURL: home
+        )
+        XCTAssertFalse(disabledState.files.contains { $0.path == wire.resolvingSymlinksInPath().path })
+        let disabled = UsageCollector.collectUsageSnapshotForTests(
+            kimiCodeRootURLs: roots, includeExperimentalAgentSources: false
+        )
+        XCTAssertEqual(disabled.sources["Kimi"]?.status, "disabled")
+        XCTAssertEqual(disabled.totals.tokens, 0)
+    }
+
+    func testKimiRootsKeepOwnModelDefaultsAndDeduplicateSharedEvents() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TokenStepKimiRoots-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        let roots = UsageCollector.kimiCodeDefaultRoots(homeURL: home)
+        let shared = #"{"type":"context.append_loop_event","event":{"type":"step.end","uuid":"shared-step","model":"k2d8-preview","usage":{"inputOther":50,"output":10,"inputCacheCreation":3,"inputCacheRead":40}},"time":1717207200000}"#
+        for (index, root) in roots.enumerated() {
+            let unique = "{\"type\":\"step.end\",\"uuid\":\"root-\(index)\",\"time\":1717207200000,\"usage\":{\"inputOther\":10,\"output\":2}}"
+            _ = try writeKimiWire(root: root, lines: [shared, unique])
+            try "default_model = \"kimi-code/root-\(index)\"\n".write(
+                to: root.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8
+            )
+        }
+        let snapshot = UsageCollector.collectUsageSnapshotForTests(
+            kimiCodeRootURLs: roots, includeExperimentalAgentSources: true
+        )
+        XCTAssertEqual(snapshot.sources["Kimi"]?.files, 2)
+        XCTAssertEqual(snapshot.sources["Kimi"]?.records, 3)
+        XCTAssertEqual(snapshot.totals.tokens, 127)
+        XCTAssertEqual(snapshot.daily.first?.models["k2d8-preview"], 103)
+        XCTAssertEqual(snapshot.daily.first?.models["root-0"], 12)
+        XCTAssertEqual(snapshot.daily.first?.models["root-1"], 12)
+    }
+
+    func testKimiRootAliasesDoNotDuplicateEventsWithoutUUID() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TokenStepKimiAlias-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        let root = home.appendingPathComponent("real", isDirectory: true)
+        _ = try writeKimiWire(root: root, lines: [
+            #"{"type":"step.end","time":1717207200000,"usage":{"inputOther":10,"output":2}}"#
+        ])
+        let alias = home.appendingPathComponent("alias", isDirectory: true)
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: root)
+        let snapshot = UsageCollector.collectUsageSnapshotForTests(
+            kimiCodeRootURLs: [root, alias, root], includeExperimentalAgentSources: true
+        )
+        XCTAssertEqual(snapshot.sources["Kimi"]?.files, 1)
+        XCTAssertEqual(snapshot.sources["Kimi"]?.records, 1)
+        XCTAssertEqual(snapshot.totals.tokens, 12)
+    }
+
+    private func writeKimiWire(root: URL, lines: [String]) throws -> URL {
+        let directory = root.appendingPathComponent("sessions/workspace/conv-test/agents/main", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let wire = directory.appendingPathComponent("wire.jsonl")
+        try (lines.joined(separator: "\n") + "\n").write(to: wire, atomically: true, encoding: .utf8)
+        return wire
     }
 
     func testOpenCodeCollectorReadsV1AndV2UsageAndDeduplicatesTransitionRows() throws {

@@ -76,6 +76,79 @@ private final class HarnessStateStore: TeamSyncStateStoring {
     func delete() throws { state = nil }
 }
 
+private func verifyKimiWorkCollection() throws {
+    let home = FileManager.default.temporaryDirectory
+        .appendingPathComponent("TokenFleetKimiWorkHarness-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: home) }
+    func writeWire(root: URL, lines: [String]) throws -> URL {
+        let directory = root.appendingPathComponent("sessions/workspace/conv-test/agents/main", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("wire.jsonl")
+        try (lines.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+        return file
+    }
+
+    let roots = UsageCollector.kimiCodeDefaultRoots(homeURL: home)
+    let missing = UsageCollector.collectUsageSnapshotForTests(
+        kimiCodeRootURLs: roots, includeExperimentalAgentSources: true
+    )
+    expect(missing.sources["Kimi"]?.status == "missing", "missing Kimi roots should remain missing")
+    let cli = home.appendingPathComponent(".kimi-code", isDirectory: true)
+    try FileManager.default.createDirectory(at: cli, withIntermediateDirectories: true)
+    let work = home.appendingPathComponent(
+        "Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home",
+        isDirectory: true
+    )
+    let shared = #"{"type":"context.append_loop_event","event":{"type":"step.end","uuid":"work-step","model":"k2d8-preview","usage":{"inputOther":50,"output":10,"inputCacheCreation":3,"inputCacheRead":40}},"time":1717207200000}"#
+    let ignored = #"{"type":"usage.record","usage":{"inputOther":50,"output":10,"inputCacheCreation":3,"inputCacheRead":40},"time":1717207200000}"#
+    let wire = try writeWire(root: work, lines: [shared, ignored])
+    let oldScope = UsageCollector.collectUsageSnapshotForTests(
+        kimiCodeRootURLs: [cli], includeExperimentalAgentSources: true
+    )
+    expect(oldScope.sources["Kimi"]?.status == "discovered_no_usage", "CLI-only scope must reproduce missing Work usage")
+    let workOnly = UsageCollector.collectUsageSnapshotForTests(
+        kimiCodeRootURLs: roots, includeExperimentalAgentSources: true
+    )
+    expect(workOnly.sources["Kimi"]?.status == "ok", "Kimi Work default location was not discovered")
+    expect(workOnly.sources["Kimi"]?.files == 1, "Kimi Work wire file count mismatch")
+    expect(workOnly.sources["Kimi"]?.records == 1, "Kimi Work must count only step.end usage")
+    expect(workOnly.totals.tokens == 103, "Kimi Work cache-inclusive token total mismatch")
+    expect(workOnly.daily.first?.models["k2d8-preview"] == 103, "Kimi Work model mismatch")
+
+    let before = UsageCollector.collectionState(historyDays: 180, includeExperimentalAgentSources: true, homeURL: home)
+    expect(before.files.contains { $0.path == wire.resolvingSymlinksInPath().path }, "Kimi Work is absent from automatic refresh detection")
+    let workUnique = #"{"type":"step.end","uuid":"work-unique","time":1717207200000,"usage":{"inputOther":10,"output":2}}"#
+    _ = try writeWire(root: work, lines: [shared, ignored, workUnique])
+    let after = UsageCollector.collectionState(historyDays: 180, includeExperimentalAgentSources: true, homeURL: home)
+    expect(before != after, "Kimi Work appends must trigger automatic collection")
+    let disabledState = UsageCollector.collectionState(historyDays: 180, includeExperimentalAgentSources: false, homeURL: home)
+    expect(!disabledState.files.contains { $0.path == wire.resolvingSymlinksInPath().path }, "disabled experimental sources must not track Kimi Work")
+    let disabled = UsageCollector.collectUsageSnapshotForTests(kimiCodeRootURLs: roots, includeExperimentalAgentSources: false)
+    expect(disabled.sources["Kimi"]?.status == "disabled" && disabled.totals.tokens == 0, "Kimi Work must respect the experimental switch")
+
+    let cliUnique = #"{"type":"step.end","uuid":"cli-unique","time":1717207200000,"usage":{"inputOther":10,"output":2}}"#
+    _ = try writeWire(root: cli, lines: [shared, cliUnique])
+    try "default_model = \"kimi-code/cli-default\"\n".write(to: cli.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+    try "default_model = \"kimi-code/work-default\"\n".write(to: work.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+    let combined = UsageCollector.collectUsageSnapshotForTests(kimiCodeRootURLs: roots, includeExperimentalAgentSources: true)
+    expect(combined.sources["Kimi"]?.files == 2 && combined.sources["Kimi"]?.records == 3, "Kimi roots must deduplicate shared step UUIDs")
+    expect(combined.totals.tokens == 127, "Kimi CLI and Work combined total mismatch")
+    expect(combined.daily.first?.models["cli-default"] == 12, "Kimi CLI fallback model leaked across roots")
+    expect(combined.daily.first?.models["work-default"] == 12, "Kimi Work fallback model leaked across roots")
+
+    let real = home.appendingPathComponent("alias-fixture", isDirectory: true)
+    _ = try writeWire(root: real, lines: [#"{"type":"step.end","time":1717207200000,"usage":{"inputOther":10,"output":2}}"#])
+    let alias = home.appendingPathComponent("alias", isDirectory: true)
+    try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: real)
+    let aliased = UsageCollector.collectUsageSnapshotForTests(kimiCodeRootURLs: [real, alias, real], includeExperimentalAgentSources: true)
+    expect(aliased.sources["Kimi"]?.files == 1 && aliased.sources["Kimi"]?.records == 1, "Kimi aliases duplicated an event without UUID")
+    expect(aliased.totals.tokens == 12, "Kimi alias total mismatch")
+    _ = try writeWire(root: real, lines: [ignored])
+    let noUsage = UsageCollector.collectUsageSnapshotForTests(kimiCodeRootURLs: [real], includeExperimentalAgentSources: true)
+    expect(noUsage.sources["Kimi"]?.status == "missing_valid_rows", "Kimi usage.record alone must not become billable usage")
+    print("Kimi Work discovery, refresh, opt-out, per-root models and deduplication checks passed")
+}
+
 @main
 struct TokenStepLogicHarness {
     static func main() async throws {
@@ -326,13 +399,14 @@ struct TokenStepLogicHarness {
             encoding: .utf8
         )
         let kimiSnapshot = UsageCollector.collectUsageSnapshotForTests(
-            kimiCodeRootURL: kimiRoot,
+            kimiCodeRootURLs: [kimiRoot],
             includeExperimentalAgentSources: true
         )
         expect(kimiSnapshot.sources["Kimi"]?.records == 2, "Kimi step.end dedupe mismatch")
         expect(kimiSnapshot.totals.tokens == 308, "Kimi usage total mismatch")
         expect(kimiSnapshot.daily.first?.tools["Kimi"] == 308, "Kimi tool total mismatch")
         expect(kimiSnapshot.daily.first?.models["kimi-k3"] == 308, "Kimi model alias mismatch")
+        try verifyKimiWorkCollection()
 
         let openCodeRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("TokenStepOpenCodeHarness-\(UUID().uuidString)", isDirectory: true)

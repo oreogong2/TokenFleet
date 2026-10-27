@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-beta.16 - 2026-10-27
+
+- macOS Kimi 实验来源新增 Kimi Work 内嵌运行时根目录 `~/Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home`，读取其中的 `sessions/**/wire.jsonl`，保留 `~/.kimi-code/sessions`。实验开关已开启的用户升级后会自动扫描新增目录，并按原有统计窗口补计历史（默认 180 天）；显式关闭仍保留。
+- Kimi Work 日志变化纳入自动刷新检测；两个目录共存时按实际文件路径和事件 UUID 去重，分别保留各自的模型默认值。仍只累计 `step.end` 用量，不重复累计 `usage.record`。
+- 本次只调整 Mac Kimi 来源和发布身份，Mac 采集器升至 `0.2.5`；Windows 采集器保持 `0.2.0-windows.6`，未增加 Windows Kimi Work 路径支持。无此需求的 Mac 用户及 Windows 用户可继续使用 beta.15；无需重新登记或清理状态。详见 [beta.16 升级说明](docs/UPGRADE-beta.16.md)。
+
 ## 0.1.0-beta.15 - 2026-09-27
 
 - Mac、Windows 检测到换机后持久化上传起始日期；重新连接只上报检测当天及以后日桶，重启、再次连接和 Mac 强制同步均保留限制。同机升级、本地完整历史不受影响，服务器旧历史不删除。

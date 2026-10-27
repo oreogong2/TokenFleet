@@ -12,7 +12,7 @@ TokenFleet 的原则是：能从本地日志中稳定读到 token 数，才进�
 ## 当前实验支持
 
 beta.11 在 macOS 与 Windows 默认开启实验 Agent 来源总开关，升级后对老用户也统一生效；
-用户可随时关闭，新版本中的显式关闭会永久尊重。自动来源最多补计 180 天历史。Windows
+用户可随时关闭，新版本中的显式关闭会永久尊重。自动来源默认统计最近 180 天；macOS 沿用用户原有统计窗口。Windows
 的 ZCode 默认采集且不受该开关控制。Cursor 仍只处理主动导入的 CSV，并使用客户端正常
 历史窗口；Copilot OTel 仍需用户自行开启 exporter，结果会标为 Copilot CLI 或 Copilot Chat。
 
@@ -23,7 +23,7 @@ beta.11 在 macOS 与 Windows 默认开启实验 Agent 来源总开关，升级�
 | WorkBuddy | `~/.workbuddy/projects`、`~/Library/Application Support/WorkBuddyExtension` | 只解析 JSONL 中的 `usage` / `rawUsage`，不读取正文。 |
 | CodeBuddy | `~/.codebuddy/projects`、`~/.codebuddy/sessions` | 按官方 transcript 约定读取 assistant `usage` / `rawUsage`，按会话和响应 ID 去重；已通过协议 fixture，仍待多台真实机器校准。 |
 | Qoder | `~/.qoder/projects/**/transcript/*.jsonl` | 只统计 assistant message 的逐请求 usage，跳过 user 行和 session 汇总；已通过协议 fixture，仍待多台真实机器校准。 |
-| Kimi Code | `~/.kimi-code/sessions/**/wire.jsonl` | 只解析 `step.end` usage；兼容 Anthropic 风格、OpenAI cache details 和新版 camelCase 三种结构。 |
+| Kimi Code / Kimi Work（macOS） | CLI：`~/.kimi-code/sessions/**/wire.jsonl`；Kimi Work：根目录 `~/Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home` 下的 `sessions/**/wire.jsonl` | 同时扫描独立 CLI 与 Kimi Work 内嵌运行时，沿用实验来源开关；只解析 `step.end` usage，兼容 Anthropic 风格、OpenAI cache details 和 camelCase 三种结构。相同实际文件只读取一次，重复事件按 UUID 去重；每个根目录独立读取模型默认值。 |
 | OpenCode | `~/.local/share/opencode/opencode*.db` | 兼容 v1 `message`、v2 `session_message` 和两表并存结构；SQL 只抽取模型、时间与精确 token 字段，不向应用层返回正文。 |
 | Grok Build | `~/.grok/sessions/**/updates.jsonl` | 只统计 `turn_completed.usage` 的逐轮精确 token；支持多模型拆分、cache、reasoning 和完整的服务器成本，不采用 context window 估算。 |
 | Qwen Code | `${QWEN_RUNTIME_DIR:-${QWEN_HOME:-~/.qwen}}/usage/token-usage-YYYY-MM.jsonl` | 读取官方自 v0.19 起写入的逐请求精确 usage；按记录 ID 去重，保留模型、会话和 subagent 来源，不使用曾出现重复问题的 session 汇总作主数据源。 |
