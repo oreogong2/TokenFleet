@@ -2,11 +2,11 @@
 
 状态：当前发布版本为 beta.16（tag `v0.1.0-beta.16`），源码安装固定检出本次 GitHub Release 标注的完整 commit SHA。源码版不会自动更新；服务端与网页独立部署，客户端升级要求以发布说明为准。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
 
-> **beta.16 升级提醒：** 需要统计 Kimi Work 的 Mac 用户可原位升级。新增扫描 Kimi Work 内嵌运行时目录，实验来源已开启时按现有统计窗口最多补计 180 天，显式关闭仍保留。无此需求的 Mac 用户及 Windows 用户可继续使用 beta.15。保留原昵称、状态和凭据，不卸载、不清数据；完整步骤见 [beta.16 升级说明](UPGRADE-beta.16.md)。beta.15 的换机日期限制与 Codex 修复继续保留，已绑定机器后不要降回 beta.14 或更早版本。
+> **beta.16 升级提醒：** 需要统计 Kimi Work 的 Mac 用户可原位升级。新增扫描 Kimi Work 内嵌运行时目录，实验来源已开启时按原有统计窗口补计历史（默认 180 天），显式关闭仍保留。无此需求的 Mac 用户及 Windows 用户可继续使用 beta.15。保留原昵称、状态和凭据，不卸载、不清数据；完整步骤见 [beta.16 升级说明](UPGRADE-beta.16.md)。beta.15 的换机日期限制与 Codex 修复继续保留，已绑定机器后不要降回 beta.14 或更早版本。
 
 > **beta.12 macOS 优化：** 已降低采集 helper 与 sqlite3 查询的系统优先级，并把冷启动后的首次自动采集延后约 105 秒；用户手动“立即刷新”仍会立即执行。老用户在原设备原位升级即可，不要卸载、清数据或重新领取设备码。
 
-> **beta.11 升级提醒：** macOS 与 Windows 的实验 Agent 来源将在升级后默认开启（包括老用户），自动只读扫描新增工具的固定目录，并最多补计 180 天历史；个人总量和排行榜普遍上涨属于正常补计。用户可随时在 macOS“设置 → 统计与采集”或 Windows 本机页／`tokenfleet experimental disable` 关闭，beta.11 及后续版本中的显式关闭会永久尊重。Windows 的 ZCode 继续默认采集且不受开关控制；Cursor 仍需主动导入 Usage CSV，Copilot OTel 仍需自行开启 exporter，结果可能显示为 Copilot CLI 或 Copilot Chat。
+> **beta.11 升级提醒：** macOS 与 Windows 的实验 Agent 来源将在升级后默认开启（包括老用户），自动只读扫描新增工具的固定目录，默认统计最近 180 天；macOS 沿用用户原有统计窗口。个人总量和排行榜普遍上涨属于正常补计。用户可随时在 macOS“设置 → 统计与采集”或 Windows 本机页／`tokenfleet experimental disable` 关闭，beta.11 及后续版本中的显式关闭会永久尊重。Windows 的 ZCode 继续默认采集且不受开关控制；Cursor 仍需主动导入 Usage CSV，Copilot OTel 仍需自行开启 exporter，结果可能显示为 Copilot CLI 或 Copilot Chat。
 
 ## 1. 三套身份不要混在一起
 

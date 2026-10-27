@@ -12,7 +12,7 @@ TokenFleet 的原则是：能从本地日志中稳定读到 token 数，才进�
 ## 当前实验支持
 
 beta.11 在 macOS 与 Windows 默认开启实验 Agent 来源总开关，升级后对老用户也统一生效；
-用户可随时关闭，新版本中的显式关闭会永久尊重。自动来源最多补计 180 天历史。Windows
+用户可随时关闭，新版本中的显式关闭会永久尊重。自动来源默认统计最近 180 天；macOS 沿用用户原有统计窗口。Windows
 的 ZCode 默认采集且不受该开关控制。Cursor 仍只处理主动导入的 CSV，并使用客户端正常
 历史窗口；Copilot OTel 仍需用户自行开启 exporter，结果会标为 Copilot CLI 或 Copilot Chat。
 

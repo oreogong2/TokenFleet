@@ -5,7 +5,7 @@
 ## 本次变化与统计边界
 
 - Kimi 来源保留独立 CLI 的 `~/.kimi-code/sessions/**/wire.jsonl`，并扫描 Kimi Work 根目录 `~/Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home` 下的 `sessions/**/wire.jsonl`。新增目录也参与自动刷新检测。
-- 沿用“实验 Agent 来源”开关。已开启时，升级后按现有统计窗口最多补计 180 天；显式关闭时保持关闭。新增 Kimi 用量可能提高本机及社群汇总。
+- 沿用“实验 Agent 来源”开关。已开启时，升级后按原有统计窗口补计历史（默认 180 天）；显式关闭时保持关闭。新增 Kimi 用量可能提高本机及社群汇总。
 - 只累计 `step.end` 的精确用量，忽略同一流程的 `usage.record`，相同实际文件只读一次，重复事件按 UUID 去重。没有 UUID 的记录仍按文件及行定位；不同文件的无 UUID 副本无法保证去重，请不要复制日志或建立额外统计副本。
 - 两个运行时分别使用各自的模型默认值，仍显示为同一 Kimi 来源。无公开价格的型号继续标为未计价，不把订阅额度或对话字数当作 token 数。
 - Mac 采集器为 `0.2.5`；Windows 采集器仍为 `0.2.0-windows.6`，本次没有增加 Windows Kimi Work 路径支持。其他采集器、上传协议、设备身份及换机日期限制保持原有行为。
