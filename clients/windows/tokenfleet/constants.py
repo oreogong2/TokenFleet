@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-APP_VERSION = "0.1.0-beta.15"
+APP_VERSION = "0.1.0-beta.16"
 COLLECTOR_VERSION = "0.2.0-windows.6"
 SCHEMA_VERSION = 1
 
