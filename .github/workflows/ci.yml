@@ -194,7 +194,8 @@ jobs:
             bash script/build_swiftui_and_run.sh --no-launch
           for binary in \
             TokenStepSwift/dist/TokenFleet.app/Contents/MacOS/TokenFleet \
-            TokenStepSwift/dist/TokenFleet.app/Contents/Helpers/TokenFleetHelper; do
+            TokenStepSwift/dist/TokenFleet.app/Contents/Helpers/TokenFleetHelper \
+            TokenStepSwift/dist/TokenFleet.app/Contents/Helpers/TokenFleetHistoryDecoder; do
             architectures="$(lipo -archs "$binary")"
             [[ " $architectures " == *" arm64 "* ]]
             [[ " $architectures " == *" x86_64 "* ]]
@@ -275,7 +276,8 @@ jobs:
             bash script/build_swiftui_and_run.sh --no-launch
           for binary in \
             TokenStepSwift/dist/TokenFleet.app/Contents/MacOS/TokenFleet \
-            TokenStepSwift/dist/TokenFleet.app/Contents/Helpers/TokenFleetHelper; do
+            TokenStepSwift/dist/TokenFleet.app/Contents/Helpers/TokenFleetHelper \
+            TokenStepSwift/dist/TokenFleet.app/Contents/Helpers/TokenFleetHistoryDecoder; do
             [[ "$(lipo -archs "$binary")" == "x86_64" ]]
           done
           python3 script/verify_release_identity.py \

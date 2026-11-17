@@ -117,8 +117,10 @@ TOKENFLEET_APP_OUTPUT_ROOT="$BUILD_OUTPUT_ROOT" \
 [[ -d "$APP_BUNDLE" ]] || fail "TokenFleet.app was not built"
 [[ -x "$APP_BUNDLE/Contents/MacOS/TokenFleet" ]] || fail "TokenFleet executable is missing"
 [[ -x "$APP_BUNDLE/Contents/Helpers/TokenFleetHelper" ]] || fail "TokenFleetHelper is missing"
+[[ -x "$APP_BUNDLE/Contents/Helpers/TokenFleetHistoryDecoder" ]] || fail "TokenFleetHistoryDecoder is missing"
 [[ -f "$APP_BUNDLE/Contents/Resources/LICENSE.txt" ]] || fail "MIT LICENSE is missing from the bundle"
 [[ -f "$APP_BUNDLE/Contents/Resources/NOTICE.txt" ]] || fail "NOTICE is missing from the bundle"
+[[ -f "$APP_BUNDLE/Contents/Resources/Zstandard-LICENSE.txt" ]] || fail "Zstandard license is missing from the bundle"
 
 assert_equal "TokenFleet" "$(/usr/libexec/PlistBuddy -c 'Print CFBundleName' "$INFO_PLIST")" "CFBundleName"
 assert_equal "TokenFleet" "$(/usr/libexec/PlistBuddy -c 'Print CFBundleDisplayName' "$INFO_PLIST")" "CFBundleDisplayName"

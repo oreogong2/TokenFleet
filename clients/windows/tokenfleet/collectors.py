@@ -19,7 +19,7 @@ try:
 except ImportError:  # pragma: no cover - exercised by the missing-decoder fixture
     zstandard = None  # type: ignore[assignment]
 
-from .codex_history import history_position, prefix_usage, rollout_id, ancestor_path, source_lines, strict_usage, context_sentinel, HistoryReadError
+from .codex_history import history_position, prefix_usage, rollout_id, ancestor_path, history_index, source_lines, strict_usage, context_sentinel, HistoryReadError
 
 from .constants import (
     ACCOUNTING_TIMEZONE,
@@ -276,7 +276,8 @@ def collect_usage(
     diagnostics.scan_paths = experimental_scan_paths(home) if include_experimental else {}
     codex_history_paths = [path for root in ("sessions", "archived_sessions")
                            for path in _jsonl_files(home / ".codex" / root, datetime.min.replace(tzinfo=timezone.utc))]
-    codex_paths = [path for path in codex_history_paths if datetime.fromtimestamp(path.stat().st_mtime, timezone.utc) >= cutoff]
+    # Archives are lookup-only unless a live rollout explicitly references them.
+    codex_paths = _jsonl_files(home / ".codex" / "sessions", cutoff)
     codex_history_paths += [path for root in ("sessions", "archived_sessions")
                             for path in (home / ".codex" / root).rglob("*.jsonl.zst")
                             if path.is_file() and not path.is_symlink()]
@@ -479,9 +480,10 @@ def _json_lines(
                 if path.suffix == '.zst':
                     try:
                         large = json.loads(raw_line)
+                        subtype = large.get('payload', {}).get('type') if isinstance(large.get('payload'), dict) else None
                         if large.get('type') in ('compacted', 'response_item') or (
-                            large.get('type') == 'event_msg' and large.get('payload', {}).get('type') in
-                            ('agent_message', 'agent_reasoning', 'user_message', 'item_completed')):
+                            large.get('type') == 'event_msg' and isinstance(subtype, str) and subtype and
+                            subtype not in ('token_count', 'thread_settings_applied')):
                             continue
                     except (ValueError, AttributeError, TypeError):
                         pass
@@ -727,6 +729,7 @@ def _collect_codex(
     paths: list[Path], diagnostics: CollectionDiagnostics, *, history_paths: list[Path] | None = None
 ) -> tuple[list[UsageRecord], set[tuple[str, str, str]]]:
     scans_by_id: dict[str, CodexScan] = {}
+    history_paths = history_index(history_paths or paths)
     pending = list(paths)
     visited = set()
     history_incomplete = False
@@ -742,7 +745,7 @@ def _collect_codex(
             history_incomplete = True
             continue
         if scan.history_base is not None:
-            ancestor = ancestor_path(scan.history_base[0], history_paths or paths)
+            ancestor = ancestor_path(scan.history_base[0], history_paths)
             if ancestor is None:
                 history_incomplete = True
             else:
@@ -790,7 +793,7 @@ def _collect_codex(
                 parent_anchor = max(candidates, key=lambda pair: pair[0])[1]
         baseline = None
         if scan.history_base is not None or scan.invalid_history_base:
-            baseline = _normalize_codex(prefix_usage(scan.history_base, history_paths or paths))
+            baseline = _normalize_codex(prefix_usage(scan.history_base, history_paths))
             if baseline is None:
                 blocked = {(_day(e.timestamp), "Codex", e.model) for e in scan.events if _day(e.timestamp)}
                 incomplete_buckets.update(blocked)
@@ -849,10 +852,6 @@ def _codex_records(
     start = 0
     if history_baseline is not None:
         previous = history_baseline
-        # Explicit zero corrections must survive aggregation and replace old uploads.
-        for event in scan.events[:1]:
-            if _day(event.timestamp):
-                records.append(UsageRecord(_day(event.timestamp), "Codex", event.model, UsageCounts()))
     elif scan.inherited_event_count is not None:
         start = scan.inherited_event_count
         if start:
@@ -863,6 +862,7 @@ def _codex_records(
                 previous = parent_anchor
                 start = index + 1
                 break
+    corrected_keys = set()
     for index in range(start, len(scan.events)):
         event = scan.events[index]
         current = event.cumulative
@@ -881,6 +881,12 @@ def _codex_records(
             skipped += 1
             continue
         if previous is not None and current.total == previous.total:
+            key = (day, event.model)
+            if history_baseline is not None and not _is_context_sentinel(event) and key not in corrected_keys:
+                # The accounting event may follow context-only notifications on
+                # another day/model. Correct the verified zero's actual bucket.
+                records.append(UsageRecord(day, "Codex", event.model, UsageCounts()))
+                corrected_keys.add(key)
             continue
         is_reset = False
         if previous is not None and current.total < previous.total:

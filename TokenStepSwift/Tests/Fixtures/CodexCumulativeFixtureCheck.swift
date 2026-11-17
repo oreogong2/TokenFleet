@@ -71,7 +71,10 @@ struct CodexCumulativeFixtureCheck {
             return compressed
         }
         try withFixtureHome("history-compressed-large-nonaccounting") { home in
-            let (first, base) = try segment(home, owner, [jsonLine(["type":"compacted", "payload":["replacement_history":String(repeating:"x",count:2_200_000)]]), usage(100)])
+            let (first, base) = try segment(home, owner, [
+                jsonLine(["type":"compacted", "payload":["replacement_history":String(repeating:"x",count:2_200_000)]]),
+                jsonLine(["type":"event_msg", "payload":["type":"exec_command_end", "aggregated_output":String(repeating:"y",count:2_200_000)]]),
+                usage(100), jsonLine(["type":"event_msg", "payload":["type":"token_count", "info":["last_token_usage":NSNull()]]])])
             _ = try segment(home, next, [usage(108)], base: base)
             _ = try compressedCopy(first); try FileManager.default.removeItem(at: first)
             let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home)
@@ -192,6 +195,64 @@ struct CodexCumulativeFixtureCheck {
                 }
                 try expectEqual(row.totalTokens, 0, "zero correction total")
                 guard row.breakdownComplete else { throw FixtureFailure("zero correction must be exact") }
+            }
+        }
+        try withFixtureHome("history-zero-after-notification") { home in
+            let (_, base) = try segment(home, owner, [usage(100, day: "2026-11-15")])
+            let notification = jsonLine(["type":"event_msg", "timestamp":"2026-11-16T12:00:00Z", "payload":["type":"token_count", "info":["model_context_window":64]]])
+            let (child, childBase) = try segment(home, next, [notification, usage(100)], base: base)
+            let cache = home.appendingPathComponent("cache.sqlite3")
+            for cached in [nil, cache] {
+                let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cached)
+                guard let row = snapshot.daily.first(where: { $0.date == "2026-11-17" })?.atomicUsage?.first,
+                      row.totalTokens == 0, row.breakdownComplete,
+                      !snapshot.daily.contains(where: { $0.date == "2026-11-16" }) else {
+                    throw FixtureFailure("zero correction must follow actual usage date, not a prior notification")
+                }
+            }
+            try appendLine(try numbered(usage(100, day: "2026-11-18"), childBase["end_ordinal_exclusive"] as! Int), to: child)
+            for cached in [cache, nil, home.appendingPathComponent("rebuilt.sqlite3")] {
+                let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cached)
+                for day in ["2026-11-17", "2026-11-18"] {
+                    guard let row = snapshot.daily.first(where: { $0.date == day })?.atomicUsage?.first,
+                          row.totalTokens == 0, row.breakdownComplete else { throw FixtureFailure("zero correction append/rebuild parity") }
+                }
+            }
+        }
+        try withFixtureHome("history-archive-lookup-only") { home in
+            let (first, base) = try segment(home, owner, [usage(100)])
+            _ = try segment(home, next, [usage(108)], base: base)
+            let (unrelated, _) = try segment(home, third, [usage(9999)])
+            let archive = home.appendingPathComponent(".codex/archived_sessions")
+            try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+            let archived = archive.appendingPathComponent(first.lastPathComponent)
+            try FileManager.default.moveItem(at: first, to: archived)
+            try FileManager.default.moveItem(at: unrelated, to: archive.appendingPathComponent(unrelated.lastPathComponent))
+            let cache = home.appendingPathComponent("cache.sqlite3")
+            for compressed in [false, true] {
+                if compressed { _ = try compressedCopy(archived); try FileManager.default.removeItem(at: archived) }
+                for cached in [nil, cache] {
+                    let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cached)
+                    try expectEqual(snapshot.totals.tokens, 108, "only referenced archives contribute")
+                    try expectEqual(snapshot.sources["Codex"]?.files, 2, "unrelated archive stays outside source set")
+                }
+                let checkpoint = UsageCollector.collectionState(historyDays: 7, includeExperimentalAgentSources: false, homeURL: home)
+                guard checkpoint.files.contains(where: { $0.path == (compressed ? archived.appendingPathExtension("zst") : archived).path }) else { throw FixtureFailure("archive changes must wake outer checkpoint") }
+            }
+        }
+        try withFixtureHome("history-null-root") { home in
+            let (first, _) = try segment(home, owner, [])
+            var rows = try String(contentsOf: first, encoding: .utf8).split(separator: "\n").map { try JSONSerialization.jsonObject(with: Data($0.utf8)) as! [String: Any] }
+            var payload = rows[0]["payload"] as! [String: Any]
+            payload["history_base"] = NSNull(); rows[0]["payload"] = payload
+            try (rows.map(jsonLine).joined(separator: "\n") + "\n").write(to: first, atomically: true, encoding: .utf8)
+            let base: [String: Any] = ["thread_id":owner, "end_ordinal_exclusive":rows.count, "end_byte_offset":try Data(contentsOf: first).count]
+            _ = try segment(home, next, [usage(8)], base: base)
+            _ = try compressedCopy(first); try FileManager.default.removeItem(at: first)
+            for cached in [nil, home.appendingPathComponent("cache.sqlite3")] {
+                let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cached)
+                try expectEqual(snapshot.totals.tokens, 8, "null root base means no inherited usage")
+                guard snapshot.daily.flatMap({ $0.atomicUsage ?? [] }).allSatisfy(\.breakdownComplete) else { throw FixtureFailure("null root is valid") }
             }
         }
         try withFixtureHome("history-missing-ancestor") { home in

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tokenfleet.collectors import CollectionDiagnostics, _collect_codex, _aggregate
+from tokenfleet.collectors import CollectionDiagnostics, _collect_codex, _aggregate, collect_usage
 from tokenfleet.codex_history import history_position, prefix_usage
 
 ROOT = '00000000-0000-4000-8000-000000000001'
@@ -186,6 +186,62 @@ class CodexHistorySegmentsTests(unittest.TestCase):
         diag=CollectionDiagnostics();records,incomplete=_collect_codex([child],diag,history_paths=[child,compressed])
         self.assertFalse(incomplete)
         self.assertEqual(sum(r.counts.total for r in records),208)
+
+    def test_archives_are_only_counted_when_referenced(self):
+        import zstandard
+        sessions = self.root / '.codex' / 'sessions'
+        archives = self.root / '.codex' / 'archived_sessions'
+        sessions.mkdir(parents=True); archives.mkdir(parents=True)
+        old, base = self.write(ROOT, [event(100)])
+        child, _ = self.write(NEXT, [event(108)], base)
+        unrelated, _ = self.write(THIRD, [event(9999)], owner=THIRD)
+        archived = archives / old.name
+        old.rename(archived); child.rename(sessions / child.name)
+        unrelated.rename(archives / unrelated.name)
+        for compressed in (False, True):
+            if compressed:
+                archived.with_suffix('.jsonl.zst').write_bytes(zstandard.ZstdCompressor().compress(archived.read_bytes()))
+                archived.unlink()
+            result = collect_usage(self.root, history_days=1830)
+            self.assertEqual(sum(b['input_tokens'] + b['cache_read_tokens'] for b in result.buckets), 108)
+            self.assertEqual(result.diagnostics.source_files['Codex'], 2)
+
+    def test_zero_corrections_follow_usage_dates_after_notifications(self):
+        old, base = self.write(ROOT, [event(100, '2026-11-15')])
+        notification = {'type':'event_msg','timestamp':'2026-11-16T12:00:00Z',
+                        'payload':{'type':'token_count','info':{'model_context_window':64}}}
+        child, _ = self.write(NEXT, [notification, event(100), event(100, '2026-11-18')], base)
+        buckets, _ = self.collect([old, child])
+        self.assertEqual({b['date']:b['input_tokens'] + b['cache_read_tokens'] for b in buckets},
+                         {'2026-11-15':100, '2026-11-17':0, '2026-11-18':0})
+
+    def test_null_root_and_multiframe_prefix(self):
+        import zstandard
+        old, _ = self.write(ROOT, [])
+        rows = [json.loads(line) for line in old.read_text().splitlines()]
+        rows[0]['payload']['history_base'] = None
+        raw = ''.join(json.dumps(row) + '\n' for row in rows).encode()
+        old.write_bytes(raw)
+        base = {'thread_id':ROOT, 'end_ordinal_exclusive':len(rows), 'end_byte_offset':len(raw)}
+        self.assertEqual(prefix_usage(history_position(base), [old])['total_tokens'], 0)
+        split = raw.index(b'\n') + 1
+        compressed = old.with_suffix('.jsonl.zst')
+        compressed.write_bytes(zstandard.ZstdCompressor().compress(raw[:split]) + zstandard.ZstdCompressor().compress(raw[split:]))
+        old.unlink()
+        self.assertEqual(prefix_usage(history_position(base), [compressed])['total_tokens'], 0)
+
+    def test_large_nonaccounting_event_and_last_null_do_not_quarantine(self):
+        import zstandard
+        old, base = self.write(ROOT, [
+            {'type':'event_msg','payload':{'type':'exec_command_end','aggregated_output':'x'*2_200_000}},
+            event(100), {'type':'event_msg','payload':{'type':'token_count','info':{'last_token_usage':None}}}])
+        child, _ = self.write(NEXT, [event(108)], base)
+        compressed = old.with_suffix('.jsonl.zst')
+        compressed.write_bytes(zstandard.ZstdCompressor().compress(old.read_bytes())); old.unlink()
+        diag = CollectionDiagnostics()
+        records, incomplete = _collect_codex([child], diag, history_paths=[child, compressed])
+        self.assertFalse(incomplete)
+        self.assertEqual(sum(r.counts.total for r in records), 108)
 
 
 if __name__ == '__main__':

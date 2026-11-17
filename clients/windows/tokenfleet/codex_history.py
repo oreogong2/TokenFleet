@@ -49,8 +49,18 @@ def context_sentinel(info):
     return last is None or (strict_usage(last) is not None and last['total_tokens'] == 0)
 
 
+def history_index(paths):
+    result = {}
+    for path in paths:
+        identifier = rollout_id(path)
+        if identifier is not None:
+            result.setdefault(identifier, []).append(path)
+    return result
+
+
 def ancestor_path(identifier, paths):
-    candidates = {p.resolve() for p in paths if not p.is_symlink() and rollout_id(p) == identifier}
+    matches = paths.get(identifier, ()) if isinstance(paths, dict) else (p for p in paths if rollout_id(p) == identifier)
+    candidates = {p.resolve() for p in matches if not p.is_symlink()}
     candidates = {p for p in candidates if p.suffix != '.zst' or p.with_suffix('') not in candidates}
     return next(iter(candidates)) if len(candidates) == 1 else None
 
@@ -65,10 +75,13 @@ def source_lines(path):
         import zstandard
         before = path.stat()
         decoder = zstandard.ZstdDecompressor(max_window_size=128 * 1024 * 1024).decompressobj()
-        pending = b''
+        pending = bytearray()
+        searched = 0
         total = 0
         deadline = time.monotonic() + 30
         with path.open('rb') as source:
+            # Keep compressed chunks small to bound one decompressobj allocation
+            # for highly compressible input. Search only newly decoded bytes.
             while chunk := source.read(256):
                 while chunk:
                     if decoder.eof:
@@ -78,12 +91,17 @@ def source_lines(path):
                     total += len(decoded)
                     if total > 8 * 1024**3 or time.monotonic() > deadline:
                         raise HistoryReadError('compressed history exceeds limits')
-                    pending += decoded
-                    while b'\n' in pending:
-                        line, pending = pending.split(b'\n', 1)
-                        if len(line) > 64 * 1024**2:
+                    pending.extend(decoded)
+                    consumed = 0
+                    while (end := pending.find(b'\n', searched)) >= 0:
+                        if end - consumed > 64 * 1024**2:
                             raise HistoryReadError('oversized compressed history line')
-                        yield line + b'\n'
+                        yield bytes(pending[consumed:end + 1])
+                        consumed = end + 1
+                        searched = consumed
+                    if consumed:
+                        del pending[:consumed]
+                    searched = len(pending)
                     if len(pending) > 64 * 1024**2:
                         raise HistoryReadError('oversized compressed history line')
         after = path.stat()
@@ -184,7 +202,7 @@ def prefix_usage(position, paths: list[Path], visited=frozenset()):
                     if isinstance(info, dict) and isinstance(info.get('last_token_usage'), dict):
                         return None
                 if obj.get("type") == "session_meta":
-                    if "history_base" in payload:
+                    if payload.get("history_base") is not None:
                         return prefix_usage(history_position(payload["history_base"]), paths, visited | {position})
                     return {"input_tokens": 0, "output_tokens": 0, "cached_input_tokens": 0, "total_tokens": 0}
     except (OSError, ValueError, TypeError, AttributeError):
@@ -203,7 +221,7 @@ def _compressed_prefix_tail(path, offset):
         before = path.stat()
         tail = bytearray()
         remaining = offset
-        with path.open('rb') as source, zstandard.ZstdDecompressor(max_window_size=128 * 1024 * 1024).stream_reader(source) as reader:
+        with path.open('rb') as source, zstandard.ZstdDecompressor(max_window_size=128 * 1024 * 1024).stream_reader(source, read_across_frames=True) as reader:
             while remaining:
                 chunk = reader.read(min(remaining, 65536))
                 if not chunk:

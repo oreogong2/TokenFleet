@@ -407,7 +407,7 @@ enum UsageCollector {
         now: Date = Date()
     ) -> UsageCollectionState {
         let cutoff = sourceFileCutoffDate(historyDays: historyDays)
-        var urls = defaultCodexSessionRoots(homeURL: homeURL)
+        var urls = codexHistoryRoots(defaultCodexSessionRoots(homeURL: homeURL))
             // Ancestor restoration/changes must wake the outer checkpoint even
             // when the active child is unchanged or the parent is outside the window.
             .flatMap { jsonlFiles(under: $0, includeCompressed: true) }
@@ -1519,6 +1519,7 @@ enum UsageCollector {
         if cursor.hasCumulativeSchema {
             var previous = cursor.previousCumulative
             var epoch = cursor.epoch
+            var correctedKeys = Set(records.filter { $0.usage.accountingCorrection == true }.map { $0.date + ":" + $0.model })
             for index in tail.events.indices {
                 let event = tail.events[index]
                 guard event.cumulativePresent else {
@@ -1537,6 +1538,14 @@ enum UsageCollector {
                 let isReset: Bool
                 if let previous {
                     if current.totalTokens == previous.totalTokens {
+                        if cursor.historyBase != nil, isCodexBreakdownConsistent(current, total: current.totalTokens),
+                           !isCodexContextWindowSentinel(event), correctedKeys.insert(day + ":" + event.model).inserted {
+                            var zero = TokenUsageCounts()
+                            zero.accountingCorrection = true
+                            records.append(codexUsageRecord(scan: scan, event: event, day: day, usage: zero,
+                                requestID: "codex:correction:" + codexRequestSessionID(scan.canonicalSessionID, path: scan.sourcePath) + ":" + day + ":" + event.model,
+                                dataSource: "codex_verified_history_correction"))
+                        }
                         diagnostics.duplicateRecords += 1
                         continue
                     }
@@ -1746,11 +1755,12 @@ enum UsageCollector {
 
     // HistoryPosition.thread_id is the immutable physical rollout ID, not
     // SessionMeta.id. Never infer a baseline from the latest logical-thread tail.
+    private static let codexRolloutPattern = try! NSRegularExpression(pattern:
+        "^rollout-[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}-([0-9a-fA-F-]{36})(?:_([0-9a-fA-F-]{36}))?\\.jsonl$")
+
     private static func codexRolloutID(_ path: URL) -> String? {
         let name = path.pathExtension == "zst" ? path.deletingPathExtension().lastPathComponent : path.lastPathComponent
-        let pattern = "^rollout-[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}-([0-9a-fA-F-]{36})(?:_([0-9a-fA-F-]{36}))?\\.jsonl$"
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)),
+        guard let match = codexRolloutPattern.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)),
               let ownerRange = Range(match.range(at: 1), in: name),
               UUID(uuidString: String(name[ownerRange])) != nil else { return nil }
         let range = match.range(at: 2).location == NSNotFound ? match.range(at: 1) : match.range(at: 2)
@@ -1765,15 +1775,13 @@ enum UsageCollector {
     private static func codexHistoryPosition(_ raw: Any?) -> CodexHistoryPosition? {
         guard let raw = raw as? [String: Any],
               let value = raw["thread_id"] as? String, let id = UUID(uuidString: value),
-              let ordinal = raw["end_ordinal_exclusive"] as? NSNumber,
-              let offset = raw["end_byte_offset"] as? NSNumber,
-              CFGetTypeID(ordinal) != CFBooleanGetTypeID(), CFGetTypeID(offset) != CFBooleanGetTypeID(),
-              ordinal.doubleValue == Double(ordinal.int64Value), offset.doubleValue == Double(offset.int64Value),
-              ordinal.int64Value > 0, offset.int64Value > 0 else { return nil }
-        return CodexHistoryPosition(rolloutID: id.uuidString.lowercased(), ordinal: ordinal.int64Value, offset: UInt64(offset.int64Value))
+              let ordinal = strictCodexHistoryInteger(raw["end_ordinal_exclusive"]),
+              let offset = strictCodexHistoryInteger(raw["end_byte_offset"]),
+              ordinal > 0, offset > 0 else { return nil }
+        return CodexHistoryPosition(rolloutID: id.uuidString.lowercased(), ordinal: Int64(ordinal), offset: UInt64(offset))
     }
 
-    private static func resolveCodexHistory(_ scan: CodexSessionScan, paths: [URL]) -> CodexSessionScan {
+    private static func resolveCodexHistory(_ scan: CodexSessionScan, paths: [String: [URL]]) -> CodexSessionScan {
         guard let position = scan.historyBase else { return scan }
         var result = scan
         result.historyBaseline = codexPrefixUsage(position, paths: paths, visited: [])
@@ -1812,14 +1820,10 @@ enum UsageCollector {
     }
 
     private static func codexPrefixUsage(
-        _ position: CodexHistoryPosition, paths: [URL], visited: Set<CodexHistoryPosition>
+        _ position: CodexHistoryPosition, paths: [String: [URL]], visited: Set<CodexHistoryPosition>
     ) -> TokenUsageCounts? {
         guard visited.count < 32, !visited.contains(position) else { return nil }
-        var matches = Set(paths.filter { codexRolloutID($0) == position.rolloutID &&
-            (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true
-        }.map { $0.resolvingSymlinksInPath() })
-        matches = Set(matches.filter { $0.pathExtension != "zst" || !matches.contains($0.deletingPathExtension()) })
-        guard matches.count == 1, let path = matches.first else { return nil }
+        guard let path = codexAncestor(position.rolloutID, paths: paths) else { return nil }
         let compressed = path.pathExtension == "zst"
         let tail = compressed ? codexCompressedPrefixTail(path, offset: position.offset) : nil
         let handle = compressed ? nil : try? FileHandle(forReadingFrom: path)
@@ -1856,9 +1860,8 @@ enum UsageCollector {
                 } else { line = pending; pending = Data() }
                 guard line.count <= 2 * 1024 * 1024,
                       let object = try JSONSerialization.jsonObject(with: line) as? [String: Any],
-                      let ordinal = object["ordinal"] as? NSNumber,
-                      CFGetTypeID(ordinal) != CFBooleanGetTypeID(),
-                      ordinal.doubleValue == Double(expected) else { return nil }
+                      let ordinal = strictCodexHistoryInteger(object["ordinal"]),
+                      Int64(ordinal) == expected else { return nil }
                 expected -= 1
                 let payload = object["payload"] as? [String: Any] ?? [:]
                 if object["type"] as? String == "event_msg", payload["type"] as? String == "token_count",
@@ -1875,7 +1878,7 @@ enum UsageCollector {
                     return nil // A per-request count cannot establish a cumulative baseline.
                 }
                 if object["type"] as? String == "session_meta" {
-                    if payload.keys.contains("history_base") {
+                    if payload["history_base"] != nil && !(payload["history_base"] is NSNull) {
                         guard let base = codexHistoryPosition(payload["history_base"]) else { return nil }
                         return codexPrefixUsage(base, paths: paths, visited: visited.union([position]))
                     }
@@ -1918,8 +1921,8 @@ enum UsageCollector {
         return strictCodexHistoryUsage(last)?.totalTokens == 0
     }
 
-    private static func codexAncestor(_ id: String, paths: [URL]) -> URL? {
-        var matches = Set(paths.filter { codexRolloutID($0) == id &&
+    private static func codexAncestor(_ id: String, paths: [String: [URL]]) -> URL? {
+        var matches = Set((paths[id] ?? []).filter {
             (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true
         }.map { $0.resolvingSymlinksInPath() })
         matches = Set(matches.filter { $0.pathExtension != "zst" || !matches.contains($0.deletingPathExtension()) })
@@ -1937,8 +1940,13 @@ enum UsageCollector {
         } else {
             guard let handle = try? FileHandle(forReadingFrom: path) else { return nil }
             defer { try? handle.close() }
-            guard let first = try? handle.read(upToCount: 2 * 1024 * 1024) else { return nil }
-            data = first
+            var header = Data()
+            while header.count <= 2 * 1024 * 1024 {
+                guard let chunk = try? handle.read(upToCount: 4096), !chunk.isEmpty else { return nil }
+                header.append(chunk)
+                if header.contains(10) { break }
+            }
+            data = header
         }
         guard let newline = data.firstIndex(of: 10), newline <= 2 * 1024 * 1024,
               let object = try? JSONSerialization.jsonObject(with: data[..<newline]) as? [String: Any],
@@ -1946,8 +1954,17 @@ enum UsageCollector {
         return object["payload"] as? [String: Any]
     }
 
-    private static func codexSourceInventory(roots: [URL], cutoff: Date?) -> (paths: [URL], history: [URL], incomplete: Bool) {
-        let history = roots.flatMap { jsonlFiles(under: $0, includeCompressed: true) }
+    private static func codexHistoryRoots(_ roots: [URL]) -> [URL] {
+        // Keep archives lookup-only: an explicit live reference is required.
+        roots + roots.filter { $0.lastPathComponent == "sessions" && $0.deletingLastPathComponent().lastPathComponent == ".codex" }
+            .map { $0.deletingLastPathComponent().appendingPathComponent("archived_sessions", isDirectory: true) }
+    }
+
+    private static func codexSourceInventory(roots: [URL], cutoff: Date?) -> (paths: [URL], history: [String: [URL]], incomplete: Bool) {
+        var history = [String: [URL]]()
+        for path in codexHistoryRoots(roots).flatMap({ jsonlFiles(under: $0, includeCompressed: true) }) {
+            if let id = codexRolloutID(path) { history[id, default: []].append(path) }
+        }
         let initial = roots.flatMap { jsonlFiles(under: $0, modifiedSince: cutoff) }
         var pending = initial.map { ($0, 0) }, included = Set<URL>(), incomplete = false
         var ancestry = [URL: URL]()
@@ -2054,7 +2071,7 @@ enum UsageCollector {
                                 corruptCompressed = true; return
                             }
                             if checked.totalTokens == 0 { return }
-                        } else if info["last_token_usage"] == nil { return }
+                        } else if info["last_token_usage"] == nil || info["last_token_usage"] is NSNull { return }
                     }
                     let cumulative = (info["total_token_usage"] as? [String: Any]).map(normalizeCodexUsage)
                     let last = (info["last_token_usage"] as? [String: Any]).map(normalizeCodexUsage)
@@ -2244,13 +2261,6 @@ enum UsageCollector {
         if let baseline = scan.historyBaseline {
             previous = baseline
             diagnostics.inheritedTokens = baseline.totalTokens
-            if let event = scan.events.first, let day = dayString(for: event) {
-                var zero = TokenUsageCounts()
-                zero.accountingCorrection = true
-                records.append(codexUsageRecord(scan: scan, event: event, day: day, usage: zero,
-                    requestID: "codex:correction:" + codexRequestSessionID(scan.canonicalSessionID, path: scan.sourcePath),
-                    dataSource: "codex_verified_history_correction"))
-            }
         } else if let inheritedCount = scan.inheritedEventCount {
             // Official Copied persistence appends this thread's settings event
             // after the inherited items in the same initial append.
@@ -2273,6 +2283,7 @@ enum UsageCollector {
         }
 
         var epoch = 0
+        var correctedKeys = Set<String>()
         for index in startIndex..<scan.events.count {
             let event = scan.events[index]
             guard event.cumulativePresent else {
@@ -2291,6 +2302,14 @@ enum UsageCollector {
             let isReset: Bool
             if let previous {
                 if current.totalTokens == previous.totalTokens {
+                    if scan.historyBaseline != nil, isCodexBreakdownConsistent(current, total: current.totalTokens),
+                       !isCodexContextWindowSentinel(event), correctedKeys.insert(day + ":" + event.model).inserted {
+                        var zero = TokenUsageCounts()
+                        zero.accountingCorrection = true
+                        records.append(codexUsageRecord(scan: scan, event: event, day: day, usage: zero,
+                            requestID: "codex:correction:" + codexRequestSessionID(scan.canonicalSessionID, path: scan.sourcePath) + ":" + day + ":" + event.model,
+                            dataSource: "codex_verified_history_correction"))
+                    }
                     diagnostics.duplicateRecords += 1
                     continue
                 }
@@ -6153,7 +6172,7 @@ enum UsageCollector {
                 let kind = object["type"] as? String ?? ""
                 let subtype = (object["payload"] as? [String: Any])?["type"] as? String ?? ""
                 if ["compacted", "response_item"].contains(kind) ||
-                    (kind == "event_msg" && ["agent_message", "agent_reasoning", "user_message", "item_completed"].contains(subtype)) { return }
+                    (kind == "event_msg" && !subtype.isEmpty && !["token_count", "thread_settings_applied"].contains(subtype)) { return }
             }
             if onSkippedLine != nil, lineData.count > maxRelevantLineBytes { onSkippedLine?(); return }
             if lineMatches(lineData, markers: markerData), String(data: lineData, encoding: .utf8) == nil { onSkippedLine?(); return }
@@ -6166,6 +6185,7 @@ enum UsageCollector {
             body(line)
         }
 
+        var searchedBytes = 0
         while try autoreleasepool(invoking: { () throws -> Bool in
             guard let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty else {
                 return false
@@ -6174,7 +6194,7 @@ enum UsageCollector {
 
             var consumedEnd = buffer.startIndex
             var lineStart = buffer.startIndex
-            var searchRange = buffer.startIndex..<buffer.endIndex
+            var searchRange = buffer.index(buffer.startIndex, offsetBy: min(searchedBytes, buffer.count))..<buffer.endIndex
             while let range = buffer.range(of: newline, options: [], in: searchRange) {
                 let lineEnd = range.lowerBound
                 if discardingOversizedLine {
@@ -6191,11 +6211,13 @@ enum UsageCollector {
             if consumedEnd > buffer.startIndex {
                 buffer.removeSubrange(buffer.startIndex..<consumedEnd)
             }
+            searchedBytes = buffer.count
 
             if buffer.count > (decoder == nil ? maxRelevantLineBytes : 64 * 1024 * 1024) {
                 onSkippedLine?()
                 discardingOversizedLine = true
                 buffer.removeAll(keepingCapacity: true)
+                searchedBytes = 0
             }
             return true
         }) {}

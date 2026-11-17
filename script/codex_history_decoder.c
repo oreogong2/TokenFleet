@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
             size_t result = ZSTD_decompressStream(stream, &out, &in);
             if (ZSTD_isError(result)) goto done;
             last_result = result;
-            need_input = in.pos == in.size && out.pos < out.size;
+            need_input = in.pos == in.size && (out.pos < out.size || result == 0);
             if (!need_input && old_pos == in.pos && out.pos == 0) goto done;
             if (out.pos) last_byte = output[out.pos - 1];
             if (metadata) {
