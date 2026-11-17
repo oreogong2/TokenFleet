@@ -267,6 +267,10 @@ tokenfleet_source_sign_stable_app() {
   local app="$1" identity_hash="$2" keychain="$3"
   local helper="$app/Contents/Helpers/TokenFleetHelper"
   [[ -d "$app" && ! -L "$app" && -x "$helper" ]] || return 1
+  if [[ -f "$app/Contents/Helpers/TokenFleetHistoryDecoder" ]]; then
+    tokenfleet_source_sign_one "$app/Contents/Helpers/TokenFleetHistoryDecoder" \
+      "$TOKENFLEET_SOURCE_BUNDLE_ID.history-decoder" "$identity_hash" "$keychain"
+  fi
   tokenfleet_source_sign_one \
     "$helper" \
     "$TOKENFLEET_SOURCE_BUNDLE_ID.helper" \
@@ -283,6 +287,10 @@ tokenfleet_source_sign_adhoc_app() {
   local app="$1"
   local helper="$app/Contents/Helpers/TokenFleetHelper"
   [[ -d "$app" && ! -L "$app" && -x "$helper" ]] || return 1
+  if [[ -f "$app/Contents/Helpers/TokenFleetHistoryDecoder" ]]; then
+    /usr/bin/codesign --force --timestamp=none \
+      --identifier "$TOKENFLEET_SOURCE_BUNDLE_ID.history-decoder" --sign - "$app/Contents/Helpers/TokenFleetHistoryDecoder"
+  fi
   /usr/bin/codesign --force --timestamp=none \
     --identifier "$TOKENFLEET_SOURCE_BUNDLE_ID.helper" --sign - "$helper"
   /usr/bin/codesign --force --timestamp=none \

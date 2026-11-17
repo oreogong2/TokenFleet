@@ -46,11 +46,12 @@ EMPTY_MODULEMAP="$OVERLAY_DIR/empty.modulemap"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 EXECUTABLE="$BUILD_DIR/$PRODUCT_NAME"
 HELPER_EXECUTABLE="$BUILD_DIR/$HELPER_NAME"
+HISTORY_DECODER="$BUILD_DIR/TokenFleetHistoryDecoder"
 ARCHITECTURES_RAW="${TOKENFLEET_ARCHITECTURES:-arm64 x86_64}"
 read -r -a ARCHITECTURES <<<"$ARCHITECTURES_RAW"
 ICON_GENERATOR="$ROOT_DIR/script/generate_tokenfleet_icon.swift"
 ICON_HOST_ARCH="$(/usr/bin/uname -m)"
-VERSION="${TOKENFLEET_VERSION:-0.1.0-beta.16}"
+VERSION="${TOKENFLEET_VERSION:-0.1.0-beta.17}"
 BUNDLE_ID="${TOKENFLEET_BUNDLE_ID:-com.lingdong.TokenFleet}"
 UPDATE_API_URL="${TOKENFLEET_UPDATE_API_URL:-}"
 COMMUNITY_SERVER_URL="${TOKENFLEET_COMMUNITY_SERVER_URL:-}"
@@ -304,6 +305,13 @@ else
 fi
 
 APP_STAGING_ROOT="$(mktemp -d "$DIST_DIR/.tokenfleet-app-stage.XXXXXX")"
+DECODER_SLICES=()
+for architecture in "${ARCHITECTURES[@]}"; do
+  decoder_slice="$HISTORY_DECODER-$architecture"
+  TOKENFLEET_SWIFT_SDK="$SDK_PATH" bash "$ROOT_DIR/script/build_codex_history_decoder.sh" "$architecture" "$decoder_slice"
+  DECODER_SLICES+=("$decoder_slice")
+done
+/usr/bin/lipo -create "${DECODER_SLICES[@]}" -output "$HISTORY_DECODER"
 STAGED_APP_BUNDLE="$APP_STAGING_ROOT/$APP_NAME.app"
 CONTENTS="$STAGED_APP_BUNDLE/Contents"
 MACOS="$CONTENTS/MacOS"
@@ -312,6 +320,8 @@ RESOURCES="$CONTENTS/Resources"
 mkdir -p "$MACOS" "$HELPERS" "$RESOURCES"
 cp "$EXECUTABLE" "$MACOS/$PRODUCT_NAME"
 cp "$HELPER_EXECUTABLE" "$HELPERS/$HELPER_NAME"
+cp "$HISTORY_DECODER" "$HELPERS/TokenFleetHistoryDecoder"
+cp "$ROOT_DIR/vendor/zstd/LICENSE" "$RESOURCES/Zstandard-LICENSE.txt"
 [[ -f "$ICON_GENERATOR" ]] || {
   echo "TokenFleet icon generator is missing." >&2
   exit 2

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-beta.17 - 2026-11-17
+
+- Mac / Windows 按 Codex 物理日志标识和 history_base 的精确字节、序号边界接续累计值；保留已发生的回退分支消耗，不将历史前缀再次计入续写日期。
+- Windows 保留同一逻辑会话的不同日志分段，修复只取最长文件造成的续写遗漏；Mac 修正增量缓存的分段锚点与请求去重标识。
+- Mac 派生缓存升级重建，沿原连接自动同步历史纠正；完全重复的日期/型号保留明确零值，覆盖旧错误汇总及其费用。缺少或无法验证前缀时阻止受影响日桶上传，避免以不完整数据覆盖已有账本。
+- Mac collector 0.2.6；Windows collector 0.2.0-windows.7。保持原设备身份、签名、统计窗口及换机上传日期限制，无服务端迁移。
+
 ## 0.1.0-beta.16 - 2026-10-27
 
 - macOS Kimi 实验来源新增 Kimi Work 内嵌运行时根目录 `~/Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home`，读取其中的 `sessions/**/wire.jsonl`，保留 `~/.kimi-code/sessions`。实验开关已开启的用户升级后会自动扫描新增目录，并按原有统计窗口补计历史（默认 180 天）；显式关闭仍保留。

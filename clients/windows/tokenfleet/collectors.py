@@ -19,6 +19,8 @@ try:
 except ImportError:  # pragma: no cover - exercised by the missing-decoder fixture
     zstandard = None  # type: ignore[assignment]
 
+from .codex_history import history_position, prefix_usage, rollout_id
+
 from .constants import (
     ACCOUNTING_TIMEZONE,
     MAX_RELEVANT_LINE_BYTES,
@@ -204,6 +206,7 @@ class CollectionDiagnostics:
     )
     experimental_sources_enabled: bool = False
     scan_paths: dict[str, list[str]] = field(default_factory=dict)
+    blocked_history_buckets: list[tuple[str, str, str]] = field(default_factory=list)
     zcode_status: str = "missing_db"
     cc_switch_status: str = "unsupported_in_windows_v1"
 
@@ -253,6 +256,8 @@ class CodexScan:
     events: list[CodexEvent]
     forked_from_id: str | None = None
     inherited_event_count: int | None = None
+    history_base: tuple[str, int, int] | None = None
+    invalid_history_base: bool = False
 
 
 def collect_usage(
@@ -268,14 +273,19 @@ def collect_usage(
     diagnostics = CollectionDiagnostics()
     diagnostics.experimental_sources_enabled = include_experimental
     diagnostics.scan_paths = experimental_scan_paths(home) if include_experimental else {}
-    codex_paths = _jsonl_files(home / ".codex" / "sessions", cutoff)
+    codex_history_paths = [path for root in ("sessions", "archived_sessions")
+                           for path in _jsonl_files(home / ".codex" / root, datetime.min.replace(tzinfo=timezone.utc))]
+    codex_paths = [path for path in codex_history_paths if datetime.fromtimestamp(path.stat().st_mtime, timezone.utc) >= cutoff]
+    codex_history_paths += [path for root in ("sessions", "archived_sessions")
+                            for path in (home / ".codex" / root).rglob("*.jsonl.zst")
+                            if path.is_file() and not path.is_symlink()]
     claude_paths = _jsonl_files(home / ".claude" / "projects", cutoff)
     if len(codex_paths) + len(claude_paths) > MAX_SOURCE_FILES:
         raise RuntimeError("too many local JSONL files to scan safely")
     diagnostics.source_files["Codex"] = len(codex_paths)
     diagnostics.source_files["Claude Code"] = len(claude_paths)
 
-    codex_records, incomplete_codex_buckets = _collect_codex(codex_paths, diagnostics)
+    codex_records, incomplete_codex_buckets = _collect_codex(codex_paths, diagnostics, history_paths=codex_history_paths)
     claude_records, incomplete_claude_buckets = _collect_claude(
         claude_paths, diagnostics
     )
@@ -419,7 +429,8 @@ def collect_usage(
         excluded_keys=(
             # Codex/Claude collectors already reject each malformed record.
             # An unrelated bad row cannot invalidate these proven exact rows.
-            incomplete_zcode_buckets
+            set(diagnostics.blocked_history_buckets)
+            | incomplete_zcode_buckets
             | incomplete_cursor_buckets
             | incomplete_experimental_buckets
         ),
@@ -622,6 +633,8 @@ def _scan_codex(path: Path) -> CodexScan:
     inherited_event_count = None
     saw_own_boundary = False
     has_history_base = False
+    history_base = None
+    invalid_history_base = False
     unsafe_prefix = False
     def skipped_line():
         nonlocal unsafe_prefix
@@ -647,6 +660,9 @@ def _scan_codex(path: Path) -> CodexScan:
             parent = _parent_session_id(payload)
             cli_version = payload.get("cli_version")
             has_history_base = "history_base" in payload
+            history_base = history_position(payload.get("history_base"))
+            invalid_history_base = (payload.get("history_mode") == "paginated"
+                                    and payload.get("history_base") is not None and history_base is None)
             fork = payload.get("forked_from_id")
             if isinstance(fork, str) and fork.strip():
                 forked_from_id = fork.strip()
@@ -683,18 +699,20 @@ def _scan_codex(path: Path) -> CodexScan:
             session_id = str(uuid.UUID(path.stem))
         except ValueError:
             session_id = path.stem
-    return CodexScan(session_id, created_at, parent, events, forked_from_id, inherited_event_count)
+    return CodexScan(session_id, created_at, parent, events, forked_from_id, inherited_event_count, history_base, invalid_history_base)
 
 
 def _collect_codex(
-    paths: list[Path], diagnostics: CollectionDiagnostics
+    paths: list[Path], diagnostics: CollectionDiagnostics, *, history_paths: list[Path] | None = None
 ) -> tuple[list[UsageRecord], set[tuple[str, str, str]]]:
     scans_by_id: dict[str, CodexScan] = {}
     for path in paths:
         scan = _scan_codex(path)
-        current = scans_by_id.get(scan.session_id)
+        # Retain each physical continuation; copies of the same rollout still dedupe.
+        key = rollout_id(path) or scan.session_id
+        current = scans_by_id.get(key)
         if current is None or len(scan.events) > len(current.events):
-            scans_by_id[scan.session_id] = scan
+            scans_by_id[key] = scan
 
     anchors: dict[str, list[tuple[datetime, UsageCounts]]] = {}
     for scan in scans_by_id.values():
@@ -719,7 +737,17 @@ def _collect_codex(
             ]
             if candidates:
                 parent_anchor = max(candidates, key=lambda pair: pair[0])[1]
-        scan_records, skipped, incomplete = _codex_records(scan, parent_anchor)
+        baseline = None
+        if scan.history_base is not None or scan.invalid_history_base:
+            baseline = _normalize_codex(prefix_usage(scan.history_base, history_paths or paths))
+            if baseline is None:
+                blocked = {(_day(e.timestamp), "Codex", e.model) for e in scan.events if _day(e.timestamp)}
+                incomplete_buckets.update(blocked)
+                diagnostics.blocked_history_buckets.extend(sorted(blocked))
+                diagnostics.skipped_records["Codex"] += len(scan.events)
+                diagnostics.source_status["Codex"] = "incomplete_history_base"
+                continue
+        scan_records, skipped, incomplete = _codex_records(scan, parent_anchor, baseline)
         records.extend(scan_records)
         incomplete_buckets.update(incomplete)
         diagnostics.exact_records["Codex"] += len(scan_records)
@@ -728,7 +756,7 @@ def _collect_codex(
 
 
 def _codex_records(
-    scan: CodexScan, parent_anchor: UsageCounts | None
+    scan: CodexScan, parent_anchor: UsageCounts | None, history_baseline: UsageCounts | None = None
 ) -> tuple[list[UsageRecord], int, set[tuple[str, str, str]]]:
     records: list[UsageRecord] = []
     skipped = 0
@@ -758,7 +786,13 @@ def _codex_records(
 
     previous: UsageCounts | None = None
     start = 0
-    if scan.inherited_event_count is not None:
+    if history_baseline is not None:
+        previous = history_baseline
+        # Explicit zero corrections must survive aggregation and replace old uploads.
+        for event in scan.events[:1]:
+            if _day(event.timestamp):
+                records.append(UsageRecord(_day(event.timestamp), "Codex", event.model, UsageCounts()))
+    elif scan.inherited_event_count is not None:
         start = scan.inherited_event_count
         if start:
             previous = scan.events[start - 1].cumulative

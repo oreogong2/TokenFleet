@@ -1,0 +1,21 @@
+# Codex paginated history accounting
+
+Codex's logical thread ID is not a unique physical rollout ID. An ordinary filename contains a single UUID; a reverted rollout appends an underscore and its distinct physical UUID. `history_base.thread_id` names that physical ancestor, despite its historical field name. The immutable prefix ends at the exact byte and exclusive ordinal boundary.
+
+Primary protocol sources:
+
+- [HistoryPosition and SessionMeta](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/protocol.rs)
+- [Physical rollout filename parser](https://github.com/openai/codex/blob/main/codex-rs/rollout/src/rollout_file_name.rs)
+- [Paginated lineage validation](https://github.com/openai/codex/blob/main/codex-rs/thread-store/src/local/rollout_lineage.rs)
+
+The collector resolves only references with a valid UUID and positive integer bounds, within its discovered local session/archive files. It checks a complete JSONL boundary and contiguous reverse ordinals, reads backwards to the latest cumulative counter inside that prefix, and follows earlier references only when necessary. It refuses ambiguous/missing ancestors, invalid counters, cycles, depth above 32, lines above 2 MiB, and reverse scans above 64 MiB. Existing unconfirmed legacy fork handling is unchanged.
+
+Compressed `.jsonl.zst` ancestors are resolved at the same uncompressed byte boundary. Mac bundles the pinned BSD-licensed Zstandard decoder; Windows uses its existing dependency. Both cap prefix work at 8 GiB, the retained tail at 64 MiB and the decoder window at 128 MiB; the Mac helper also has a 30-second limit. No transcript is extracted to disk. A plain file and its compressed copy are one ancestor. Invalid explicitly paginated references are incomplete; unsupported legacy metadata retains its existing accounting rules.
+
+Each physical segment contributes its own requests. A branch baseline comes from the referenced prefix, never from the latest logical-thread total. Requests already made in a superseded tail still consumed tokens and remain in the ledger. Counter-reset handling and cached/reasoning subset semantics remain intact.
+
+Mac accounting revision 11 / SQLite derived-cache schema 9 rebuild old contributions. Request deduplication uses physical rollout identity, and each cached segment retains its own anchors. Windows keeps distinct physical segments rather than selecting only the longest logical-thread file. Neither collector edits raw logs.
+
+Verified zero contributions are retained as exact daily buckets so a newer snapshot can replace an old all-duplicate bucket. Missing references block affected date/model uploads (including other partial contributions in the same bucket); they are retried when source data becomes available. Other labels and days continue normally. Existing device upload floors, retention, pricing versions and completeness rules are unchanged. The server accepts newer lower/zero exact counters, recalculates cost using the frozen price version, and invalidates its public projection cache.
+
+Regression coverage: cross-day continuation, multiple physical segments, rollback before a paid tail, coinciding cumulative totals on separate branches, recursive metadata-only prefixes, missing/inconsistent references, recovery when an ancestor appears, zero-value corrections, repeated scans, append/rebuild parity, and server overwrite/cost/public-cache behavior. Native Windows and both Mac architectures remain required release CI gates.

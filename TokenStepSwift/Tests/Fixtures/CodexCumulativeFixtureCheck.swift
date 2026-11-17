@@ -5,6 +5,7 @@ import Foundation
 struct CodexCumulativeFixtureCheck {
     static func main() {
         do {
+            try checkPaginatedHistorySegments()
             try checkConfirmedForkSeeds()
             try checkCumulativeDeduplicationAndCompaction()
             try checkCredibleCounterReset()
@@ -30,6 +31,108 @@ struct CodexCumulativeFixtureCheck {
         } catch {
             fputs("Codex cumulative collector fixture failed: \(error)\n", stderr)
             exit(1)
+        }
+    }
+
+    private static func checkPaginatedHistorySegments() throws {
+        let owner = "00000000-0000-4000-8000-000000000001"
+        let next = "00000000-0000-4000-8000-000000000002"
+        let third = "00000000-0000-4000-8000-000000000003"
+        func usage(_ total: Int, day: String = "2026-11-17") -> String {
+            tokenCount(timestamp: day + "T12:00:00Z", cumulative: UsageVector(input: total, output: 0, cached: total / 2, reasoning: 0), last: nil)
+        }
+        func numbered(_ line: String, _ ordinal: Int) throws -> String {
+            var object = try JSONSerialization.jsonObject(with: Data(line.utf8)) as! [String: Any]
+            object["ordinal"] = ordinal
+            return jsonLine(object)
+        }
+        func segment(_ home: URL, _ physical: String, _ events: [String], base: [String: Any]? = nil) throws -> (URL, [String: Any]) {
+            var payload: [String: Any] = ["id": owner, "history_mode": "paginated", "cli_version": "0.169.0-alpha.11.1"]
+            if let base { payload["history_base"] = base }
+            let start = base?["end_ordinal_exclusive"] as? Int ?? 0
+            let items = [jsonLine(["type": "session_meta", "payload": payload]), turnContext(model: "gpt-6-sol", timestamp: "2026-11-17T12:00:00Z")] + events
+            let lines = try items.enumerated().map { try numbered($0.element, start + $0.offset) }
+            let suffix = owner == physical ? owner : owner + "_" + physical
+            let path = try writeSession(home: home, filename: "rollout-2026-11-17T00-00-00-" + suffix + ".jsonl", lines: lines)
+            return (path, ["thread_id": physical, "end_ordinal_exclusive": start + items.count, "end_byte_offset": try Data(contentsOf: path).count])
+        }
+        try withFixtureHome("history-continuation") { home in
+            let (_, base) = try segment(home, owner, [usage(100, day: "2026-11-16")])
+            let (child, childEnd) = try segment(home, next, [usage(105), usage(108)], base: base)
+            let cache = home.appendingPathComponent("cache/codex.sqlite3")
+            for snapshot in [UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home),
+                UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache),
+                UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)] {
+                try expectEqual(snapshot.totals.tokens, 108, "history continuation totals")
+                try expectEqual(snapshot.daily.first { $0.date == "2026-11-17" }?.totalTokens ?? -1, 8, "history preserves original dates")
+            }
+            try appendLine(try numbered(usage(111), childEnd["end_ordinal_exclusive"] as! Int), to: child)
+            try expectEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 111, "history append")
+            try expectEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache, forceFullValidation: true).totals.tokens, 111, "history validation")
+            try expectEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: home.appendingPathComponent("rebuilt.sqlite3")).totals.tokens, 111, "history rebuild")
+        }
+        try withFixtureHome("history-revert") { home in
+            let (original, base) = try segment(home, owner, [usage(100)])
+            try appendLine(try numbered(usage(108), base["end_ordinal_exclusive"] as! Int), to: original)
+            let (_, base2) = try segment(home, next, [usage(108)], base: base)
+            _ = try segment(home, third, [usage(111)], base: base2)
+            for cache in [nil, home.appendingPathComponent("cache.sqlite3")] {
+                try expectEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 119, "paid reverted tail and equal cumulative totals remain distinct")
+            }
+        }
+        try withFixtureHome("history-zero-correction") { home in
+            let (_, base) = try segment(home, owner, [usage(100, day: "2026-11-16")])
+            _ = try segment(home, next, [usage(100)], base: base)
+            for cache in [nil, home.appendingPathComponent("cache.sqlite3")] {
+                let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+                guard let row = snapshot.daily.first(where: { $0.date == "2026-11-17" })?.atomicUsage?.first else {
+                    throw FixtureFailure("verified zero correction was lost")
+                }
+                try expectEqual(row.totalTokens, 0, "zero correction total")
+                guard row.breakdownComplete else { throw FixtureFailure("zero correction must be exact") }
+            }
+        }
+        try withFixtureHome("history-missing-ancestor") { home in
+            let (_, base) = try segment(home, owner, [usage(100)])
+            var invalid = base; invalid["thread_id"] = third
+            _ = try segment(home, next, [usage(105)], base: invalid)
+            let cache = home.appendingPathComponent("cache.sqlite3")
+            for _ in 0..<2 {
+                let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+                guard snapshot.daily.first?.atomicUsage?.allSatisfy({ !$0.breakdownComplete }) == true else {
+                    throw FixtureFailure("unresolved history must block partial bucket uploads")
+                }
+            }
+            // The previously absent parent becomes available; unchanged children must retry.
+            _ = try segment(home, third, [usage(100)])
+            try expectEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache).totals.tokens, 205, "missing ancestor recovery")
+        }
+        try withFixtureHome("history-compressed-ancestor") { home in
+            let (original, base) = try segment(home, owner, [usage(100, day: "2026-11-16")])
+            try appendLine(try numbered(usage(200), base["end_ordinal_exclusive"] as! Int), to: original)
+            _ = try segment(home, next, [usage(108)], base: base)
+            let raw = try Data(contentsOf: original)
+            // A standards-compliant single-segment Zstandard frame with raw blocks.
+            var frame = Data([0x28, 0xb5, 0x2f, 0xfd, 0xa0])
+            for shift in stride(from: 0, to: 32, by: 8) { frame.append(UInt8(truncatingIfNeeded: raw.count >> shift)) }
+            for start in stride(from: 0, to: raw.count, by: 65_536) {
+                let end = min(raw.count, start + 65_536)
+                let header = ((end - start) << 3) | (end == raw.count ? 1 : 0)
+                for shift in stride(from: 0, to: 24, by: 8) { frame.append(UInt8(truncatingIfNeeded: header >> shift)) }
+                frame.append(raw[start..<end])
+            }
+            let compressed = original.appendingPathExtension("zst")
+            try frame.write(to: compressed)
+            try expectEqual(UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home).totals.tokens, 208, "plain and compressed ancestor copies are one source")
+            try FileManager.default.removeItem(at: original)
+            for cache in [nil, home.appendingPathComponent("cache.sqlite3")] {
+                let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+                try expectEqual(snapshot.totals.tokens, 8, "compressed ancestor uses exact byte prefix, not later tail")
+                guard snapshot.daily.first?.atomicUsage?.allSatisfy(\.breakdownComplete) == true else { throw FixtureFailure("compressed history should be exact") }
+            }
+            try Data([0, 1, 2]).write(to: compressed)
+            let corrupt = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home)
+            guard corrupt.daily.first?.atomicUsage?.allSatisfy({ !$0.breakdownComplete }) == true else { throw FixtureFailure("corrupt compressed history must block partial upload") }
         }
     }
 
