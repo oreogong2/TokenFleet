@@ -112,9 +112,48 @@ class CodexHistorySegmentsTests(unittest.TestCase):
         diag = CollectionDiagnostics()
         records, incomplete = _collect_codex([new], diag, history_paths=[new, compressed])
         self.assertFalse(incomplete)
-        self.assertEqual(sum(r.counts.total for r in records), 8)
+        self.assertEqual(sum(r.counts.total for r in records), 208)
         compressed.write_bytes(b'bad frame')
         self.assertIsNone(prefix_usage(history_position(base), [compressed]))
+
+    def test_bad_ancestor_counter_blocks_all_codex_buckets(self):
+        for raw in ({}, dict(counts(100), input_tokens='100'), dict(counts(100), cached_input_tokens=-1)):
+            old, base = self.write(ROOT, [dict(event(100), payload={'type':'token_count','info':{'total_token_usage':raw}})])
+            new, _ = self.write(NEXT, [event(105)], base)
+            other, _ = self.write(THIRD, [event(15, '2026-11-16')], owner=THIRD)
+            buckets, diag = self.collect([old, new, other])
+            self.assertEqual(buckets, [])
+            self.assertEqual(diag.source_status['Codex'], 'incomplete_history_base')
+
+    def test_compressed_recursive_ancestors_and_truncated_tail_are_not_partial(self):
+        import zstandard
+        old, base = self.write(ROOT, [event(100)])
+        second, base2 = self.write(NEXT, [event(105)], base)
+        third, _ = self.write(THIRD, [event(108)], base2)
+        compressed = []
+        for p in (old, second):
+            out=p.with_suffix('.jsonl.zst');out.write_bytes(zstandard.ZstdCompressor(write_checksum=True).compress(p.read_bytes()))
+            compressed.append(out);p.unlink()
+        diag=CollectionDiagnostics()
+        records, incomplete=_collect_codex([third], diag, history_paths=[third,*compressed])
+        self.assertEqual(sum(r.counts.total for r in records),108)
+        self.assertFalse(incomplete)
+        compressed[0].write_bytes(compressed[0].read_bytes()[:-1])
+        diag=CollectionDiagnostics()
+        records, incomplete=_collect_codex([third], diag, history_paths=[third,*compressed])
+        self.assertEqual(_aggregate(records, excluded_keys=set(diag.blocked_history_buckets)),[])
+
+
+    def test_large_nonaccounting_compression_record_preserves_real_usage(self):
+        import zstandard
+        old, base = self.write(ROOT, [{'type':'compacted','payload':{'replacement_history':'x'*2_200_000}}, event(100)])
+        new, _ = self.write(NEXT, [event(108)], base)
+        compressed=old.with_suffix('.jsonl.zst')
+        compressed.write_bytes(zstandard.ZstdCompressor().compress(old.read_bytes()));old.unlink()
+        diag=CollectionDiagnostics()
+        records, incomplete=_collect_codex([new], diag, history_paths=[new,compressed])
+        self.assertFalse(incomplete)
+        self.assertEqual(sum(r.counts.total for r in records),108)
 
 
 if __name__ == '__main__':

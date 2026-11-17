@@ -19,7 +19,7 @@ try:
 except ImportError:  # pragma: no cover - exercised by the missing-decoder fixture
     zstandard = None  # type: ignore[assignment]
 
-from .codex_history import history_position, prefix_usage, rollout_id
+from .codex_history import history_position, prefix_usage, rollout_id, ancestor_path, source_lines, HistoryReadError
 
 from .constants import (
     ACCOUNTING_TIMEZONE,
@@ -473,21 +473,29 @@ def _json_lines(
     path: Path, *, matching_any: tuple[bytes, ...] = (), on_skipped_line: Callable[[], None] | None = None
 ) -> Iterable[dict[str, Any]]:
     try:
-        with path.open("rb") as handle:
-            for raw_line in handle:
-                if len(raw_line) > MAX_RELEVANT_LINE_BYTES:
-                    if on_skipped_line: on_skipped_line()
-                    continue
-                if matching_any and not any(marker in raw_line for marker in matching_any):
-                    continue
-                try:
-                    value = json.loads(raw_line)
-                except (UnicodeError, json.JSONDecodeError):
-                    if on_skipped_line: on_skipped_line()
-                    continue
-                if isinstance(value, dict):
-                    yield value
-                elif on_skipped_line: on_skipped_line()
+        for raw_line in source_lines(path):
+            if len(raw_line) > MAX_RELEVANT_LINE_BYTES:
+                if path.suffix == '.zst':
+                    try:
+                        large = json.loads(raw_line)
+                        if large.get('type') in ('compacted', 'response_item') or (
+                            large.get('type') == 'event_msg' and large.get('payload', {}).get('type') in
+                            ('agent_message', 'agent_reasoning', 'user_message', 'item_completed')):
+                            continue
+                    except (ValueError, AttributeError, TypeError):
+                        pass
+                if on_skipped_line: on_skipped_line()
+                continue
+            if matching_any and not any(marker in raw_line for marker in matching_any):
+                continue
+            try:
+                value = json.loads(raw_line)
+            except (UnicodeError, json.JSONDecodeError):
+                if on_skipped_line: on_skipped_line()
+                continue
+            if isinstance(value, dict):
+                yield value
+            elif on_skipped_line: on_skipped_line()
     except OSError:
         return
 
@@ -636,8 +644,10 @@ def _scan_codex(path: Path) -> CodexScan:
     history_base = None
     invalid_history_base = False
     unsafe_prefix = False
+    corrupt_compressed = False
     def skipped_line():
-        nonlocal unsafe_prefix
+        nonlocal unsafe_prefix, corrupt_compressed
+        if path.suffix == '.zst': corrupt_compressed = True
         if not saw_own_boundary: unsafe_prefix = True
     model = "unknown"
     events: list[CodexEvent] = []
@@ -694,6 +704,8 @@ def _scan_codex(path: Path) -> CodexScan:
                 context_window=_nonnegative_integer(info.get("model_context_window")),
             )
         )
+    if path.suffix == '.zst' and (corrupt_compressed or not session_id):
+        raise HistoryReadError('incomplete compressed source metadata')
     if not session_id:
         try:
             session_id = str(uuid.UUID(path.stem))
@@ -706,13 +718,43 @@ def _collect_codex(
     paths: list[Path], diagnostics: CollectionDiagnostics, *, history_paths: list[Path] | None = None
 ) -> tuple[list[UsageRecord], set[tuple[str, str, str]]]:
     scans_by_id: dict[str, CodexScan] = {}
-    for path in paths:
-        scan = _scan_codex(path)
+    pending = list(paths)
+    visited = set()
+    history_incomplete = False
+    ancestry = {}
+    while pending:
+        path = pending.pop()
+        if path.resolve() in visited:
+            continue
+        visited.add(path.resolve())
+        try:
+            scan = _scan_codex(path)
+        except (HistoryReadError, OSError):
+            history_incomplete = True
+            continue
+        if scan.history_base is not None:
+            ancestor = ancestor_path(scan.history_base[0], history_paths or paths)
+            if ancestor is None:
+                history_incomplete = True
+            else:
+                ancestry[path.resolve()] = ancestor.resolve()
+                pending.append(ancestor)
         # Retain each physical continuation; copies of the same rollout still dedupe.
         key = rollout_id(path) or scan.session_id
         current = scans_by_id.get(key)
         if current is None or len(scan.events) > len(current.events):
             scans_by_id[key] = scan
+
+    diagnostics.source_files["Codex"] = len(visited)
+    for start in ancestry:
+        chain = set()
+        node = start
+        while node in ancestry:
+            if node in chain or len(chain) >= 32:
+                history_incomplete = True
+                break
+            chain.add(node)
+            node = ancestry[node]
 
     anchors: dict[str, list[tuple[datetime, UsageCounts]]] = {}
     for scan in scans_by_id.values():
@@ -746,12 +788,20 @@ def _collect_codex(
                 diagnostics.blocked_history_buckets.extend(sorted(blocked))
                 diagnostics.skipped_records["Codex"] += len(scan.events)
                 diagnostics.source_status["Codex"] = "incomplete_history_base"
+                history_incomplete = True
                 continue
         scan_records, skipped, incomplete = _codex_records(scan, parent_anchor, baseline)
         records.extend(scan_records)
         incomplete_buckets.update(incomplete)
         diagnostics.exact_records["Codex"] += len(scan_records)
         diagnostics.skipped_records["Codex"] += skipped
+    if history_incomplete:
+        # A missing ancestor can span dates/models absent from the child. Never
+        # replace any Codex bucket with a partial historical reconstruction.
+        blocked = {(r.day, "Codex", r.model) for r in records} | incomplete_buckets
+        diagnostics.blocked_history_buckets.extend(sorted(blocked))
+        incomplete_buckets.update(blocked)
+        diagnostics.source_status["Codex"] = "incomplete_history_base"
     return records, incomplete_buckets
 
 

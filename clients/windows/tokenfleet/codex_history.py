@@ -9,7 +9,72 @@ import json
 import io
 import re
 import uuid
+import time
 from pathlib import Path
+
+
+class HistoryReadError(ValueError):
+    pass
+
+
+def strict_usage(raw):
+    if not isinstance(raw, dict):
+        return None
+    keys = ('input_tokens', 'output_tokens', 'cached_input_tokens', 'total_tokens')
+    if any(type(raw.get(k)) is not int or not 0 <= raw[k] <= 2**63-1 for k in keys):
+        return None
+    if raw['total_tokens'] != raw['input_tokens'] + raw['output_tokens'] or raw['cached_input_tokens'] > raw['input_tokens']:
+        return None
+    reasoning = raw.get('reasoning_output_tokens', 0)
+    if type(reasoning) is not int or not 0 <= reasoning <= raw['output_tokens']:
+        return None
+    return raw
+
+
+def ancestor_path(identifier, paths):
+    candidates = {p.resolve() for p in paths if not p.is_symlink() and rollout_id(p) == identifier}
+    candidates = {p for p in candidates if p.suffix != '.zst' or p.with_suffix('') not in candidates}
+    return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def source_lines(path):
+    """Decode complete compressed sources; a truncated frame never succeeds."""
+    if path.suffix != '.zst':
+        with path.open('rb') as source:
+            yield from source
+        return
+    try:
+        import zstandard
+        before = path.stat()
+        decoder = zstandard.ZstdDecompressor(max_window_size=128 * 1024).decompressobj()
+        pending = b''
+        total = 0
+        deadline = time.monotonic() + 30
+        with path.open('rb') as source:
+            while chunk := source.read(256):
+                while chunk:
+                    if decoder.eof:
+                        decoder = zstandard.ZstdDecompressor(max_window_size=128 * 1024).decompressobj()
+                    decoded = decoder.decompress(chunk)
+                    chunk = decoder.unused_data if decoder.eof else b''
+                    total += len(decoded)
+                    if total > 8 * 1024**3 or time.monotonic() > deadline:
+                        raise HistoryReadError('compressed history exceeds limits')
+                    pending += decoded
+                    while b'\n' in pending:
+                        line, pending = pending.split(b'\n', 1)
+                        if len(line) > 64 * 1024**2:
+                            raise HistoryReadError('oversized compressed history line')
+                        yield line + b'\n'
+                    if len(pending) > 64 * 1024**2:
+                        raise HistoryReadError('oversized compressed history line')
+        after = path.stat()
+        if not decoder.eof or pending or (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+            raise HistoryReadError('incomplete or changing compressed history')
+    except (ImportError, OSError) as error:
+        raise HistoryReadError('unreadable compressed history') from error
+    except zstandard.ZstdError as error:
+        raise HistoryReadError('invalid compressed history') from error
 
 
 def rollout_id(path: Path) -> str | None:
@@ -45,12 +110,9 @@ def prefix_usage(position, paths: list[Path], visited=frozenset()):
     if position is None or position in visited or len(visited) >= 32:
         return None
     identifier, ordinal, offset = position
-    candidates = {p.resolve() for p in paths if not p.is_symlink() and rollout_id(p) == identifier}
-    # A plain file and its compressed copy are one source. Prefer the plain one.
-    candidates = {p for p in candidates if p.suffix != '.zst' or p.with_suffix('') not in candidates}
-    if len(candidates) != 1:
+    path = ancestor_path(identifier, paths)
+    if path is None:
         return None
-    path = candidates.pop()
     try:
         if path.suffix == '.zst':
             tail = _compressed_prefix_tail(path, offset)
@@ -95,7 +157,7 @@ def prefix_usage(position, paths: list[Path], visited=frozenset()):
                 if obj.get("type") == "event_msg" and payload.get("type") == "token_count":
                     info = payload.get("info")
                     if isinstance(info, dict) and "total_token_usage" in info:
-                        return info["total_token_usage"]
+                        return strict_usage(info["total_token_usage"])
                 if obj.get("type") == "session_meta":
                     if "history_base" in payload:
                         return prefix_usage(history_position(payload["history_base"]), paths, visited | {position})

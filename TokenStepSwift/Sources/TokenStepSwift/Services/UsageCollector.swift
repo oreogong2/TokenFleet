@@ -197,7 +197,7 @@ enum CollectorPerformanceLogger {
 }
 
 enum UsageCollector {
-    static let codexAccountingRevision = 11
+    static let codexAccountingRevision = 12
 
     private static let timezone = TimeZone(identifier: "Asia/Shanghai") ?? .current
     private static let maxRelevantLineBytes = 1_048_576
@@ -943,9 +943,8 @@ enum UsageCollector {
         legacyCache: CollectorCache? = nil,
         roots: [URL]? = nil
     ) throws -> CollectorResult {
-        let paths = (roots ?? defaultCodexSessionRoots(homeURL: homeURL))
-            .flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
-            .sorted { $0.path < $1.path }
+        let inventory = codexSourceInventory(roots: roots ?? defaultCodexSessionRoots(homeURL: homeURL), cutoff: cutoffDate)
+        let paths = inventory.paths
         guard !paths.isEmpty else {
             return CollectorResult(
                 records: [],
@@ -953,9 +952,20 @@ enum UsageCollector {
             )
         }
 
-        let historyPaths = (roots ?? defaultCodexSessionRoots(homeURL: homeURL))
-            .flatMap { jsonlFiles(under: $0, includeCompressed: true) }
-        let historyDependencyFingerprint = codexHistoryFingerprint(historyPaths)
+        let historyPaths = inventory.history
+        var resolvedBaselines: [CodexHistoryPosition: TokenUsageCounts] = [:]
+        var failedBaselines = Set<CodexHistoryPosition>()
+        func historyBaseline(_ position: CodexHistoryPosition) -> TokenUsageCounts? {
+            if let cached = resolvedBaselines[position] { return cached }
+            if failedBaselines.contains(position) { return nil }
+            if let result = codexPrefixUsage(position, paths: historyPaths, visited: []) {
+                resolvedBaselines[position] = result; return result
+            }
+            failedBaselines.insert(position); return nil
+        }
+        func historyFingerprint(_ position: CodexHistoryPosition?) -> String? {
+            position.map { historyBaseline($0)?.fingerprint ?? "unresolved" }
+        }
         let store = try CodexIncrementalStore(url: databaseURL)
         let storedMetadata = try store.metadataByPath()
         let currentPaths = Set(paths.map(\.path))
@@ -1011,8 +1021,8 @@ enum UsageCollector {
         for path in paths {
             guard let metadata = fileMetadata(for: path) else { continue }
             let stored = storedMetadata[path.path]
-            let retryHistory = stored?.historyBaseUnresolved == true &&
-                stored?.historyDependencyFingerprint != historyDependencyFingerprint
+            let retryHistory = stored?.historyBase != nil &&
+                stored?.historyDependencyFingerprint != historyFingerprint(stored?.historyBase)
             var validatedFullFingerprint: String?
             let metadataMatches = stored?.size == metadata.size
                 && abs((stored?.modificationTime ?? -1) - metadata.modificationTime) < 0.001
@@ -1039,7 +1049,7 @@ enum UsageCollector {
             }
 
             if !forceFullValidation,
-               let stored, stored.historyBaseUnresolved != true,
+               let stored, stored.historyBaseUnresolved != true, !retryHistory, path.pathExtension != "zst",
                metadata.size > stored.size,
                contentFingerprint(for: path, size: stored.size) == stored.fingerprint,
                let cachedSession = try store.session(path: path.path),
@@ -1137,7 +1147,11 @@ enum UsageCollector {
             let parentAnchor = childCreatedAt.flatMap { timestamp in
                 parentAnchors.flatMap { codexAnchor(atOrBefore: timestamp, anchors: $0) }
             }
-            let resolvedScan = resolveCodexHistory(item.scan, paths: historyPaths)
+            var resolvedScan = item.scan
+            if let position = item.scan.historyBase {
+                resolvedScan.historyBaseline = historyBaseline(position)
+                resolvedScan.historyBaseUnresolved = resolvedScan.historyBaseline == nil
+            }
             var seenRequestIDs = Set<String>()
             let result = codexDeltaRecords(
                 from: resolvedScan,
@@ -1164,7 +1178,8 @@ enum UsageCollector {
                         epoch: result.cursor.epoch,
                         pendingOwnForkBoundary: item.scan.pendingOwnForkBoundary,
                         historyBaseUnresolved: resolvedScan.historyBaseUnresolved,
-                        historyDependencyFingerprint: historyDependencyFingerprint
+                        historyDependencyFingerprint: historyFingerprint(item.scan.historyBase),
+                        historyBase: item.scan.historyBase
                     ),
                     diagnostics: result.diagnostics
                 )
@@ -1197,6 +1212,7 @@ enum UsageCollector {
         var summaries = [CodexSummaryKey: CodexSummaryAccumulator]()
         var diagnostics = CodexCollectionDiagnostics()
         var sourceRecordCount = 0
+        diagnostics.unresolvedHistory = inventory.incomplete
         try store.forEachContribution(detailed: requiresDetailedRecords) { contribution in
             sourceRecordCount += contribution.recordCount
             diagnostics.add(contribution.diagnostics)
@@ -1296,9 +1312,9 @@ enum UsageCollector {
         roots: [URL]? = nil
     ) -> CollectorResult {
         let roots = roots ?? defaultCodexSessionRoots(homeURL: homeURL)
-        let paths = roots
-            .flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
-            .sorted { $0.path < $1.path }
+        let inventory = codexSourceInventory(roots: roots, cutoff: cutoffDate)
+        let paths = inventory.paths
+        var incomplete = inventory.incomplete
         var scans: [CodexSessionScan] = []
 
         for path in paths {
@@ -1308,17 +1324,21 @@ enum UsageCollector {
                 continue
             }
 
-            guard var result = stableCodexScan(at: path) else { continue }
+            guard var result = stableCodexScan(at: path) else {
+                if path.pathExtension == "zst" { incomplete = true }
+                continue
+            }
             if !result.isStable, let retry = stableCodexScan(at: path) {
                 result = retry
             }
+            if path.pathExtension == "zst" && !result.isStable { incomplete = true; continue }
             scans.append(result.scan)
             if result.isStable {
                 updateCodexCache(path: path, scan: result.scan, metadata: result.metadata, cache: &cache)
             }
         }
 
-        let historyPaths = roots.flatMap { jsonlFiles(under: $0, includeCompressed: true) }
+        let historyPaths = inventory.history
         let scansBySessionID = Dictionary(
             scans.map { ($0.canonicalSessionID, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -1326,6 +1346,7 @@ enum UsageCollector {
         let anchorsBySessionID = scansBySessionID.mapValues(codexAnchors)
         var records: [UsageRecord] = []
         var diagnostics = CodexCollectionDiagnostics()
+        diagnostics.unresolvedHistory = incomplete
         var seenRequestIDs = Set<String>()
         for scan in scans.sorted(by: { $0.sourcePath < $1.sourcePath }) {
             let parentAnchor = codexForkAnchor(for: scan, anchorsBySessionID: anchorsBySessionID)
@@ -1353,6 +1374,19 @@ enum UsageCollector {
         sourceRecordCount: Int? = nil,
         inputURLs: [URL] = []
     ) -> CollectorResult {
+        var records = records
+        if diagnostics.unresolvedHistory == true {
+            var keys = Set<String>()
+            let markers = records.compactMap { record -> UsageRecord? in
+                guard keys.insert(record.date + ":" + record.model).inserted else { return nil }
+                var marker = record
+                marker.usage = TokenUsageCounts()
+                marker.usage.accountingIncomplete = true
+                marker.requestID = "codex:quarantine:" + record.date + ":" + record.model
+                return marker
+            }
+            records.append(contentsOf: markers)
+        }
         let breakdown = records.reduce(into: TokenUsageCounts()) { partial, record in
             partial.add(record.usage)
         }
@@ -1737,17 +1771,7 @@ enum UsageCollector {
         return result
     }
 
-    private static func codexHistoryFingerprint(_ paths: [URL]) -> String {
-        var hash = SHA256()
-        for path in paths.sorted(by: { $0.path < $1.path }) {
-            guard let metadata = fileMetadata(for: path) else { continue }
-            hash.update(data: Data("\(path.path):\(metadata.size):\(metadata.modificationTime)\n".utf8))
-        }
-        return hash.finalize().map { String(format: "%02x", $0) }.joined()
-    }
-
-    private static func codexCompressedPrefixTail(_ path: URL, offset: UInt64) -> Data? {
-        guard offset <= 8 * 1024 * 1024 * 1024 else { return nil }
+    private static func codexDecoderProcess(_ path: URL, mode: String) -> (Process, FileHandle)? {
         let executable = Bundle.main.executableURL
         var candidates = [Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/TokenFleetHistoryDecoder")]
         if let executable {
@@ -1760,11 +1784,18 @@ enum UsageCollector {
         guard let decoder = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0.path) }) else { return nil }
         let process = Process(), pipe = Pipe()
         process.executableURL = decoder
-        process.arguments = [path.path, String(offset)]
+        process.arguments = [path.path, mode]
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
         do { try process.run() } catch { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        return (process, pipe.fileHandleForReading)
+    }
+
+    private static func codexCompressedPrefixTail(_ path: URL, offset: UInt64) -> Data? {
+        guard offset <= 8 * 1024 * 1024 * 1024,
+              let (process, handle) = codexDecoderProcess(path, mode: String(offset)) else { return nil }
+        defer { try? handle.close() }
+        let data = handle.readDataToEndOfFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0, !data.isEmpty, data.count <= 64 * 1024 * 1024 else { return nil }
         return data
@@ -1823,8 +1854,7 @@ enum UsageCollector {
                 if object["type"] as? String == "event_msg", payload["type"] as? String == "token_count",
                    let info = payload["info"] as? [String: Any], info.keys.contains("total_token_usage") {
                     guard let raw = info["total_token_usage"] as? [String: Any] else { return nil }
-                    let usage = normalizeCodexUsage(raw)
-                    return isCodexBreakdownConsistent(usage, total: usage.totalTokens) ? usage : nil
+                    return strictCodexHistoryUsage(raw)
                 }
                 if object["type"] as? String == "session_meta" {
                     if payload.keys.contains("history_base") {
@@ -1836,6 +1866,80 @@ enum UsageCollector {
             }
         } catch { return nil }
         return nil
+    }
+
+    private static func strictCodexHistoryUsage(_ raw: [String: Any]) -> TokenUsageCounts? {
+        func integer(_ key: String) -> Int? {
+            guard let n = raw[key] as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(),
+                  n.int64Value >= 0, n.doubleValue == Double(n.int64Value),
+                  String(cString: n.objCType) != "d", String(cString: n.objCType) != "f" else { return nil }
+            return Int(exactly: n.int64Value)
+        }
+        guard let input = integer("input_tokens"), let output = integer("output_tokens"),
+              let cached = integer("cached_input_tokens"), let total = integer("total_tokens"), cached <= input else { return nil }
+        let sum = input.addingReportingOverflow(output)
+        guard !sum.overflow, sum.partialValue == total else { return nil }
+        if raw["reasoning_output_tokens"] != nil {
+            guard let reasoning = integer("reasoning_output_tokens"), reasoning <= output else { return nil }
+        }
+        return normalizeCodexUsage(raw)
+    }
+
+    private static func codexAncestor(_ id: String, paths: [URL]) -> URL? {
+        var matches = Set(paths.filter { codexRolloutID($0) == id &&
+            (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true
+        }.map { $0.resolvingSymlinksInPath() })
+        matches = Set(matches.filter { $0.pathExtension != "zst" || !matches.contains($0.deletingPathExtension()) })
+        return matches.count == 1 ? matches.first : nil
+    }
+
+    private static func codexHeader(_ path: URL) -> [String: Any]? {
+        let data: Data
+        if path.pathExtension == "zst" {
+            guard let (process, handle) = codexDecoderProcess(path, mode: "--metadata") else { return nil }
+            data = handle.readDataToEndOfFile()
+            try? handle.close()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return nil }
+        } else {
+            guard let handle = try? FileHandle(forReadingFrom: path) else { return nil }
+            defer { try? handle.close() }
+            guard let first = try? handle.read(upToCount: 2 * 1024 * 1024) else { return nil }
+            data = first
+        }
+        guard let newline = data.firstIndex(of: 10), newline <= 2 * 1024 * 1024,
+              let object = try? JSONSerialization.jsonObject(with: data[..<newline]) as? [String: Any],
+              object["type"] as? String == "session_meta" else { return nil }
+        return object["payload"] as? [String: Any]
+    }
+
+    private static func codexSourceInventory(roots: [URL], cutoff: Date?) -> (paths: [URL], history: [URL], incomplete: Bool) {
+        let history = roots.flatMap { jsonlFiles(under: $0, includeCompressed: true) }
+        let initial = roots.flatMap { jsonlFiles(under: $0, modifiedSince: cutoff) }
+        var pending = initial.map { ($0, 0) }, included = Set<URL>(), incomplete = false
+        var ancestry = [URL: URL]()
+        while let (path, depth) = pending.popLast() {
+            let canonical = path.resolvingSymlinksInPath()
+            guard included.insert(canonical).inserted else { continue }
+            guard let header = codexHeader(path) else {
+                if path.pathExtension == "zst" { incomplete = true }
+                continue
+            }
+            guard let position = codexHistoryPosition(header["history_base"]) else { continue }
+            guard depth < 32, let ancestor = codexAncestor(position.rolloutID, paths: history) else {
+                incomplete = true; continue
+            }
+            pending.append((ancestor, depth + 1))
+            ancestry[canonical] = ancestor
+        }
+        for start in ancestry.keys {
+            var node = start, chain = Set<URL>()
+            while let parent = ancestry[node] {
+                if chain.count >= 32 || !chain.insert(node).inserted { incomplete = true; break }
+                node = parent
+            }
+        }
+        return (included.sorted { $0.path < $1.path }, history, incomplete)
     }
 
     private static func scanCodexSessionFile(at path: URL) -> CodexSessionScan? {
@@ -1856,17 +1960,22 @@ enum UsageCollector {
         var historyBase: CodexHistoryPosition?
         var invalidHistoryBase = false
         var unsafePrefix = false
+        var corruptCompressed = false
         var currentModel = "unknown"
         var events: [CodexTokenEvent] = []
         var relevantLineNumber = 0
 
         do {
             try forEachLine(in: path, matchingAny: ["session_meta", "turn_context", "token_count", "thread_settings_applied"], onSkippedLine: {
+                if path.pathExtension == "zst" { corruptCompressed = true }
                 if !sawOwnBoundary { unsafePrefix = true }
             }) { line in
                 autoreleasepool {
                     relevantLineNumber += 1
-                    guard let obj = jsonObject(line) else { if !sawOwnBoundary { unsafePrefix = true }; return }
+                    guard let obj = jsonObject(line) else {
+                        if path.pathExtension == "zst" { corruptCompressed = true }
+                        if !sawOwnBoundary { unsafePrefix = true }; return
+                    }
                     let type = obj["type"] as? String
                     let payload = obj["payload"] as? [String: Any]
 
@@ -1925,6 +2034,7 @@ enum UsageCollector {
             return nil
         }
 
+        if path.pathExtension == "zst" && (corruptCompressed || canonicalSessionID == nil) { return nil }
         return CodexSessionScan(
             canonicalSessionID: canonicalSessionID ?? path.deletingPathExtension().lastPathComponent,
             createdAt: createdAt,
@@ -2030,6 +2140,7 @@ enum UsageCollector {
         var diagnostics = CodexCollectionDiagnostics(rawRecords: scan.events.count)
         var records: [UsageRecord] = []
         if scan.historyBaseUnresolved == true {
+            diagnostics.unresolvedHistory = true
             var keys = Set<String>()
             for event in scan.events {
                 guard let day = dayString(for: event), keys.insert(day + ":" + event.model).inserted else { continue }
@@ -5977,8 +6088,16 @@ enum UsageCollector {
     }
 
     private static func forEachLine(in url: URL, matchingAny markers: [String] = [], onSkippedLine: (() -> Void)? = nil, _ body: (String) -> Void) throws {
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
+        let handle: FileHandle
+        let decoder: Process?
+        if url.pathExtension == "zst" {
+            guard let (process, output) = codexDecoderProcess(url, mode: "--stream") else { throw CocoaError(.fileReadCorruptFile) }
+            decoder = process; handle = output
+        } else { decoder = nil; handle = try FileHandle(forReadingFrom: url) }
+        defer {
+            try? handle.close()
+            if let decoder, decoder.isRunning { decoder.terminate(); decoder.waitUntilExit() }
+        }
 
         let newline = Data([0x0A])
         let markerData = markers.map { Data($0.utf8) }
@@ -5987,6 +6106,13 @@ enum UsageCollector {
         var discardingOversizedLine = false
 
         func processLine(_ lineData: Data) {
+            if decoder != nil, lineData.count > maxRelevantLineBytes,
+               let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] {
+                let kind = object["type"] as? String ?? ""
+                let subtype = (object["payload"] as? [String: Any])?["type"] as? String ?? ""
+                if ["compacted", "response_item"].contains(kind) ||
+                    (kind == "event_msg" && ["agent_message", "agent_reasoning", "user_message", "item_completed"].contains(subtype)) { return }
+            }
             if onSkippedLine != nil, lineData.count > maxRelevantLineBytes { onSkippedLine?(); return }
             if lineMatches(lineData, markers: markerData), String(data: lineData, encoding: .utf8) == nil { onSkippedLine?(); return }
             guard lineMatches(lineData, markers: markerData),
@@ -6024,7 +6150,7 @@ enum UsageCollector {
                 buffer.removeSubrange(buffer.startIndex..<consumedEnd)
             }
 
-            if buffer.count > maxRelevantLineBytes {
+            if buffer.count > (decoder == nil ? maxRelevantLineBytes : 64 * 1024 * 1024) {
                 onSkippedLine?()
                 discardingOversizedLine = true
                 buffer.removeAll(keepingCapacity: true)
@@ -6036,6 +6162,10 @@ enum UsageCollector {
            !buffer.isEmpty,
            buffer.count <= maxRelevantLineBytes {
             processLine(buffer)
+        }
+        if let decoder {
+            decoder.waitUntilExit()
+            guard decoder.terminationStatus == 0 else { throw CocoaError(.fileReadCorruptFile) }
         }
     }
 
@@ -6583,6 +6713,7 @@ private struct StoredCodexSessionMetadata {
     var sessionID: String
     var historyBaseUnresolved: Bool = false
     var historyDependencyFingerprint: String? = nil
+    var historyBase: CodexHistoryPosition? = nil
 }
 
 private struct CodexCachedSession {
@@ -6681,7 +6812,7 @@ private enum CodexIncrementalStoreError: LocalizedError {
 }
 
 private final class CodexIncrementalStore {
-    private static let schemaVersion: Int32 = 9
+    private static let schemaVersion: Int32 = 10
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     private var database: OpaquePointer?
@@ -6753,6 +6884,9 @@ private final class CodexIncrementalStore {
                 } ?? false,
                 historyDependencyFingerprint: try columnData(statement, index: 6).flatMap {
                     try decode(CodexSessionCursor.self, from: $0, context: "metadata cursor").historyDependencyFingerprint
+                },
+                historyBase: try columnData(statement, index: 6).flatMap {
+                    try decode(CodexSessionCursor.self, from: $0, context: "metadata cursor").historyBase
                 }
             )
         }
@@ -7435,6 +7569,7 @@ private struct CodexSessionCursor: Codable, Equatable {
     var pendingOwnForkBoundary: String? = nil
     var historyBaseUnresolved: Bool? = nil
     var historyDependencyFingerprint: String? = nil
+    var historyBase: CodexHistoryPosition? = nil
 }
 
 private struct CodexSessionTail {
@@ -7456,8 +7591,10 @@ private struct CodexCollectionDiagnostics: Codable, Equatable {
     var inheritedTokens = 0
     var skippedRecords = 0
     var unknownBreakdownRecords = 0
+    var unresolvedHistory: Bool? = nil
 
     mutating func add(_ other: CodexCollectionDiagnostics) {
+        if other.unresolvedHistory == true { unresolvedHistory = true }
         rawRecords += other.rawRecords
         exactRecords += other.exactRecords
         legacyRecords += other.legacyRecords
