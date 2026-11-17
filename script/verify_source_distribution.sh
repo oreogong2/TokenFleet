@@ -177,6 +177,11 @@ TOKENFLEET_VERSION="0.1.0-source.1" \
 INSTALLED_APP="$INSTALL_ROOT/TokenFleet.app"
 tokenfleet_source_verify_adhoc_app "$INSTALLED_APP" \
   || fail "local-only installed App did not stay ad-hoc/disabled"
+[[ -x "$INSTALLED_APP/Contents/Helpers/TokenFleetHistoryDecoder" ]] || fail "installed history decoder is missing"
+/usr/bin/codesign --verify --strict \
+  -R "=identifier \"$TOKENFLEET_SOURCE_BUNDLE_ID.history-decoder\"" \
+  "$INSTALLED_APP/Contents/Helpers/TokenFleetHistoryDecoder" \
+  || fail "installed history decoder signature is invalid"
 
 ADHOC_FIXTURE_APP="$TEST_ROOT/TokenFleet-disabled-fixture.app"
 /usr/bin/ditto "$INSTALLED_APP" "$ADHOC_FIXTURE_APP"
@@ -230,6 +235,10 @@ PERSISTED_ORIGIN="$(/bin/cat "$ORIGIN_FILE")"
 tokenfleet_source_test_verify_stable_app \
   "$COMMUNITY_APP" "$COMMUNITY_ORIGIN" "$PERSISTED_PIN" \
   || fail "community source install did not produce a verified synthetic stable fixture"
+/usr/bin/codesign --verify --strict \
+  -R "=identifier \"$TOKENFLEET_SOURCE_BUNDLE_ID.history-decoder\"" \
+  "$COMMUNITY_APP/Contents/Helpers/TokenFleetHistoryDecoder" \
+  || fail "community history decoder signature is invalid"
 
 COMMUNITY_BASELINE="$(fingerprint_tree "$COMMUNITY_APP")"
 ALTERNATE_ORIGIN="https://alternate-community.example.invalid"

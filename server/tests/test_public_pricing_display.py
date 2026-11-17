@@ -174,3 +174,41 @@ def test_partial_cost_ranking_rejects_cross_currency_even_in_incomplete_members(
     rejected = harness.client.get("/api/v1/public/priced-leaderboard", params={"metric": "cost"})
     assert rejected.status_code == 422
     assert harness.client.get("/api/v1/public/priced-leaderboard", params={"metric": "tokens"}).status_code == 200
+
+
+def test_newer_codex_correction_reduces_tokens_cost_and_cached_public_totals(harness):
+    """Upgraded collectors repair existing exact rows, including all-duplicate days."""
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import select
+    from app.models import DailyUsage
+
+    _enable_alpha_public_board(harness)
+    price = _create_price(harness, model="correction-model", public_estimate=True)
+    participant = _create_participant(harness, display_name="Correction fixture")
+    device = _enroll_participant(harness, participant)
+    start = datetime.now(timezone.utc) - timedelta(minutes=5)
+
+    def report(tokens, minute):
+        return harness.usage_payload(
+            buckets=[_usage(harness, "correction-model", tokens)],
+            generated_at=(start + timedelta(minutes=minute)).isoformat().replace("+00:00", "Z"),
+        )
+
+    original = report(1_200_000_000, 0)
+    assert harness.signed_post(device, original).status_code == 200
+    assert harness.client.get("/api/v1/public/leaderboard").json()["entries"][0]["totals"]["total_tokens"] == "1200000000"
+    for minute, tokens in ((1, 40_000_000), (2, 0)):
+        corrected = report(tokens, minute)
+        response = harness.signed_post(device, corrected)
+        assert response.status_code == 200
+        assert response.json()["updated"] == 1
+        with harness.session_factory() as session:
+            row = session.scalar(select(DailyUsage))
+            assert row.input_tokens == tokens
+            assert row.cost_microunits == tokens  # $1 / million, same frozen price
+            assert row.price_version_id == price["id"]
+            assert not row.is_deleted
+        board = harness.client.get("/api/v1/public/leaderboard").json()
+        assert sum(int(entry["totals"]["total_tokens"]) for entry in board["entries"]) == tokens
+        assert harness.signed_post(device, corrected).json()["unchanged"] == 1
+    assert harness.signed_post(device, original).json()["unchanged"] == 1

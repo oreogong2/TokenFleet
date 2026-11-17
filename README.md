@@ -18,7 +18,7 @@ TokenFleet 包含原生 macOS 菜单栏 App 和轻量 Windows 参赛端，用来
 
 ## 当前发布方式
 
-> **当前发布版本是 beta.16（tag `v0.1.0-beta.16`）。** 本次补齐 macOS Kimi Work 内嵌运行时的用量采集与自动刷新，保留独立 Kimi Code CLI 支持。需要统计 Kimi Work 的 Mac 用户可原位升级；无此需求的 Mac 用户及 Windows 用户可继续使用 beta.15，无需重新登记。仍为源码分发，不会自动升级老用户电脑；保留原昵称、状态、凭据和实验来源开关。详见 [beta.16 升级说明](docs/UPGRADE-beta.16.md)。
+> **当前发布版本是 beta.17（tag `v0.1.0-beta.17`）。** 修复 Codex 分段续写、回退分支的累计值重复统计与 Windows 续写遗漏。Mac / Windows 用户原位升级后，会在原统计与上传范围内重算可核实的历史并自动同步纠正，包括明确的零用量纠正；不清日志、不换昵称、不重新登记。缺失或不一致的历史引用保持待核，不猜测扣数。仍为源码分发，需升级一次。详见 [beta.17 升级说明](docs/UPGRADE-beta.17.md)。
 > 新成员加入方式请联系社群管理员获取安装指南。
 > 安装时，客户端固定检出本次 GitHub Release 标注的完整 commit SHA。Windows 检测到 ZCode 用量库后会自动采集且不受实验开关控制；实验来源可在 macOS 设置或 Windows 本机页／CLI 随时关闭。Cursor 仍需主动导入 CSV，Copilot OTel 仍需自行开启 exporter。
 > 服务端与网页会独立部署经复核的更新；客户端始终固定到 GitHub Release 的完整提交。是否需要成员升级，以该版本的升级说明为准。
@@ -196,7 +196,7 @@ TokenStepSwift/dist/TokenFleet.app
 Developer ID 签名 + Apple 公证：
 
 ```bash
-TOKENFLEET_VERSION=0.1.0-beta.16 \
+TOKENFLEET_VERSION=0.1.0-beta.17 \
 TOKENFLEET_BUNDLE_ID="com.yourcompany.TokenFleet" \
 TOKENFLEET_TEAM_ID="ABCDE12345" \
 TOKENFLEET_UPDATE_API_URL="https://updates.example.com/tokenfleet/latest" \

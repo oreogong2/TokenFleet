@@ -46,7 +46,10 @@ cat > "$OVERLAY_FILE" <<EOF
 }
 EOF
 
-swiftc \
+bash "$ROOT_DIR/script/build_codex_history_decoder.sh" "$TEST_ARCHITECTURE" "$BUILD_DIR/TokenFleetHistoryDecoder"
+python3 "$ROOT_DIR/script/test_codex_history_decoder.py" "$BUILD_DIR/TokenFleetHistoryDecoder"
+
+swiftc -D TOKENSTEP_TESTING \
   -target "$SWIFT_TARGET" \
   -vfsoverlay "$OVERLAY_FILE" \
   -Xcc -ivfsoverlay \

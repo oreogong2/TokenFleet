@@ -240,13 +240,15 @@ signing_team_id() {
 
 echo "Signing app with Developer ID..."
 clean_bundle_metadata
-if [[ -f "$APP_BUNDLE/Contents/Helpers/$HELPER_NAME" ]]; then
-  codesign --force --timestamp --options runtime --sign "$IDENTITY" "$APP_BUNDLE/Contents/Helpers/$HELPER_NAME"
-  [[ "$(signing_team_id "$APP_BUNDLE/Contents/Helpers/$HELPER_NAME")" == "$TEAM_ID" ]] || {
+for nested_helper in "$HELPER_NAME" TokenFleetHistoryDecoder; do
+if [[ -f "$APP_BUNDLE/Contents/Helpers/$nested_helper" ]]; then
+  codesign --force --timestamp --options runtime --sign "$IDENTITY" "$APP_BUNDLE/Contents/Helpers/$nested_helper"
+  [[ "$(signing_team_id "$APP_BUNDLE/Contents/Helpers/$nested_helper")" == "$TEAM_ID" ]] || {
     echo "Signed helper TeamIdentifier does not match TOKENFLEET_TEAM_ID." >&2
     exit 1
   }
 fi
+done
 clean_bundle_metadata
 codesign --force --timestamp --options runtime --sign "$IDENTITY" "$APP_BUNDLE"
 codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"

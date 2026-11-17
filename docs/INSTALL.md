@@ -1,8 +1,8 @@
 # TokenFleet 社群成员安装与多设备登记
 
-状态：当前发布版本为 beta.16（tag `v0.1.0-beta.16`），源码安装固定检出本次 GitHub Release 标注的完整 commit SHA。源码版不会自动更新；服务端与网页独立部署，客户端升级要求以发布说明为准。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
+状态：当前发布版本为 beta.17（tag `v0.1.0-beta.17`），源码安装固定检出本次 GitHub Release 标注的完整 commit SHA。源码版不会自动更新；服务端与网页独立部署，客户端升级要求以发布说明为准。现阶段不提供 Developer ID、公证 DMG 或 App Store 版本；上游 TokenStep 的安装包不是 TokenFleet。
 
-> **beta.16 升级提醒：** 需要统计 Kimi Work 的 Mac 用户可原位升级。新增扫描 Kimi Work 内嵌运行时目录，实验来源已开启时按原有统计窗口补计历史（默认 180 天），显式关闭仍保留。无此需求的 Mac 用户及 Windows 用户可继续使用 beta.15。保留原昵称、状态和凭据，不卸载、不清数据；完整步骤见 [beta.16 升级说明](UPGRADE-beta.16.md)。beta.15 的换机日期限制与 Codex 修复继续保留，已绑定机器后不要降回 beta.14 或更早版本。
+> **beta.17 升级提醒：** 使用 Codex 的 Mac 和 Windows 用户请原位升级一次。升级后自动重算原统计与上传范围内可核实的历史错账，并通过原连接同步纠正；无需卸载、清数据或重新登记。原始日志缺失时保留待核，不凭汇总猜测修正。完整步骤见 [beta.17 升级说明](UPGRADE-beta.17.md)。换机上传日期限制继续保留，不支持直接降回旧版。
 
 > **beta.12 macOS 优化：** 已降低采集 helper 与 sqlite3 查询的系统优先级，并把冷启动后的首次自动采集延后约 105 秒；用户手动“立即刷新”仍会立即执行。老用户在原设备原位升级即可，不要卸载、清数据或重新领取设备码。
 

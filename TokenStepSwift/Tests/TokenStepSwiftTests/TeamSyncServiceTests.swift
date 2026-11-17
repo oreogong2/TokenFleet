@@ -3,6 +3,33 @@ import XCTest
 @testable import TokenStepSwift
 
 final class TeamSyncServiceTests: XCTestCase {
+    func testAutomaticSyncUploadsLowerAndZeroHistoricalCorrections() async throws {
+        let origin = "https://team.example.com"
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-10T10:00:00Z"))
+        let receipt = TeamSyncHTTPResponse(data: Data(#"{"created":0,"updated":1,"unchanged":0,"ledger_version":3}"#.utf8), statusCode: 200)
+        let http = RecordingTeamSyncHTTPClient(responses: [receipt, receipt, receipt])
+        let store = MemoryTeamSyncStateStore(state: TeamSyncPersistentState(serverURL: origin, deviceID: "device-one"))
+        let service = TeamSyncService(httpClient: http,
+            credentialStore: MemoryTeamSyncCredentialStore(values: ["device-one": "fixture_device_secret"]),
+            stateStore: store)
+        var snapshot = authoritativeSnapshot()
+        for (index, total) in [1_200_000_000, 40_000_000, 0].enumerated() {
+            snapshot.daily[0].atomicUsage = [DailyAtomicUsage(tool: "Codex", model: "gpt-5",
+                inputTokens: total, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: total)]
+            snapshot.daily[0].totalTokens = total
+            _ = try await service.synchronize(snapshot: snapshot, serverURL: origin,
+                now: now.addingTimeInterval(Double(index) * 3600))
+        }
+        _ = try await service.synchronize(snapshot: snapshot, serverURL: origin, now: now.addingTimeInterval(4 * 3600))
+        let requests = await http.requests
+        XCTAssertEqual(requests.count, 3, "each changed historical bucket uploads automatically; unchanged zero is skipped")
+        let totals = try requests.map {
+            try JSONDecoder().decode(TeamSyncDailyPayload.self, from: XCTUnwrap($0.httpBody)).buckets.first?.inputTokens
+        }
+        XCTAssertEqual(totals, [1_200_000_000, 40_000_000, 0])
+        XCTAssertEqual(store.state?.syncedBucketHashes.count, 1)
+    }
+
     func testMachineMigrationRestrictsDatesAcrossReconnectionForceAndDisconnect() async throws {
         let origin = "https://team.example.com"
         let clock = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-08T16:30:00Z"))
