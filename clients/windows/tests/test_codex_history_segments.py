@@ -156,5 +156,23 @@ class CodexHistorySegmentsTests(unittest.TestCase):
         self.assertEqual(sum(r.counts.total for r in records),108)
 
 
+    def test_bad_compressed_paid_tail_blocks_all_uploads_but_notifications_do_not(self):
+        import zstandard
+        old, base = self.write(ROOT, [event(100)])
+        new, _ = self.write(NEXT, [event(108)], base)
+        compressed=old.with_suffix('.jsonl.zst')
+        original=old.read_bytes()
+        for tail, valid in [
+            ({'type':'event_msg','payload':{'type':'token_count','info':None}}, True),
+            (dict(event(200),payload={'type':'token_count','info':{'total_token_usage':dict(counts(100), total_tokens=200)}}),False),
+        ]:
+            payload=original+(json.dumps(dict(tail,ordinal=base['end_ordinal_exclusive']))+'\n').encode()
+            compressed.write_bytes(zstandard.ZstdCompressor().compress(payload))
+            if old.exists(): old.unlink()
+            diag=CollectionDiagnostics();records,_=_collect_codex([new],diag,history_paths=[new,compressed])
+            buckets=_aggregate(records,excluded_keys=set(diag.blocked_history_buckets))
+            self.assertEqual(bool(buckets),valid)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -158,6 +158,8 @@ def prefix_usage(position, paths: list[Path], visited=frozenset()):
                     info = payload.get("info")
                     if isinstance(info, dict) and "total_token_usage" in info:
                         return strict_usage(info["total_token_usage"])
+                    if isinstance(info, dict) and isinstance(info.get('last_token_usage'), dict):
+                        return None
                 if obj.get("type") == "session_meta":
                     if "history_base" in payload:
                         return prefix_usage(history_position(payload["history_base"]), paths, visited | {position})

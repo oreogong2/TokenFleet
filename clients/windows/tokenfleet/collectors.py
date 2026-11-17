@@ -19,7 +19,7 @@ try:
 except ImportError:  # pragma: no cover - exercised by the missing-decoder fixture
     zstandard = None  # type: ignore[assignment]
 
-from .codex_history import history_position, prefix_usage, rollout_id, ancestor_path, source_lines, HistoryReadError
+from .codex_history import history_position, prefix_usage, rollout_id, ancestor_path, source_lines, strict_usage, HistoryReadError
 
 from .constants import (
     ACCOUNTING_TIMEZONE,
@@ -258,6 +258,7 @@ class CodexScan:
     inherited_event_count: int | None = None
     history_base: tuple[str, int, int] | None = None
     invalid_history_base: bool = False
+    compressed_source: bool = False
 
 
 def collect_usage(
@@ -691,6 +692,12 @@ def _scan_codex(path: Path) -> CodexScan:
         if not isinstance(info, dict):
             continue
         cumulative_raw = info.get("total_token_usage")
+        if path.suffix == '.zst':
+            if 'total_token_usage' in info and strict_usage(cumulative_raw) is None:
+                corrupt_compressed = True
+                continue
+            if 'total_token_usage' not in info and info.get('last_token_usage') is None:
+                continue
         last_raw = info.get("last_token_usage")
         events.append(
             CodexEvent(
@@ -711,7 +718,7 @@ def _scan_codex(path: Path) -> CodexScan:
             session_id = str(uuid.UUID(path.stem))
         except ValueError:
             session_id = path.stem
-    return CodexScan(session_id, created_at, parent, events, forked_from_id, inherited_event_count, history_base, invalid_history_base)
+    return CodexScan(session_id, created_at, parent, events, forked_from_id, inherited_event_count, history_base, invalid_history_base, path.suffix == '.zst')
 
 
 def _collect_codex(
@@ -791,6 +798,8 @@ def _collect_codex(
                 history_incomplete = True
                 continue
         scan_records, skipped, incomplete = _codex_records(scan, parent_anchor, baseline)
+        if scan.compressed_source and (skipped or incomplete or any(not e.cumulative_present for e in scan.events)):
+            history_incomplete = True
         records.extend(scan_records)
         incomplete_buckets.update(incomplete)
         diagnostics.exact_records["Codex"] += len(scan_records)

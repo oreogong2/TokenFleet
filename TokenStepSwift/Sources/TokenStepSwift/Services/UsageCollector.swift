@@ -9,7 +9,7 @@ struct UsageCollectionFileState: Codable, Equatable {
 }
 
 struct UsageCollectionState: Codable, Equatable {
-    var schemaVersion = 2
+    var schemaVersion = 3
     var historyDays: Int
     var includesExperimentalAgentSources: Bool
     var windowDay: String
@@ -408,7 +408,9 @@ enum UsageCollector {
     ) -> UsageCollectionState {
         let cutoff = sourceFileCutoffDate(historyDays: historyDays)
         var urls = defaultCodexSessionRoots(homeURL: homeURL)
-            .flatMap { jsonlFiles(under: $0, modifiedSince: cutoff) }
+            // Ancestor restoration/changes must wake the outer checkpoint even
+            // when the active child is unchanged or the parent is outside the window.
+            .flatMap { jsonlFiles(under: $0, includeCompressed: true) }
         urls.append(contentsOf: jsonlFiles(
             under: homeURL.appendingPathComponent(".claude/projects", isDirectory: true),
             modifiedSince: cutoff
@@ -1158,6 +1160,10 @@ enum UsageCollector {
                 parentAnchor: parentAnchor,
                 seenRequestIDs: &seenRequestIDs
             )
+            var sessionDiagnostics = result.diagnostics
+            if item.path.pathExtension == "zst" && (sessionDiagnostics.skippedRecords > 0 || sessionDiagnostics.unknownBreakdownRecords > 0 || sessionDiagnostics.legacyRecords > 0) {
+                sessionDiagnostics.unresolvedHistory = true
+            }
             let candidate = CodexCachedSession(
                     path: item.path.path,
                     size: item.metadata.size,
@@ -1181,7 +1187,7 @@ enum UsageCollector {
                         historyDependencyFingerprint: historyFingerprint(item.scan.historyBase),
                         historyBase: item.scan.historyBase
                     ),
-                    diagnostics: result.diagnostics
+                    diagnostics: sessionDiagnostics
                 )
             if let existing = try store.session(path: item.path.path),
                candidate.hasSameStoredAccounting(as: existing) {
@@ -1357,6 +1363,10 @@ enum UsageCollector {
             )
             records.append(contentsOf: result.records)
             diagnostics.add(result.diagnostics)
+            if URL(fileURLWithPath: scan.sourcePath).pathExtension == "zst" &&
+                (result.diagnostics.skippedRecords > 0 || result.diagnostics.unknownBreakdownRecords > 0 || result.diagnostics.legacyRecords > 0) {
+                diagnostics.unresolvedHistory = true
+            }
         }
 
         return codexCollectorResult(
@@ -1856,6 +1866,10 @@ enum UsageCollector {
                     guard let raw = info["total_token_usage"] as? [String: Any] else { return nil }
                     return strictCodexHistoryUsage(raw)
                 }
+                if object["type"] as? String == "event_msg", payload["type"] as? String == "token_count",
+                   let info = payload["info"] as? [String: Any], info["last_token_usage"] is [String: Any] {
+                    return nil // A per-request count cannot establish a cumulative baseline.
+                }
                 if object["type"] as? String == "session_meta" {
                     if payload.keys.contains("history_base") {
                         guard let base = codexHistoryPosition(payload["history_base"]) else { return nil }
@@ -2014,6 +2028,13 @@ enum UsageCollector {
 
                     let timestamp = nonEmptyString(obj["timestamp"] as? String)
                     let cumulativePresent = info.keys.contains("total_token_usage")
+                    if path.pathExtension == "zst" {
+                        if cumulativePresent {
+                            guard let raw = info["total_token_usage"] as? [String: Any], strictCodexHistoryUsage(raw) != nil else {
+                                corruptCompressed = true; return
+                            }
+                        } else if info["last_token_usage"] == nil { return }
+                    }
                     let cumulative = (info["total_token_usage"] as? [String: Any]).map(normalizeCodexUsage)
                     let last = (info["last_token_usage"] as? [String: Any]).map(normalizeCodexUsage)
                     events.append(

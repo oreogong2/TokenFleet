@@ -78,6 +78,38 @@ struct CodexCumulativeFixtureCheck {
             try expectEqual(snapshot.totals.tokens, 108, "large non-accounting compacted record is safely ignored")
             guard snapshot.daily.flatMap({ $0.atomicUsage ?? [] }).allSatisfy(\.breakdownComplete) else { throw FixtureFailure("valid large compaction cannot quarantine usage") }
         }
+        try withFixtureHome("history-compressed-invalid-tail") { home in
+            let (first, base) = try segment(home, owner, [usage(100)])
+            _ = try segment(home, next, [usage(108)], base: base)
+            let original = try Data(contentsOf: first)
+            let notification = jsonLine(["type":"event_msg", "payload":["type":"token_count", "info":NSNull()]])
+            let bad = jsonLine(["type":"event_msg", "timestamp":"2026-11-17T12:00:00Z", "payload":["type":"token_count", "info":["total_token_usage":["input_tokens":100,"output_tokens":0,"cached_input_tokens":100,"total_tokens":200]]]])
+            for (index, tail) in [notification, bad].enumerated() {
+                try original.write(to: first)
+                try appendLine(try numbered(tail, base["end_ordinal_exclusive"] as! Int), to: first)
+                _ = try compressedCopy(first); try FileManager.default.removeItem(at: first)
+                for cache in [nil, home.appendingPathComponent("cache-\(index).sqlite3")] {
+                    let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+                    let rows = snapshot.daily.flatMap { $0.atomicUsage ?? [] }
+                    guard (index != 0 || !rows.isEmpty), rows.allSatisfy({ $0.breakdownComplete == (index == 0) }) else { throw FixtureFailure("compressed accounting error must quarantine, notifications must not: case=\(index) cached=\(cache != nil)") }
+                }
+            }
+        }
+        try withFixtureHome("history-compressed-checkpoint") { home in
+            let (first, base) = try segment(home, owner, [usage(100)])
+            _ = try segment(home, next, [usage(108)], base: base)
+            let compressed = try compressedCopy(first); try FileManager.default.removeItem(at: first)
+            let before = UsageCollector.collectionState(historyDays: 7, includeExperimentalAgentSources: false, homeURL: home)
+            guard before.files.contains(where: { $0.path == compressed.path }) else { throw FixtureFailure("checkpoint omitted compressed candidate") }
+            try Data([1,2,3]).write(to: compressed)
+            let after = UsageCollector.collectionState(historyDays: 7, includeExperimentalAgentSources: false, homeURL: home)
+            guard before != after else { throw FixtureFailure("compressed-only changes must wake normal collection") }
+            let outside = home.appendingPathComponent(".codex/sessions/outside.jsonl")
+            try "{}\n".write(to: outside, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.modificationDate:Date(timeIntervalSince1970:0)], ofItemAtPath: outside.path)
+            let outsideState = UsageCollector.collectionState(historyDays: 7, includeExperimentalAgentSources: false, homeURL: home)
+            guard outsideState.files.contains(where: { $0.path == outside.path }) else { throw FixtureFailure("checkpoint omitted older ancestor candidate") }
+        }
         try withFixtureHome("history-compressed-recursive") { home in
             let (first, base) = try segment(home, owner, [usage(100)])
             let (second, base2) = try segment(home, next, [usage(105)], base: base)
