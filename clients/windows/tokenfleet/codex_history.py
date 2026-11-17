@@ -46,7 +46,7 @@ def source_lines(path):
     try:
         import zstandard
         before = path.stat()
-        decoder = zstandard.ZstdDecompressor(max_window_size=128 * 1024).decompressobj()
+        decoder = zstandard.ZstdDecompressor(max_window_size=128 * 1024 * 1024).decompressobj()
         pending = b''
         total = 0
         deadline = time.monotonic() + 30
@@ -54,7 +54,7 @@ def source_lines(path):
             while chunk := source.read(256):
                 while chunk:
                     if decoder.eof:
-                        decoder = zstandard.ZstdDecompressor(max_window_size=128 * 1024).decompressobj()
+                        decoder = zstandard.ZstdDecompressor(max_window_size=128 * 1024 * 1024).decompressobj()
                     decoded = decoder.decompress(chunk)
                     chunk = decoder.unused_data if decoder.eof else b''
                     total += len(decoded)
@@ -178,7 +178,7 @@ def _compressed_prefix_tail(path, offset):
         before = path.stat()
         tail = bytearray()
         remaining = offset
-        with path.open('rb') as source, zstandard.ZstdDecompressor(max_window_size=128 * 1024).stream_reader(source) as reader:
+        with path.open('rb') as source, zstandard.ZstdDecompressor(max_window_size=128 * 1024 * 1024).stream_reader(source) as reader:
             while remaining:
                 chunk = reader.read(min(remaining, 65536))
                 if not chunk:
