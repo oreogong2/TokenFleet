@@ -213,7 +213,24 @@ class CodexHistorySegmentsTests(unittest.TestCase):
         child, _ = self.write(NEXT, [notification, event(100), event(100, '2026-11-18')], base)
         buckets, _ = self.collect([old, child])
         self.assertEqual({b['date']:b['input_tokens'] + b['cache_read_tokens'] for b in buckets},
-                         {'2026-11-15':100, '2026-11-17':0, '2026-11-18':0})
+                         {'2026-11-15':100, '2026-11-17':0})
+
+    def test_later_duplicates_do_not_create_zero_overwrites(self):
+        old, base = self.write(ROOT, [event(100, '2026-11-15')])
+        child, _ = self.write(NEXT, [event(108, '2026-11-16'), event(108)], base)
+        buckets, _ = self.collect([old, child])
+        self.assertEqual({b['date']:b['input_tokens'] + b['cache_read_tokens'] for b in buckets},
+                         {'2026-11-15':100, '2026-11-16':8})
+
+    def test_zero_requires_equal_components_and_ignores_initial_zero_notifications(self):
+        old, base = self.write(ROOT, [event(100, '2026-11-15')])
+        changed = event(100)
+        changed['payload']['info']['total_token_usage']['cached_input_tokens'] = 49
+        child, _ = self.write(NEXT, [changed, event(100, '2026-11-18')], base)
+        self.assertEqual([b['date'] for b in self.collect([old, child])[0]], ['2026-11-15'])
+        child, _ = self.write(NEXT, [event(0, '2026-11-16'), event(100)], base)
+        self.assertEqual({b['date']:b['input_tokens'] + b['cache_read_tokens'] for b in self.collect([old, child])[0]},
+                         {'2026-11-15':100, '2026-11-17':0})
 
     def test_null_root_and_multiframe_prefix(self):
         import zstandard

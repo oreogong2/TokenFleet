@@ -862,7 +862,7 @@ def _codex_records(
                 previous = parent_anchor
                 start = index + 1
                 break
-    corrected_keys = set()
+    correction_pending = history_baseline is not None
     for index in range(start, len(scan.events)):
         event = scan.events[index]
         current = event.cumulative
@@ -880,13 +880,14 @@ def _codex_records(
         if current.total <= 0 or day is None:
             skipped += 1
             continue
+        corrects_initial_inheritance = correction_pending
+        correction_pending = False
         if previous is not None and current.total == previous.total:
-            key = (day, event.model)
-            if history_baseline is not None and not _is_context_sentinel(event) and key not in corrected_keys:
+            if corrects_initial_inheritance and current == previous:
                 # The accounting event may follow context-only notifications on
-                # another day/model. Correct the verified zero's actual bucket.
+                # another day/model. Only the first positive counter was charged
+                # as inherited usage by the old collector; later duplicates were not.
                 records.append(UsageRecord(day, "Codex", event.model, UsageCounts()))
-                corrected_keys.add(key)
             continue
         is_reset = False
         if previous is not None and current.total < previous.total:

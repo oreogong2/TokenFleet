@@ -197,7 +197,7 @@ enum CollectorPerformanceLogger {
 }
 
 enum UsageCollector {
-    static let codexAccountingRevision = 12
+    static let codexAccountingRevision = 13
 
     private static let timezone = TimeZone(identifier: "Asia/Shanghai") ?? .current
     private static let maxRelevantLineBytes = 1_048_576
@@ -1185,7 +1185,8 @@ enum UsageCollector {
                         pendingOwnForkBoundary: item.scan.pendingOwnForkBoundary,
                         historyBaseUnresolved: resolvedScan.historyBaseUnresolved,
                         historyDependencyFingerprint: historyFingerprint(item.scan.historyBase),
-                        historyBase: item.scan.historyBase
+                        historyBase: item.scan.historyBase,
+                        historyCorrectionPending: result.cursor.historyCorrectionPending
                     ),
                     diagnostics: sessionDiagnostics
                 )
@@ -1519,7 +1520,6 @@ enum UsageCollector {
         if cursor.hasCumulativeSchema {
             var previous = cursor.previousCumulative
             var epoch = cursor.epoch
-            var correctedKeys = Set(records.filter { $0.usage.accountingCorrection == true }.map { $0.date + ":" + $0.model })
             for index in tail.events.indices {
                 let event = tail.events[index]
                 guard event.cumulativePresent else {
@@ -1536,10 +1536,15 @@ enum UsageCollector {
 
                 let deltaTotal: Int
                 let isReset: Bool
+                if cursor.historyBase != nil, isCodexContextWindowSentinel(event) {
+                    diagnostics.skippedRecords += 1; continue
+                }
+                let correctsInitialInheritance = cursor.historyCorrectionPending == true
+                cursor.historyCorrectionPending = false
                 if let previous {
                     if current.totalTokens == previous.totalTokens {
-                        if cursor.historyBase != nil, isCodexBreakdownConsistent(current, total: current.totalTokens),
-                           !isCodexContextWindowSentinel(event), correctedKeys.insert(day + ":" + event.model).inserted {
+                        if correctsInitialInheritance, isCodexBreakdownConsistent(current, total: current.totalTokens),
+                           current.fingerprint == previous.fingerprint {
                             var zero = TokenUsageCounts()
                             zero.accountingCorrection = true
                             records.append(codexUsageRecord(scan: scan, event: event, day: day, usage: zero,
@@ -2214,6 +2219,7 @@ enum UsageCollector {
             return (records, diagnostics, CodexDeltaCursor(hasCumulativeSchema: true, previousCumulative: nil, epoch: 0))
         }
         let hasCumulativeSchema = scan.events.contains { $0.cumulativePresent }
+        var correctionPending = scan.historyBaseline != nil
 
         if !hasCumulativeSchema {
             for event in scan.events {
@@ -2251,7 +2257,8 @@ enum UsageCollector {
                 CodexDeltaCursor(
                     hasCumulativeSchema: false,
                     previousCumulative: nil,
-                    epoch: 0
+                    epoch: 0,
+                    historyCorrectionPending: correctionPending
                 )
             )
         }
@@ -2283,7 +2290,6 @@ enum UsageCollector {
         }
 
         var epoch = 0
-        var correctedKeys = Set<String>()
         for index in startIndex..<scan.events.count {
             let event = scan.events[index]
             guard event.cumulativePresent else {
@@ -2300,10 +2306,15 @@ enum UsageCollector {
 
             let deltaTotal: Int
             let isReset: Bool
+            if scan.historyBaseline != nil, isCodexContextWindowSentinel(event) {
+                diagnostics.skippedRecords += 1; continue
+            }
+            let correctsInitialInheritance = correctionPending
+            correctionPending = false
             if let previous {
                 if current.totalTokens == previous.totalTokens {
-                    if scan.historyBaseline != nil, isCodexBreakdownConsistent(current, total: current.totalTokens),
-                       !isCodexContextWindowSentinel(event), correctedKeys.insert(day + ":" + event.model).inserted {
+                    if correctsInitialInheritance, isCodexBreakdownConsistent(current, total: current.totalTokens),
+                       current.fingerprint == previous.fingerprint {
                         var zero = TokenUsageCounts()
                         zero.accountingCorrection = true
                         records.append(codexUsageRecord(scan: scan, event: event, day: day, usage: zero,
@@ -2375,7 +2386,8 @@ enum UsageCollector {
             CodexDeltaCursor(
                 hasCumulativeSchema: true,
                 previousCumulative: previous,
-                epoch: epoch
+                epoch: epoch,
+                historyCorrectionPending: correctionPending
             )
         )
     }
@@ -6876,7 +6888,7 @@ private enum CodexIncrementalStoreError: LocalizedError {
 }
 
 private final class CodexIncrementalStore {
-    private static let schemaVersion: Int32 = 10
+    private static let schemaVersion: Int32 = 11
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     private var database: OpaquePointer?
@@ -7622,6 +7634,7 @@ private struct CodexDeltaCursor {
     var hasCumulativeSchema: Bool
     var previousCumulative: TokenUsageCounts?
     var epoch: Int
+    var historyCorrectionPending: Bool = false
 }
 
 private struct CodexSessionCursor: Codable, Equatable {
@@ -7634,6 +7647,7 @@ private struct CodexSessionCursor: Codable, Equatable {
     var historyBaseUnresolved: Bool? = nil
     var historyDependencyFingerprint: String? = nil
     var historyBase: CodexHistoryPosition? = nil
+    var historyCorrectionPending: Bool? = nil
 }
 
 private struct CodexSessionTail {

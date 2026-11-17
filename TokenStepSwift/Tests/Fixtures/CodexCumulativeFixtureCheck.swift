@@ -213,10 +213,36 @@ struct CodexCumulativeFixtureCheck {
             try appendLine(try numbered(usage(100, day: "2026-11-18"), childBase["end_ordinal_exclusive"] as! Int), to: child)
             for cached in [cache, nil, home.appendingPathComponent("rebuilt.sqlite3")] {
                 let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cached)
-                for day in ["2026-11-17", "2026-11-18"] {
-                    guard let row = snapshot.daily.first(where: { $0.date == day })?.atomicUsage?.first,
-                          row.totalTokens == 0, row.breakdownComplete else { throw FixtureFailure("zero correction append/rebuild parity") }
-                }
+                guard let row = snapshot.daily.first(where: { $0.date == "2026-11-17" })?.atomicUsage?.first,
+                      row.totalTokens == 0, row.breakdownComplete,
+                      !snapshot.daily.contains(where: { $0.date == "2026-11-18" }) else { throw FixtureFailure("only initial inherited counter gets zero, including append/rebuild") }
+            }
+        }
+        try withFixtureHome("history-first-counter-arrives-on-append") { home in
+            let (_, base) = try segment(home, owner, [usage(100, day: "2026-11-15")])
+            let (child, childBase) = try segment(home, next, [usage(0, day: "2026-11-16")], base: base)
+            let cache = home.appendingPathComponent("cache.sqlite3")
+            _ = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+            let scans = UsageCollector.codexFullScanCountForTests(at: child)
+            let start = childBase["end_ordinal_exclusive"] as! Int
+            try appendLine(try numbered(usage(100), start), to: child)
+            try appendLine(try numbered(turnContext(model: "gpt-6-astra", timestamp: "2026-11-18T12:00:00Z"), start + 1), to: child)
+            try appendLine(try numbered(usage(100, day: "2026-11-18"), start + 2), to: child)
+            let appended = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+            try expectEqual(UsageCollector.codexFullScanCountForTests(at: child), scans, "first zero correction uses real incremental append")
+            for snapshot in [appended, UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home), UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: home.appendingPathComponent("rebuilt.sqlite3"))] {
+                guard let row = snapshot.daily.first(where: { $0.date == "2026-11-17" })?.atomicUsage?.first,
+                      row.totalTokens == 0, row.breakdownComplete,
+                      !snapshot.daily.contains(where: { $0.date == "2026-11-16" || $0.date == "2026-11-18" }) else { throw FixtureFailure("append must consume the first-count correction opportunity exactly once") }
+            }
+        }
+        try withFixtureHome("history-later-duplicates-have-no-zero") { home in
+            let (_, base) = try segment(home, owner, [usage(100, day: "2026-11-15")])
+            _ = try segment(home, next, [usage(108, day: "2026-11-16"), usage(108)], base: base)
+            for cache in [nil, home.appendingPathComponent("cache.sqlite3")] {
+                let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+                try expectEqual(snapshot.totals.tokens, 108, "real delta retained")
+                guard !snapshot.daily.contains(where: { $0.date == "2026-11-17" }) else { throw FixtureFailure("later duplicate must not overwrite unrelated archived usage with zero") }
             }
         }
         try withFixtureHome("history-archive-lookup-only") { home in
