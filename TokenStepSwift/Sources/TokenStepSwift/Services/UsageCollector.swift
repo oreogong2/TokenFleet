@@ -1862,9 +1862,13 @@ enum UsageCollector {
                 expected -= 1
                 let payload = object["payload"] as? [String: Any] ?? [:]
                 if object["type"] as? String == "event_msg", payload["type"] as? String == "token_count",
+                   let info = payload["info"] as? [String: Any], strictCodexContextSentinel(info) { continue }
+                if object["type"] as? String == "event_msg", payload["type"] as? String == "token_count",
                    let info = payload["info"] as? [String: Any], info.keys.contains("total_token_usage") {
                     guard let raw = info["total_token_usage"] as? [String: Any] else { return nil }
-                    return strictCodexHistoryUsage(raw)
+                    guard let checked = strictCodexHistoryUsage(raw) else { return nil }
+                    if checked.totalTokens == 0 { continue }
+                    return checked
                 }
                 if object["type"] as? String == "event_msg", payload["type"] as? String == "token_count",
                    let info = payload["info"] as? [String: Any], info["last_token_usage"] is [String: Any] {
@@ -1884,10 +1888,7 @@ enum UsageCollector {
 
     private static func strictCodexHistoryUsage(_ raw: [String: Any]) -> TokenUsageCounts? {
         func integer(_ key: String) -> Int? {
-            guard let n = raw[key] as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(),
-                  n.int64Value >= 0, n.doubleValue == Double(n.int64Value),
-                  String(cString: n.objCType) != "d", String(cString: n.objCType) != "f" else { return nil }
-            return Int(exactly: n.int64Value)
+            strictCodexHistoryInteger(raw[key])
         }
         guard let input = integer("input_tokens"), let output = integer("output_tokens"),
               let cached = integer("cached_input_tokens"), let total = integer("total_tokens"), cached <= input else { return nil }
@@ -1897,6 +1898,24 @@ enum UsageCollector {
             guard let reasoning = integer("reasoning_output_tokens"), reasoning <= output else { return nil }
         }
         return normalizeCodexUsage(raw)
+    }
+
+    private static func strictCodexHistoryInteger(_ raw: Any?) -> Int? {
+        guard let n = raw as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(),
+              n.int64Value >= 0, n.doubleValue == Double(n.int64Value),
+              String(cString: n.objCType) != "d", String(cString: n.objCType) != "f" else { return nil }
+        return Int(exactly: n.int64Value)
+    }
+
+    private static func strictCodexContextSentinel(_ info: [String: Any]) -> Bool {
+        guard let raw = info["total_token_usage"] as? [String: Any],
+              let window = strictCodexHistoryInteger(info["model_context_window"]), window > 0,
+              strictCodexHistoryInteger(raw["total_tokens"]) == window,
+              ["input_tokens", "output_tokens", "cached_input_tokens"].allSatisfy({ strictCodexHistoryInteger(raw[$0]) == 0 }),
+              raw["reasoning_output_tokens"] == nil || strictCodexHistoryInteger(raw["reasoning_output_tokens"]) == 0 else { return false }
+        if info["last_token_usage"] == nil || info["last_token_usage"] is NSNull { return true }
+        guard let last = info["last_token_usage"] as? [String: Any] else { return false }
+        return strictCodexHistoryUsage(last)?.totalTokens == 0
     }
 
     private static func codexAncestor(_ id: String, paths: [URL]) -> URL? {
@@ -2029,10 +2048,12 @@ enum UsageCollector {
                     let timestamp = nonEmptyString(obj["timestamp"] as? String)
                     let cumulativePresent = info.keys.contains("total_token_usage")
                     if path.pathExtension == "zst" {
+                        if strictCodexContextSentinel(info) { return }
                         if cumulativePresent {
-                            guard let raw = info["total_token_usage"] as? [String: Any], strictCodexHistoryUsage(raw) != nil else {
+                            guard let raw = info["total_token_usage"] as? [String: Any], let checked = strictCodexHistoryUsage(raw) else {
                                 corruptCompressed = true; return
                             }
+                            if checked.totalTokens == 0 { return }
                         } else if info["last_token_usage"] == nil { return }
                     }
                     let cumulative = (info["total_token_usage"] as? [String: Any]).map(normalizeCodexUsage)

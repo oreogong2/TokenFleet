@@ -174,5 +174,19 @@ class CodexHistorySegmentsTests(unittest.TestCase):
             self.assertEqual(bool(buckets),valid)
 
 
+    def test_context_sentinel_and_zero_notification_survive_compressed_history(self):
+        import zstandard
+        sentinel=event(0)
+        sentinel['payload']['info'].update(total_token_usage=dict(counts(0),total_tokens=64),last_token_usage=counts(0),model_context_window=64)
+        old,base=self.write(ROOT,[event(100),event(0),sentinel])
+        with old.open('a') as f: f.write(json.dumps(dict(event(200),ordinal=base['end_ordinal_exclusive']))+'\n')
+        child,_=self.write(NEXT,[event(108)],base)
+        compressed=old.with_suffix('.jsonl.zst');compressed.write_bytes(zstandard.ZstdCompressor().compress(old.read_bytes()));old.unlink()
+        self.assertEqual(prefix_usage(history_position(base),[compressed]),counts(100))
+        diag=CollectionDiagnostics();records,incomplete=_collect_codex([child],diag,history_paths=[child,compressed])
+        self.assertFalse(incomplete)
+        self.assertEqual(sum(r.counts.total for r in records),208)
+
+
 if __name__ == '__main__':
     unittest.main()

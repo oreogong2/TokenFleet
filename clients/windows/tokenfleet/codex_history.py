@@ -31,6 +31,24 @@ def strict_usage(raw):
     return raw
 
 
+def context_sentinel(info):
+    if not isinstance(info, dict):
+        return False
+    raw = info.get('total_token_usage')
+    window = info.get('model_context_window')
+    if not isinstance(raw, dict) or type(window) is not int or not 0 < window <= 2**63-1:
+        return False
+    if any(type(raw.get(k)) is not int or raw[k] != 0 for k in ('input_tokens','output_tokens','cached_input_tokens')):
+        return False
+    if type(raw.get('total_tokens')) is not int or raw['total_tokens'] != window:
+        return False
+    reasoning = raw.get('reasoning_output_tokens', 0)
+    if type(reasoning) is not int or reasoning != 0:
+        return False
+    last = info.get('last_token_usage')
+    return last is None or (strict_usage(last) is not None and last['total_tokens'] == 0)
+
+
 def ancestor_path(identifier, paths):
     candidates = {p.resolve() for p in paths if not p.is_symlink() and rollout_id(p) == identifier}
     candidates = {p for p in candidates if p.suffix != '.zst' or p.with_suffix('') not in candidates}
@@ -156,8 +174,13 @@ def prefix_usage(position, paths: list[Path], visited=frozenset()):
                 payload = obj.get("payload", {})
                 if obj.get("type") == "event_msg" and payload.get("type") == "token_count":
                     info = payload.get("info")
+                    if context_sentinel(info):
+                        continue
                     if isinstance(info, dict) and "total_token_usage" in info:
-                        return strict_usage(info["total_token_usage"])
+                        checked = strict_usage(info["total_token_usage"])
+                        if checked is not None and checked['total_tokens'] == 0:
+                            continue
+                        return checked
                     if isinstance(info, dict) and isinstance(info.get('last_token_usage'), dict):
                         return None
                 if obj.get("type") == "session_meta":

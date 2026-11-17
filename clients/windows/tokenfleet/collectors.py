@@ -19,7 +19,7 @@ try:
 except ImportError:  # pragma: no cover - exercised by the missing-decoder fixture
     zstandard = None  # type: ignore[assignment]
 
-from .codex_history import history_position, prefix_usage, rollout_id, ancestor_path, source_lines, strict_usage, HistoryReadError
+from .codex_history import history_position, prefix_usage, rollout_id, ancestor_path, source_lines, strict_usage, context_sentinel, HistoryReadError
 
 from .constants import (
     ACCOUNTING_TIMEZONE,
@@ -693,6 +693,8 @@ def _scan_codex(path: Path) -> CodexScan:
             continue
         cumulative_raw = info.get("total_token_usage")
         if path.suffix == '.zst':
+            if context_sentinel(info) or (strict_usage(cumulative_raw) is not None and cumulative_raw['total_tokens'] == 0):
+                continue
             if 'total_token_usage' in info and strict_usage(cumulative_raw) is None:
                 corrupt_compressed = True
                 continue

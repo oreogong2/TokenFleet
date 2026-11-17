@@ -95,6 +95,20 @@ struct CodexCumulativeFixtureCheck {
                 }
             }
         }
+        try withFixtureHome("history-compressed-context-sentinel") { home in
+            let zero: [String: Any] = ["input_tokens":0,"output_tokens":0,"cached_input_tokens":0,"total_tokens":0]
+            var context = zero; context["total_tokens"] = 64
+            let sentinel = jsonLine(["type":"event_msg","timestamp":"2026-11-17T12:00:00Z","payload":["type":"token_count","info":["total_token_usage":context,"last_token_usage":zero,"model_context_window":64]]])
+            let (first, base) = try segment(home, owner, [usage(100), usage(0), sentinel])
+            try appendLine(try numbered(usage(200), base["end_ordinal_exclusive"] as! Int), to: first)
+            _ = try segment(home, next, [usage(108)], base: base)
+            _ = try compressedCopy(first); try FileManager.default.removeItem(at: first)
+            for cache in [nil, home.appendingPathComponent("cache.sqlite3")] {
+                let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+                try expectEqual(snapshot.totals.tokens, 208, "context sentinel does not become a baseline or corrupt paid tails")
+                guard snapshot.daily.flatMap({ $0.atomicUsage ?? [] }).allSatisfy(\.breakdownComplete) else { throw FixtureFailure("known zero/context notifications must remain exact") }
+            }
+        }
         try withFixtureHome("history-compressed-checkpoint") { home in
             let (first, base) = try segment(home, owner, [usage(100)])
             _ = try segment(home, next, [usage(108)], base: base)
