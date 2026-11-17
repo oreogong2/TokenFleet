@@ -716,14 +716,14 @@ def _collect_codex(
 
     anchors: dict[str, list[tuple[datetime, UsageCounts]]] = {}
     for scan in scans_by_id.values():
-        anchors[scan.session_id] = [
+        anchors.setdefault(scan.session_id, []).extend([
             (event.timestamp, event.cumulative)
             for event in scan.events
             if event.timestamp is not None
             and event.cumulative_present
             and event.cumulative is not None
             and event.cumulative.total > 0
-        ]
+        ])
 
     records: list[UsageRecord] = []
     incomplete_buckets: set[tuple[str, str, str]] = set()
